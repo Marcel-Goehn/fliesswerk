@@ -39,3 +39,15 @@ _Avoid_: Phase, stage, agent run
 **Harness**:
 The agent program that carries out a Step, e.g. Claude Code, Codex, Pi. Distinct from the model provider it talks to (Anthropic, Bedrock, OpenRouter, …).
 _Avoid_: Agent provider, agent CLI, model (when the program is meant)
+
+**Feedback command**:
+A project command that tells the agent whether its change works (e.g. tests, type check, lint). Declared once per project and made available to every Step.
+_Avoid_: Check, script, validation
+
+**Hook**:
+A shell command the Factory runs at a named moment of a Run (e.g. when a Sandbox is created), either on the host or inside the Sandbox.
+_Avoid_: Callback, lifecycle script
+
+**Protected path**:
+A file or directory in the project that the agent may not change, because the Factory itself relies on it (its own configuration, the services it starts). An Iteration that changes one is rejected.
+_Avoid_: Read-only file, locked file
