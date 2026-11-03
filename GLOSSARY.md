@@ -9,8 +9,8 @@ The tool as a whole: the thing that takes a spec's ready tickets and turns them 
 _Avoid_: Ralph loop (as a name for the tool), software factory (in prose, fine; in code, use Factory)
 
 **Sandbox**:
-The isolated environment (a container) in which an agent works on a ticket.
-_Avoid_: Container (when the concept is meant), VM
+The isolated environment in which a Step runs, walling the agent off from everything it doesn't need. It comes in two kinds: a **container Sandbox** (the Step runs in a container) and a **native Sandbox** (the Step runs directly on the user's machine, fenced in by the operating system).
+_Avoid_: Host mode (implies no isolation), container (when the concept is meant), VM
 
 **Ready for agent**:
 The state of a ticket that may be picked up by the Factory, expressed by the `ready-for-agent` label in whichever issue tracker is used.
