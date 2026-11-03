@@ -17,7 +17,7 @@ The state of a ticket that may be picked up by the Factory, expressed by the `re
 _Avoid_: Sandcastle label, AFK-ready
 
 **Spec**:
-A parent issue describing a feature as a whole; its sub-issues are the Tickets. A Spec is never worked on directly, even if it carries the Ready-for-agent label.
+A parent issue describing a feature as a whole; its sub-issues are the Tickets. A Spec is never worked on directly, even if it carries the Ready-for-agent label. A Spec is self-contained: its Tickets depend only on each other and on what is already in the base branch, never on another Spec.
 _Avoid_: PRD (in Factory vocabulary), epic
 
 **Ticket**:
