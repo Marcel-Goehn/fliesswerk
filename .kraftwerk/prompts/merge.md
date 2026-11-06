@@ -42,7 +42,7 @@ changes should fit together.
 
 <!-- /🔒 FIXED -->
 
-<!-- ✏️ YOURS: .ralph/prompts/merge.md -->
+<!-- ✏️ YOURS: .kraftwerk/prompts/merge.md -->
 
 # Resolve
 

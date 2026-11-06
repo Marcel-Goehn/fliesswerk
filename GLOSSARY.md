@@ -1,4 +1,4 @@
-# ralph
+# kraftwerk
 
 A software factory that implements a spec's tickets with AFK agents, replacing the implement step of the grill → spec → tickets → implement → review → PR workflow.
 
@@ -6,7 +6,7 @@ A software factory that implements a spec's tickets with AFK agents, replacing t
 
 **Factory**:
 The tool as a whole: the thing that takes a spec's ready tickets and turns them into commits on a feature branch without a human in the loop.
-_Avoid_: Ralph loop (as a name for the tool), software factory (in prose, fine; in code, use Factory)
+_Avoid_: Kraftwerk (when the concept is meant; Kraftwerk is the product name), Ralph loop (as a name for the tool), software factory (in prose, fine; in code, use Factory)
 
 **Sandbox**:
 The isolated environment in which a Step runs, walling the agent off from everything it doesn't need. It comes in two kinds: a **container Sandbox** (the Step runs in a container) and a **native Sandbox** (the Step runs directly on the user's machine, fenced in by the operating system).

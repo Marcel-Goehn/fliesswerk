@@ -56,7 +56,7 @@ None yet (first Ticket of a Spec, or a standalone Ticket): the last 10 commits o
 
 <!-- /🔒 FIXED -->
 
-<!-- ✏️ YOURS: .ralph/prompts/implement.md -->
+<!-- ✏️ YOURS: .kraftwerk/prompts/implement.md -->
 
 # Explore
 

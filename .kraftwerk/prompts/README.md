@@ -1,7 +1,6 @@
 # Draft prompts (for "How do prompts take in a project's conventions?")
 
-These are drafts to read and react to, not final wording. `.ralph/` stands in for
-`.<name>/` until "What is the Factory called?" is decided.
+These are drafts to read and react to, not final wording.
 
 Each file shows the **whole prompt as the agent receives it**, so you can read it
 in one piece. Two kinds of block are marked:
@@ -9,7 +8,7 @@ in one piece. Two kinds of block are marked:
 - `🔒 FIXED`: added by the Factory's code. In the real setup this text is **not in
   your file** and you can't edit it. Text in `«guillemets»` is filled in by code
   at the start of each Step.
-- `✏️ YOURS`: the content of `.ralph/prompts/<step>.md`. You can edit all of it.
+- `✏️ YOURS`: the content of `.kraftwerk/prompts/<step>.md`. You can edit all of it.
 
 ## Placeholders in your part
 

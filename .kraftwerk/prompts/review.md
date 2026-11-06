@@ -53,7 +53,7 @@ Read it with:
 
 <!-- /🔒 FIXED -->
 
-<!-- ✏️ YOURS: .ralph/prompts/review.md -->
+<!-- ✏️ YOURS: .kraftwerk/prompts/review.md -->
 
 # Review
 
