@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PROTOTYPE: kraftwerk init</title>
+<style>
+  :root { --accent:#c2410c; --bg:#fafaf9; --line:#e7e5e4; --muted:#78716c; }
+  * { box-sizing:border-box; }
+  body { font:15px/1.5 system-ui, sans-serif; margin:0; background:var(--bg); color:#1c1917; }
+  header { padding:20px 28px; border-bottom:1px solid var(--line); background:#fff; }
+  header h1 { margin:0 0 4px; font-size:20px; }
+  header p { margin:4px 0; max-width:1000px; color:#44403c; }
+  .tag { display:inline-block; background:var(--accent); color:#fff; font-size:11px; padding:1px 6px; border-radius:3px; vertical-align:middle; }
+  main { display:grid; grid-template-columns: 430px 1fr; gap:0; min-height:calc(100vh - 140px); }
+  .left { border-right:1px solid var(--line); padding:18px 22px; background:#fff; overflow:auto; }
+  .right { padding:18px 22px; overflow:auto; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:18px 0 8px; }
+  h2:first-child { margin-top:0; }
+  select, input[type=text] { font:inherit; padding:5px 7px; border:1px solid #d6d3d1; border-radius:4px; width:100%; }
+  .q { padding:10px 0; border-bottom:1px dashed var(--line); }
+  .q .t { font-weight:600; }
+  .q .h { color:var(--muted); font-size:13px; margin:2px 0 6px; }
+  .q label { display:block; font-size:14px; cursor:pointer; }
+  .q.changed { background:#fff7ed; }
+  .part { margin-top:14px; font-weight:700; color:var(--accent); }
+  .tabs { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+  .tabs button, .btn { font:inherit; font-size:13px; border:1px solid #d6d3d1; background:#fff; padding:4px 10px; border-radius:4px; cursor:pointer; }
+  .tabs button.on { border-color:var(--accent); color:var(--accent); font-weight:600; }
+  .btn.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .btn:disabled { opacity:.4; cursor:default; }
+  .scenario { background:#fff; border:1px solid var(--line); border-radius:6px; padding:12px 14px; margin-bottom:16px; }
+  .scenario .steps { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  pre { background:#1c1917; color:#e7e5e4; padding:12px 14px; border-radius:6px; overflow:auto; font-size:12.5px; line-height:1.45; margin:0; }
+  .file { background:#fff; border:1px solid var(--line); border-radius:6px; margin-bottom:12px; }
+  .file .fh { display:flex; gap:8px; align-items:center; padding:7px 12px; border-bottom:1px solid var(--line); font-family:ui-monospace,monospace; font-size:13px; }
+  .file .fh .note { font-family:system-ui; color:var(--muted); font-size:12.5px; margin-left:auto; text-align:right; }
+  .file pre { border-radius:0 0 6px 6px; }
+  .badge { font-family:system-ui; font-size:11px; padding:1px 7px; border-radius:10px; font-weight:600; }
+  .b-create { background:#dcfce7; color:#166534; } .b-keep { background:#e7e5e4; color:#44403c; }
+  .b-append { background:#dbeafe; color:#1e40af; } .b-skip { background:#fef3c7; color:#92400e; }
+  .b-machine { background:#f3e8ff; color:#6b21a8; }
+  .repo { font-family:ui-monospace,monospace; font-size:12.5px; color:#44403c; background:#f5f5f4; padding:8px 10px; border-radius:4px; white-space:pre-wrap; }
+  .open { background:#fff7ed; border:1px solid #fed7aa; border-radius:6px; padding:10px 14px; margin-bottom:16px; font-size:14px; }
+  .open li { margin:3px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="tag">PROTOTYPE</span> What does <code>kraftwerk init</code> ask, and what does it write?</h1>
+  <p>Pick a sample project on the left. <code>init</code> first <b>looks at the repo</b> (no system scan) and pre-fills its answers, then asks you to confirm or change them.
+  On the right you see what it prints and every file it would write. Change an answer and watch the files change. The tabs walk through the awkward cases: an unknown language, choosing no Sandbox, a teammate cloning an already set-up repo, and running <code>init</code> a second time.</p>
+  <p style="color:var(--muted);font-size:13px">Throwaway, for <a href="https://github.com/Marcel-Goehn/kraftwerk/issues/19">What does init ask, and what does it write?</a>. Nothing here runs anything; it's all in memory. The "How does the loop work?" ticket is still open, so hook points other than <code>sandbox_created</code> and the loop limits are placeholders.</p>
+</header>
+<main>
+  <section class="left">
+    <h2>Sample project</h2>
+    <select id="fixture"></select>
+    <div class="repo" id="repo" style="margin-top:8px"></div>
+    <h2>init's questions</h2>
+    <div id="questions"></div>
+  </section>
+  <section class="right">
+    <h2>Walkthroughs</h2>
+    <div class="tabs" id="scTabs"></div>
+    <div class="scenario" id="scBody"></div>
+    <div class="open" id="openBox"></div>
+    <h2>What init prints</h2>
+    <pre id="transcript"></pre>
+    <h2>Files</h2>
+    <div id="files"></div>
+  </section>
+</main>
+
+<!-- ===================== PURE MODULE (liftable) ===================== -->
+<script>
+const KraftwerkInit = (() => {
+  // ---- Detection: reads only the repo (+ ~/.claude/settings.json for the Bedrock import, + `gh auth status`) ----
+  const TOOLCHAINS = {
+    node:   { label: 'Node.js', allow: ['registry.npmjs.org'] },
+    go:     { label: 'Go', allow: ['proxy.golang.org', 'sum.golang.org'] },
+    python: { label: 'Python (uv)', allow: ['pypi.org', 'files.pythonhosted.org'] },
+    rust:   { label: 'Rust', allow: ['index.crates.io', 'static.crates.io'] },
+  };
+
+  function detect(repo) {
+    const has = f => f in repo.files;
+    const f = {
+      remote: repo.remote, defaultBranch: repo.defaultBranch,
+      toolchains: [], versions: {}, commands: {}, installs: [], pm: null,
+      compose: ['compose.yaml','compose.yml','docker-compose.yml','docker-compose.yaml'].find(has) || null,
+      standards: ['docs/coding-standards.md','CODING_STANDARDS.md','docs/STANDARDS.md','STANDARDS.md'].find(has) || null,
+      claudeDir: Object.keys(repo.files).some(p => p.startsWith('.claude/')),
+      bedrockImport: repo.machine?.claudeBedrock || null,
+      ghLoggedIn: !!repo.machine?.ghLoggedIn,
+      existing: {
+        config: has('.kraftwerk/config.toml'),
+        local: has('.kraftwerk/config.local.toml'),
+        containerfile: has('.kraftwerk/Containerfile'),
+        prompts: ['implement','review','merge'].filter(s => has(`.kraftwerk/prompts/${s}.md`)),
+        gitignore: has('.kraftwerk/.gitignore'),
+        storedCreds: repo.machine?.storedCreds || [],
+      },
+      unknownSignals: [],
+    };
+    if (has('package.json')) {
+      f.toolchains.push('node');
+      f.pm = has('pnpm-lock.yaml') ? 'pnpm' : has('bun.lock') ? 'bun' : has('yarn.lock') ? 'yarn' : 'npm';
+      f.versions.node = repo.files['.nvmrc'] || '22';
+      const scripts = repo.files['package.json'].scripts || {};
+      const run = s => f.pm === 'npm' ? (s === 'test' ? 'npm test' : `npm run ${s}`) : `${f.pm} ${s}`;
+      for (const [name, alts] of Object.entries({ test:['test'], typecheck:['typecheck','type-check','tsc'], lint:['lint'], format:['format:check','format'] })) {
+        const hit = alts.find(a => a in scripts); if (hit) f.commands[name] = run(hit);
+      }
+      f.installs.push({ npm:'npm ci', pnpm:'pnpm install --frozen-lockfile', yarn:'yarn install --immutable', bun:'bun install --frozen-lockfile' }[f.pm]);
+    }
+    if (has('go.mod')) {
+      f.toolchains.push('go'); f.versions.go = repo.files['go.mod'].go || '1.24';
+      f.commands.test ??= 'go test ./...'; f.commands.lint ??= 'go vet ./...';
+      f.installs.push('go mod download');
+    }
+    if (has('pyproject.toml')) {
+      f.toolchains.push('python'); f.versions.python = repo.files['.python-version'] || '3.12';
+      const deps = repo.files['pyproject.toml'].dev || [];
+      if (deps.includes('pytest')) f.commands.test ??= 'uv run pytest';
+      if (deps.includes('ruff')) f.commands.lint ??= 'uv run ruff check .';
+      if (deps.includes('mypy')) f.commands.typecheck ??= 'uv run mypy .';
+      f.installs.push('uv sync --frozen');
+    }
+    if (has('Cargo.toml')) {
+      f.toolchains.push('rust'); f.commands.test ??= 'cargo test'; f.commands.lint ??= 'cargo clippy -- -D warnings';
+      f.installs.push('cargo fetch');
+    }
+    for (const p of ['Gemfile','pom.xml','build.gradle','composer.json','mix.exs','*.csproj']) if (has(p)) f.unknownSignals.push(p);
+    return f;
+  }
+
+  // ---- Questions: two parts. "Project" only when there's no config.toml yet; "You" whenever config.local.toml is missing ----
+  function questions(facts, answers = {}) {
+    const q = [];
+    const projectPart = !facts.existing.config;
+    const personalPart = !facts.existing.local;
+    if (projectPart) {
+      q.push({ id:'repo', part:'Project (written to config.toml, committed, shared with the team)', type:'text',
+        text:'Which GitHub repository holds your Tickets?', help:'Read from your git remote.', def: facts.remote });
+      q.push({ id:'base', type:'text', text:'Which branch should feature branches start from?',
+        help:"The remote's default branch. Every Spec gets its own branch cut from this one.", def: facts.defaultBranch });
+      q.push({ id:'label', type:'text', text:'Which label marks a Ticket as ready for an agent?', help:'', def:'ready-for-agent' });
+      q.push({ id:'toolchains', type:'multi', text:'What does your project use?',
+        help: facts.toolchains.length ? 'Found in the repo. Untick what\'s wrong; anything not listed gets a placeholder in the Containerfile.' : 'Nothing recognised. You\'ll get a Containerfile with placeholders to fill in.',
+        options: Object.entries(TOOLCHAINS).map(([v, t]) => ({ value:v, label: t.label + (facts.versions[v] ? ` ${facts.versions[v]}` : '') })),
+        def: facts.toolchains });
+      q.push({ id:'commands', type:'commands', text:'Which commands tell the agent whether its change works?',
+        help:'Feedback commands. Found in package.json / go.mod / pyproject.toml. Empty means none, and the prompt simply leaves that section out.',
+        def: facts.commands });
+      q.push({ id:'services', type:'choice', text:'Does the agent need services such as a database?',
+        help: facts.compose ? `Found ${facts.compose}. kraftwerk starts it on your machine before a Run and stops it afterwards.` : 'No compose file found.',
+        options: facts.compose ? [{value:'yes',label:`Yes, use ${facts.compose}`},{value:'no',label:'No'}] : [{value:'no',label:'No'}],
+        def: facts.compose ? 'yes' : 'no' });
+      q.push({ id:'kind', type:'choice', text:'Where should the agent run?',
+        help:'All three keep your own checkout untouched. They differ in what the agent can reach on your machine.',
+        options:[
+          {value:'container', label:'In a container (recommended). Needs Docker or Podman. The agent sees only the project.'},
+          {value:'native', label:'Directly on this machine, fenced in by the operating system. No Docker needed. Linux, macOS, WSL2.'},
+          {value:'none', label:'Directly on this machine, unfenced. The agent can read and change anything you can.'}],
+        def:'container' });
+      if (answers.kind === 'none') q.push({ id:'noneAck', type:'choice', text:'Are you sure? Type of risk: the agent can delete files, read your SSH keys and send them anywhere.',
+        help:'Saved only in your personal config.local.toml, so it never applies to teammates.',
+        options:[{value:'yes',label:'Yes, run without a Sandbox on my machine'},{value:'no',label:'No, go back to a container'}], def:'no' });
+      q.push({ id:'standards', type:'text', text:'Do you have a coding-standards file? (path, or leave empty)',
+        help:'Only the review Step reads it, and agents may not change it.', def: facts.standards || '' });
+      if (facts.claudeDir) q.push({ id:'protectClaude', type:'choice', text:'Stop agents from changing .claude/?',
+        help:'Your Claude Code settings, skills and hooks. An agent that changes them could plant a hook that runs later.',
+        options:[{value:'yes',label:'Yes (recommended)'},{value:'no',label:'No'}], def:'yes' });
+    }
+    if (personalPart) {
+      const part = 'You (written to config.local.toml, never committed)';
+      const kind = projectPart ? answers.kind : facts.existingKind;
+      q.push({ id:'auth', part, type:'choice', text:'How do you sign in to Claude?',
+        help: facts.bedrockImport ? `Found an Amazon Bedrock setup in ~/.claude/settings.json (region ${facts.bedrockImport.region}, profile ${facts.bedrockImport.profile}).` : '',
+        options:[
+          ...(facts.bedrockImport ? [{value:'bedrock-import', label:'Use my existing Claude Code Bedrock setup'}] : []),
+          {value:'oauth_token', label:'Claude Pro / Max subscription'},
+          {value:'api_key', label:'Anthropic API key'},
+          {value:'bedrock', label:'Amazon Bedrock'},
+          {value:'gateway', label:'A company gateway / proxy URL'}],
+        def: facts.bedrockImport ? 'bedrock-import' : 'oauth_token' });
+      if (answers.auth !== 'bedrock-import' && answers.auth !== 'bedrock')
+        q.push({ id:'authSource', type:'choice', text:'Where should kraftwerk keep that key?',
+          help:'Never in the repo.',
+          options:[
+            {value:'stored', label:'Let kraftwerk store it for me (recommended). Asks for it now, hidden; saved in your user folder, shared by all your projects.'},
+            {value:'env', label:'It\'s already in an environment variable'},
+            {value:'command', label:'A password-manager command prints it (e.g. op read …)'},
+            {value:'dotenv', label:'In .kraftwerk/.env in this project (git-ignored)'}],
+          def: facts.existing.storedCreds.includes('claude') ? 'stored' : 'stored' });
+      q.push({ id:'gh', type:'choice', text:'How should kraftwerk reach GitHub?',
+        help:'One token: kraftwerk uses it to read and close Tickets, the agent uses it read-only to look things up.',
+        options:[
+          ...(facts.ghLoggedIn ? [{value:'gh', label:'Use my GitHub CLI login (gh auth token)'}] : []),
+          {value:'pat', label:'Create a token just for this repo (walks you through it, recommended)'},
+          {value:'env', label:'It\'s already in GITHUB_TOKEN'}],
+        def: facts.ghLoggedIn ? 'gh' : 'pat' });
+      if (!projectPart && kind === 'none') q.push({ id:'noneAck', type:'choice', text:'This project runs agents without a Sandbox. Accept that on your machine?',
+        help:'Your team set kind = "none" … which config.toml can\'t actually do (see open question).',
+        options:[{value:'yes',label:'Yes'},{value:'no',label:'No'}], def:'no' });
+    }
+    return q;
+  }
+
+  function resolve(facts, answers) {
+    const a = {};
+    for (const q of questions(facts, answers)) a[q.id] = (q.id in answers) ? answers[q.id] : q.def;
+    return a;
+  }
+
+  // ---- Plan: what init writes ----
+  const D = '# Generated by `kraftwerk init`. Yours to edit; init never overwrites it.';
+  const tomlStr = s => JSON.stringify(s);
+
+  function containerfile(facts, a) {
+    const tc = a.toolchains;
+    const L = [D, '# The image every container Sandbox starts from. Everything your Feedback commands', '# need must be installed here. Rebuilt automatically when this file changes.', '',
+      'FROM debian:bookworm-slim', '',
+      '# Tools every agent needs',
+      'RUN apt-get update \\', '    && apt-get install -y --no-install-recommends git ca-certificates curl ripgrep gh \\', '    && rm -rf /var/lib/apt/lists/*', ''];
+    if (tc.includes('node')) L.push(`# Node.js ${facts.versions.node || '22'}${facts.versions.node ? ' (from .nvmrc)' : ''}`, `COPY --from=node:${facts.versions.node || '22'}-bookworm-slim /usr/local /usr/local`,
+      ...(facts.pm && facts.pm !== 'npm' ? [facts.pm === 'bun' ? 'RUN npm install -g bun' : `RUN corepack enable ${facts.pm}`] : []), '');
+    if (tc.includes('go')) L.push(`# Go ${facts.versions.go || '1.24'} (from go.mod)`, `COPY --from=golang:${facts.versions.go || '1.24'}-bookworm /usr/local/go /usr/local/go`, 'ENV PATH="/usr/local/go/bin:/home/agent/go/bin:$PATH"', '');
+    if (tc.includes('python')) L.push(`# Python ${facts.versions.python || '3.12'} via uv`, 'COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/', 'ENV UV_PYTHON_INSTALL_DIR=/opt/python', `RUN uv python install ${facts.versions.python || '3.12'}`, '');
+    if (tc.includes('rust')) L.push('# Rust (stable)', 'ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo PATH="/opt/cargo/bin:$PATH"', 'RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --component clippy', '');
+    const missing = facts.unknownSignals.length || !tc.length;
+    if (missing) L.push('# TODO(kraftwerk): install your project\'s language and tools here.',
+      `#   ${facts.unknownSignals.length ? 'kraftwerk saw ' + facts.unknownSignals.join(', ') + ' but has no recipe for it.' : 'kraftwerk didn\'t recognise your project\'s language.'}`,
+      '#   Example: RUN apt-get update && apt-get install -y ruby-full',
+      '#   `kraftwerk check` refuses to start a Run while a TODO(kraftwerk) line is left.', '');
+    L.push('# The agent runs as an unprivileged user', 'RUN useradd --create-home --uid 1000 agent', 'USER agent', '',
+      '# The harness. Keep this last: kraftwerk checks that `claude` is on PATH.', 'RUN curl -fsSL https://claude.ai/install.sh | bash', 'ENV PATH="/home/agent/.local/bin:$PATH"');
+    return L.join('\n');
+  }
+
+  function configToml(facts, a) {
+    const L = [D, '# Check it with `kraftwerk check`. Every key is explained at https://kraftwerk.dev/config (placeholder).', '', 'version = 1', '',
+      '# Which agent program and model do the work. Override per Step under [steps.<name>].',
+      'harness = "claude-code"', 'model   = "claude-opus-5-5"', '',
+      '# How many Tickets are worked on at once. 1 = one after the other.', 'max_parallel = 1', ''];
+    if (a.standards) L.push('# Read by the review Step only. Agents may not change it.', `standards = ${tomlStr(a.standards)}`, '');
+    const prot = a.protectClaude === 'yes' ? ['.claude/'] : [];
+    L.push('# Files agents may not change. .kraftwerk/, the compose file and the standards file are always protected.',
+      `protected_paths = [${prot.map(tomlStr).join(', ')}]`, '');
+    L.push('[tracker]', 'kind        = "github"', `repo        = ${tomlStr(a.repo)}`, `ready_label = ${tomlStr(a.label)}`, '');
+    L.push('[branches]', `base_branch = ${tomlStr(a.base)}`, 'prefix      = "kraftwerk"', '');
+    const kindInTeam = a.kind === 'none' ? 'container' : a.kind;
+    L.push('[sandbox]', `kind = ${tomlStr(kindInTeam)}${a.kind === 'none' ? '   # you chose "none" for yourself: see config.local.toml' : ''}`, '');
+    const allow = [...new Set(a.toolchains.flatMap(t => TOOLCHAINS[t].allow))];
+    L.push('[sandbox.network]', '# Hosts the agent may reach. Claude and GitHub are added automatically.', `allow = [${allow.map(tomlStr).join(', ')}]`, '');
+    if (a.services === 'yes') L.push('[services]', `compose_file = ${tomlStr(facts.compose)}`, '');
+    const cmds = Object.entries(a.commands).filter(([,v]) => v);
+    L.push('# Feedback commands: how the agent checks its change works.', '[commands]');
+    if (cmds.length) cmds.forEach(([k,v]) => L.push(`${k.padEnd(9)} = ${tomlStr(v)}`));
+    else L.push('# test = "…"   # none found; add yours here');
+    L.push('');
+    const installs = facts.installs.filter((_, i) => a.toolchains.includes(facts.toolchains[i]));
+    L.push('# Runs in every fresh Sandbox before the agent starts.');
+    if (installs.length) {
+      L.push('[[hooks.sandbox_created]]');
+      if (installs.length === 1) L.push(`run   = ${tomlStr(installs[0])}`); else L.push(`parallel = [${installs.map(tomlStr).join(', ')}]`);
+      L.push('where = "sandbox"', '');
+    } else L.push('# [[hooks.sandbox_created]]', '# run   = "install your dependencies"', '# where = "sandbox"', '');
+    L.push('[steps.review]', 'enabled = true');
+    return L.join('\n');
+  }
+
+  function localToml(facts, a) {
+    const L = ['# Your personal settings for this project. Never committed. Generated by `kraftwerk init`.', '# Anything from config.toml can be overridden here, e.g. model or max_parallel.', ''];
+    if (a.noneAck === 'yes') L.push('[sandbox]', 'kind = "none"', 'i_accept_unsandboxed_risk = true', '');
+    if (a.auth === 'bedrock-import') L.push('[auth]', 'method  = "bedrock"', `region  = ${tomlStr(facts.bedrockImport.region)}`, `profile = ${tomlStr(facts.bedrockImport.profile)}`, '');
+    else if (a.auth === 'bedrock') L.push('[auth]', 'method  = "bedrock"', 'region  = "eu-central-1"   # TODO(kraftwerk): your region', 'profile = "default"', '');
+    else {
+      const key = { oauth_token:'claude', api_key:'anthropic-api-key', gateway:'gateway-token' }[a.auth];
+      const envName = { oauth_token:'CLAUDE_CODE_OAUTH_TOKEN', api_key:'ANTHROPIC_API_KEY', gateway:'ANTHROPIC_AUTH_TOKEN' }[a.auth];
+      const src = { stored:`{ stored = "${key}" }`, env:`{ env = "${envName}" }`, command:'{ command = "op read op://Private/Claude/token" }   # TODO(kraftwerk): your command', dotenv:`{ dotenv = "${envName}" }` }[a.authSource];
+      L.push('[auth]', `method = ${tomlStr(a.auth)}`, ...(a.auth === 'gateway' ? ['base_url = "https://llm.example.com"   # TODO(kraftwerk): your gateway'] : []), `secret = ${src}`, '');
+    }
+    L.push('[tracker]', `token = ${{ gh:'{ command = "gh auth token" }', pat:'{ stored = "github" }', env:'{ env = "GITHUB_TOKEN" }' }[a.gh]}`);
+    return L.join('\n');
+  }
+
+  const GITIGNORE = ['# Generated by `kraftwerk init`.', 'config.local.toml', '.env', 'logs/', 'state/'].join('\n');
+  const PROMPT = s => `<!-- Generated by \`kraftwerk init\`. Yours to edit; kraftwerk never changes it.\n     \`kraftwerk prompts diff ${s}\` shows when the built-in version improves. -->\n\n(the ✏️ part of the draft ${s} prompt: see the draft/prompts branch)`;
+
+  function plan(facts, answers) {
+    const a = resolve(facts, answers);
+    const files = []; const out = [];
+    const projectPart = !facts.existing.config, personalPart = !facts.existing.local;
+    const add = (path, action, content, note = '', where = 'repo') => files.push({ path, action, content, note, where });
+
+    out.push('$ kraftwerk init', '');
+    if (projectPart) {
+      out.push('Looking at this repo…');
+      out.push(`  GitHub repo     ${facts.remote}`, `  default branch  ${facts.defaultBranch}`);
+      out.push(`  languages       ${facts.toolchains.map(t => TOOLCHAINS[t].label).join(', ') || 'none recognised'}${facts.unknownSignals.length ? '   (saw ' + facts.unknownSignals.join(', ') + ', no recipe)' : ''}`);
+      out.push(`  services        ${facts.compose || 'none'}`, '');
+    } else if (!personalPart) {
+      out.push('This project is already set up, and so are you. Nothing to do.');
+    } else {
+      out.push('This project is already set up. Setting you up personally…', '');
+    }
+
+    if (projectPart) {
+      add('.kraftwerk/config.toml', 'create', configToml(facts, a), 'the team\'s settings: commit it');
+      if (a.kind === 'container' || a.kind === 'none') add('.kraftwerk/Containerfile', 'create', containerfile(facts, a), a.kind === 'none' ? 'written anyway: the team default stays container' : 'commit it');
+      else add('.kraftwerk/Containerfile', 'skip', '(not written: native Sandbox uses the tools on your machine)', 'run `kraftwerk init --containerfile` if you switch later');
+      for (const s of ['implement','review','merge']) add(`.kraftwerk/prompts/${s}.md`, 'create', PROMPT(s), 'commit it');
+      add('.kraftwerk/.gitignore', 'create', GITIGNORE, 'keeps personal and runtime files out of git');
+    } else {
+      add('.kraftwerk/config.toml', 'keep', '(unchanged)');
+      add('.kraftwerk/Containerfile', facts.existing.containerfile ? 'keep' : 'skip', '(unchanged)', facts.existing.containerfile ? '' : 'missing; not recreated (see open question)');
+      for (const s of ['implement','review','merge'])
+        add(`.kraftwerk/prompts/${s}.md`, facts.existing.prompts.includes(s) ? 'keep' : 'skip', '(unchanged)', facts.existing.prompts.includes(s) ? '' : 'missing means "use the built-in prompt"; not recreated');
+      add('.kraftwerk/.gitignore', facts.existing.gitignore ? 'keep' : 'create', facts.existing.gitignore ? '(unchanged)' : GITIGNORE, facts.existing.gitignore ? '' : 'was missing: recreated so secrets can\'t be committed');
+    }
+
+    if (personalPart) {
+      add('.kraftwerk/config.local.toml', 'create', localToml(facts, a), 'yours only: git-ignored');
+      const stored = [];
+      if (!['bedrock','bedrock-import'].includes(a.auth) && a.authSource === 'stored') stored.push({ oauth_token:'claude', api_key:'anthropic-api-key', gateway:'gateway-token' }[a.auth]);
+      if (a.gh === 'pat') stored.push('github');
+      const fresh = stored.filter(k => !facts.existing.storedCreds.includes(k));
+      if (stored.length) add('~/.config/kraftwerk/credentials', fresh.length ? 'append' : 'keep',
+        fresh.length ? fresh.map(k => `${k} = ********   (typed in hidden, mode 0600)`).join('\n') : '(already holds ' + stored.join(', ') + ')', 'your machine, not the repo; shared by all your projects', 'machine');
+      if (a.authSource === 'dotenv' && !['bedrock','bedrock-import'].includes(a.auth)) add('.kraftwerk/.env', 'create', `${{ oauth_token:'CLAUDE_CODE_OAUTH_TOKEN', api_key:'ANTHROPIC_API_KEY', gateway:'ANTHROPIC_AUTH_TOKEN' }[a.auth]}=********`, 'git-ignored; never copied into a Sandbox');
+
+      out.push('');
+      if (a.auth === 'oauth_token' && a.authSource === 'stored' && !facts.existing.storedCreds.includes('claude'))
+        out.push('Run `claude setup-token` in another terminal and paste the token here.', 'Claude token: ********', '');
+      if (a.gh === 'pat' && !facts.existing.storedCreds.includes('github'))
+        out.push('Open https://github.com/settings/personal-access-tokens/new', `  Repository access: only ${a.repo || facts.remote}`, '  Issues: read and write · Contents, Pull requests, Metadata: read', 'GitHub token: ********', '');
+      if (a.auth === 'bedrock-import') out.push(`Using your Bedrock setup (profile ${facts.bedrockImport.profile}, ${facts.bedrockImport.region}).`, '');
+    }
+
+    if (projectPart || personalPart) {
+      out.push('Wrote:');
+      files.filter(f => ['create','append'].includes(f.action)).forEach(f => out.push(`  ${f.action === 'create' ? '+' : '~'} ${f.path}`));
+      out.push('', 'Running `kraftwerk check`…');
+      const todos = files.filter(f => /TODO\(kraftwerk\)/.test(f.content));
+      if (a.kind === 'container' && projectPart) out.push('  building the Sandbox image (first time takes a few minutes)…');
+      if (todos.length) out.push(...todos.map(f => `  ✗ ${f.path}: fill in the TODO(kraftwerk) lines`));
+      out.push('  ✓ Claude credentials work', '  ✓ GitHub token works');
+      if (a.noneAck === 'yes') out.push('  ! Sandbox: NONE on this machine. Agents are not fenced in.');
+      out.push('', todos.length ? 'Almost there. Fix the lines above, then run `kraftwerk check`.' : 'Ready. Commit .kraftwerk/ and label a Ticket `' + (a.label || 'ready-for-agent') + '`, then run `kraftwerk run`.');
+    }
+    return { answers: a, files, transcript: out.join('\n') };
+  }
+
+  return { detect, questions, resolve, plan };
+})();
+</script>
+
+<!-- ===================== PAGE (throwaway) ===================== -->
+<script>
+const BASE_MACHINE = { ghLoggedIn: true, storedCreds: [] };
+const FIXTURES = {
+  node: { name:'Shop: Node + pnpm + Postgres', remote:'acme/shop', defaultBranch:'main', machine: BASE_MACHINE,
+    files:{ 'package.json':{ scripts:{ test:'vitest', typecheck:'tsc --noEmit', lint:'eslint .', build:'vite build' } }, 'pnpm-lock.yaml':1, '.nvmrc':'22', 'compose.yaml':1, '.claude/settings.json':1, 'CLAUDE.md':1 } },
+  multi: { name:'Monorepo: Node web + Go api', remote:'acme/platform', defaultBranch:'develop', machine: { ghLoggedIn:false, storedCreds:[] },
+    files:{ 'package.json':{ scripts:{ test:'jest', lint:'eslint .' } }, 'package-lock.json':1, 'go.mod':{ go:'1.23' }, 'docker-compose.yml':1, 'docs/coding-standards.md':1 } },
+  python: { name:'Data tool: Python + uv, Bedrock user', remote:'acme/etl', defaultBranch:'main',
+    machine: { ghLoggedIn:true, storedCreds:[], claudeBedrock:{ region:'eu-central-1', profile:'acme-dev' } },
+    files:{ 'pyproject.toml':{ dev:['pytest','ruff'] }, '.python-version':'3.13', 'uv.lock':1 } },
+  ruby: { name:'Rails app (no recipe)', remote:'acme/legacy', defaultBranch:'master', machine: BASE_MACHINE,
+    files:{ 'Gemfile':1, 'compose.yml':1 } },
+  teammate: { name:'Shop, cloned by a teammate', remote:'acme/shop', defaultBranch:'main', machine: { ghLoggedIn:false, storedCreds:['claude'] },
+    files:{ 'package.json':{ scripts:{ test:'vitest' } }, 'pnpm-lock.yaml':1, '.kraftwerk/config.toml':1, '.kraftwerk/Containerfile':1, '.kraftwerk/prompts/implement.md':1, '.kraftwerk/prompts/review.md':1, '.kraftwerk/.gitignore':1 } },
+  rerun: { name:'Shop, init run a second time', remote:'acme/shop', defaultBranch:'main', machine: { ghLoggedIn:true, storedCreds:['claude'] },
+    files:{ 'package.json':{ scripts:{ test:'vitest' } }, '.kraftwerk/config.toml':1, '.kraftwerk/config.local.toml':1, '.kraftwerk/Containerfile':1, '.kraftwerk/prompts/implement.md':1, '.kraftwerk/prompts/review.md':1, '.kraftwerk/prompts/merge.md':1 } },
+};
+
+const SCENARIOS = [
+  { id:'happy', title:'1. Happy path', fixture:'node',
+    desc:'A typical Node project with Postgres in compose.yaml. Accept every default: watch how much is filled in from the repo, and that everything personal lands in config.local.toml, not config.toml.',
+    steps:[ ['Accept all defaults', {}] ] },
+  { id:'multi', title:'2. Two languages, no gh login', fixture:'multi',
+    desc:'A web + api monorepo whose default branch is develop. Both toolchains go into one Containerfile, both installs run in parallel, and with no gh login init walks you through a fine-grained token.',
+    steps:[ ['Accept all defaults', {}], ['Switch to native Sandbox', { kind:'native' }], ['Turn review standards off', { standards:'' }] ] },
+  { id:'unknown', title:'3. Unknown language', fixture:'ruby',
+    desc:'init has no recipe for Ruby. Watch the Containerfile get a TODO block, and `check` refuse to call the setup ready until it\'s filled in.',
+    steps:[ ['Accept all defaults', {}], ['Add a test command', { commands:{ test:'bin/rails test' } }] ] },
+  { id:'none', title:'4. Choosing no Sandbox', fixture:'node',
+    desc:'Pick "unfenced". init asks again; if you insist, the choice goes only into YOUR config.local.toml. The team\'s config.toml still says container, so a committed file can never disarm teammates.',
+    steps:[ ['Choose unfenced', { kind:'none' }], ['Confirm', { kind:'none', noneAck:'yes' }], ['Back out', { kind:'none', noneAck:'no' }] ] },
+  { id:'bedrock', title:'5. Existing Bedrock setup', fixture:'python',
+    desc:'init finds a Bedrock setup in ~/.claude/settings.json and offers to reuse it. No secret is asked for at all.',
+    steps:[ ['Accept all defaults', {}], ['Use a subscription instead', { auth:'oauth_token' }], ['…kept in a password manager', { auth:'oauth_token', authSource:'command' }] ] },
+  { id:'teammate', title:'6. Teammate clones the repo', fixture:'teammate',
+    desc:'config.toml is already committed. init skips every project question and only sets up the person: auth and GitHub token. Their Claude token is already stored from another project, so it isn\'t asked again. merge.md was never committed: missing means the built-in prompt.',
+    steps:[ ['Accept all defaults', {}] ] },
+  { id:'rerun', title:'7. Running init again', fixture:'rerun',
+    desc:'Everything exists. init changes nothing and overwrites nothing. .kraftwerk/.gitignore was deleted, though: init puts it back, because without it a .env could be committed.',
+    steps:[ ['Run init', {}] ] },
+];
+
+const OPEN = [
+  'Should <code>init</code> run <code>check</code> (and build the image) at the end, or just tell you to?',
+  'Should a re-run recreate a deleted prompt or Containerfile, or leave "missing = built-in" alone? (Here: only .gitignore is recreated.)',
+  'Should native-Sandbox projects still get a Containerfile, so teammates can choose container?',
+  'Teammate case: kind = "none" can\'t be committed, so the last teammate question in the module is dead code. Fine?',
+  'Is a <code>.kraftwerk/.gitignore</code> better than adding lines to the root .gitignore?',
+];
+
+let state = { fixture:'node', answers:{}, changed:new Set(), scenario:'happy', step:0 };
+
+function setFixture(id) { state.fixture = id; state.answers = {}; state.changed = new Set(); render(); }
+function setAnswer(id, v) { state.answers = { ...state.answers, [id]: v }; state.changed = new Set([id]); render(); }
+
+function render() {
+  const repo = FIXTURES[state.fixture];
+  const facts = KraftwerkInit.detect(repo);
+  facts.existingKind = 'container';
+  const qs = KraftwerkInit.questions(facts, state.answers);
+  const res = KraftwerkInit.plan(facts, state.answers);
+  const a = res.answers;
+
+  document.getElementById('fixture').innerHTML = Object.entries(FIXTURES).map(([k,f]) => `<option value="${k}" ${k===state.fixture?'selected':''}>${f.name}</option>`).join('');
+  document.getElementById('repo').textContent = 'Repo files: ' + Object.keys(repo.files).join('  ') + '\nYour machine: gh ' + (repo.machine.ghLoggedIn ? 'logged in' : 'not logged in') + (repo.machine.storedCreds.length ? '; kraftwerk already stores: ' + repo.machine.storedCreds.join(', ') : '') + (repo.machine.claudeBedrock ? '; Claude Code is set up for Bedrock' : '');
+
+  const qEl = document.getElementById('questions');
+  if (!qs.length) qEl.innerHTML = '<p style="color:var(--muted)">No questions: everything is already set up.</p>';
+  else qEl.innerHTML = qs.map(q => {
+    let body = '';
+    if (q.type === 'text') body = `<input type="text" data-q="${q.id}" value="${(a[q.id] ?? '').replace(/"/g,'&quot;')}">`;
+    if (q.type === 'choice') body = q.options.map(o => `<label><input type="radio" name="${q.id}" data-q="${q.id}" value="${o.value}" ${a[q.id]===o.value?'checked':''}> ${o.label}</label>`).join('');
+    if (q.type === 'multi') body = q.options.map(o => `<label><input type="checkbox" data-multi="${q.id}" value="${o.value}" ${a[q.id].includes(o.value)?'checked':''}> ${o.label}</label>`).join('');
+    if (q.type === 'commands') body = ['test','typecheck','lint','format'].map(k => `<label style="display:flex;gap:6px;align-items:center;margin:2px 0"><span style="width:80px;font-family:monospace">${k}</span><input type="text" data-cmd="${k}" value="${(a.commands[k]||'').replace(/"/g,'&quot;')}" placeholder="(none)"></label>`).join('');
+    return (q.part ? `<div class="part">${q.part}</div>` : '') + `<div class="q ${state.changed.has(q.id)?'changed':''}"><div class="t">${q.text}</div>${q.help?`<div class="h">${q.help}</div>`:''}${body}</div>`;
+  }).join('');
+  qEl.querySelectorAll('input[data-q]').forEach(el => el.onchange = () => setAnswer(el.dataset.q, el.value));
+  qEl.querySelectorAll('input[data-multi]').forEach(el => el.onchange = () => setAnswer(el.dataset.multi, [...qEl.querySelectorAll(`input[data-multi="${el.dataset.multi}"]:checked`)].map(x => x.value)));
+  qEl.querySelectorAll('input[data-cmd]').forEach(el => el.onchange = () => setAnswer('commands', { ...a.commands, [el.dataset.cmd]: el.value }));
+
+  document.getElementById('transcript').textContent = res.transcript;
+  document.getElementById('files').innerHTML = res.files.map(f => `<div class="file"><div class="fh"><span class="badge b-${f.action}">${f.action}</span>${f.where==='machine'?'<span class="badge b-machine">your machine</span>':''}<span>${f.path}</span><span class="note">${f.note}</span></div>${['keep','skip'].includes(f.action) && f.content.startsWith('(') ? '' : `<pre>${f.content.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</pre>`}</div>`).join('');
+
+  document.getElementById('scTabs').innerHTML = SCENARIOS.map(s => `<button class="${s.id===state.scenario?'on':''}" data-sc="${s.id}">${s.title}</button>`).join('');
+  document.querySelectorAll('[data-sc]').forEach(b => b.onclick = () => startScenario(b.dataset.sc));
+  const sc = SCENARIOS.find(s => s.id === state.scenario);
+  document.getElementById('scBody').innerHTML = `<div>${sc.desc}</div><div class="steps">${sc.steps.map((s,i) => `<button class="btn ${i===state.step?'primary':''}" data-step="${i}" ${i>state.step?'disabled':''}>${i+1}. ${s[0]}</button>`).join('')}</div>`;
+  document.querySelectorAll('[data-step]').forEach(b => b.onclick = () => { const i = +b.dataset.step; const patch = sc.steps[i][1]; state.answers = { ...patch }; state.changed = new Set(Object.keys(patch)); state.step = Math.min(i + 1, sc.steps.length - 1); render(); });
+  document.getElementById('openBox').innerHTML = '<b>Open questions this prototype raises</b><ul>' + OPEN.map(o => `<li>${o}</li>`).join('') + '</ul>';
+}
+function startScenario(id) { const sc = SCENARIOS.find(s => s.id === id); state = { fixture: sc.fixture, answers:{}, changed:new Set(), scenario:id, step:0 }; render(); }
+document.getElementById('fixture').onchange = e => setFixture(e.target.value);
+render();
+</script>
+</body>
+</html>
