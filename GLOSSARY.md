@@ -44,6 +44,10 @@ _Avoid_: Agent provider, agent CLI, model (when the program is meant)
 A project command that tells the agent whether its change works (e.g. tests, type check, lint). Declared once per project and made available to every Step.
 _Avoid_: Check, script, validation
 
+**Coding standards**:
+A project file describing how code should be written. Only the review Step checks against it; the implement Step doesn't see it.
+_Avoid_: Style guide, conventions (when the file is meant)
+
 **Hook**:
 A shell command the Factory runs at a named moment of a Run (e.g. when a Sandbox is created), either on the host or inside the Sandbox.
 _Avoid_: Callback, lifecycle script
