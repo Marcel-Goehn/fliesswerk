@@ -28,12 +28,16 @@ _Avoid_: Task, issue (when the workable unit is meant)
 One whole execution of the Factory, from the moment it is started until it stops.
 _Avoid_: Session, job, loop (as a noun for the execution)
 
+**Blocker**:
+An issue that must be closed before a Ticket can be worked on, as recorded by the tracker's own blocking relationship. Text in a Ticket's description never makes an issue a Blocker.
+_Avoid_: Dependency, prerequisite
+
 **Iteration**:
-One pass of a Run's loop, working on exactly one Ticket. In a parallel Run, several Iterations happen at once.
-_Avoid_: Attempt, ticket run
+One pass of a Run's loop: it takes the Tickets that are ready (as many as the Run may work on at once), works each through its Steps, and ends when all of them have finished. Only then does the next Iteration look for ready Tickets again.
+_Avoid_: Round, batch, attempt
 
 **Step**:
-One agent session inside a Run, with one prompt (e.g. implement, review). Most Steps belong to an Iteration; some (e.g. planning, merging) belong to the Run as a whole.
+One agent session inside an Iteration, with one prompt (implement, review, merge).
 _Avoid_: Phase, stage, agent run
 
 **Harness**:
