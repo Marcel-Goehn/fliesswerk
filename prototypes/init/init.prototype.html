@@ -140,7 +140,10 @@ const KraftwerkInit = (() => {
     const projectPart = !facts.existing.config;
     const personalPart = !facts.existing.local;
     if (projectPart) {
-      q.push({ id:'repo', part:'Project (written to config.toml, committed, shared with the team)', type:'text',
+      q.push({ id:'tracker', part:'Project (written to config.toml, committed, shared with the team)', type:'choice',
+        text:'Where do your Tickets live?', help:'v1 supports GitHub Issues only. Each tracker brings its own follow-up questions (the ones below are GitHub\'s).',
+        options:[{value:'github', label:'GitHub Issues'}], def:'github' });
+      q.push({ id:'repo', type:'text',
         text:'Which GitHub repository holds your Tickets?', help:'Read from your git remote.', def: facts.remote });
       q.push({ id:'base', type:'text', text:'Which branch should feature branches start from?',
         help:"The remote's default branch. Every Spec gets its own branch cut from this one.", def: facts.defaultBranch });
@@ -233,6 +236,7 @@ const KraftwerkInit = (() => {
       `#   ${facts.unknownSignals.length ? 'kraftwerk saw ' + facts.unknownSignals.join(', ') + ' but has no recipe for it.' : 'kraftwerk didn\'t recognise your project\'s language.'}`,
       '#   Example: RUN apt-get update && apt-get install -y ruby-full',
       '#   `kraftwerk check` refuses to start a Run while a TODO(kraftwerk) line is left.', '');
+    L.push('# Anything else your Feedback commands need (system libraries, browsers, CLIs).', '# `kraftwerk check --commands` tells you when something is missing.', '# RUN apt-get update && apt-get install -y --no-install-recommends <package>', '');
     L.push('# The agent runs as an unprivileged user', 'RUN useradd --create-home --uid 1000 agent', 'USER agent', '',
       '# The harness. Keep this last: kraftwerk checks that `claude` is on PATH.', 'RUN curl -fsSL https://claude.ai/install.sh | bash', 'ENV PATH="/home/agent/.local/bin:$PATH"');
     return L.join('\n');
@@ -346,6 +350,11 @@ const KraftwerkInit = (() => {
       if (a.kind === 'container' && projectPart) out.push('  building the Sandbox image (first time takes a few minutes)…');
       if (todos.length) out.push(...todos.map(f => `  ✗ ${f.path}: fill in the TODO(kraftwerk) lines`));
       out.push('  ✓ Claude credentials work', '  ✓ GitHub token works');
+      if (!todos.length) {
+        out.push('', 'Trying your setup once in a fresh Sandbox on ' + (a.base || facts.defaultBranch) + ' (no agent, no tokens)…');
+        facts.installs.forEach(i => out.push('  ✓ ' + i));
+        Object.values(a.commands || {}).filter(Boolean).forEach(c => out.push('  ✓ ' + c));
+      }
       if (a.noneAck === 'yes') out.push('  ! Sandbox: NONE on this machine. Agents are not fenced in.');
       out.push('', todos.length ? 'Almost there. Fix the lines above, then run `kraftwerk check`.' : 'Ready. Commit .kraftwerk/ and label a Ticket `' + (a.label || 'ready-for-agent') + '`, then run `kraftwerk run`.');
     }
@@ -399,7 +408,7 @@ const SCENARIOS = [
     steps:[ ['Run init', {}] ] },
 ];
 
-const OPEN = [
+const OPEN_RESOLVED = [
   'Should <code>init</code> run <code>check</code> (and build the image) at the end, or just tell you to?',
   'Should a re-run recreate a deleted prompt or Containerfile, or leave "missing = built-in" alone? (Here: only .gitignore is recreated.)',
   'Should native-Sandbox projects still get a Containerfile, so teammates can choose container?',
@@ -445,7 +454,7 @@ function render() {
   const sc = SCENARIOS.find(s => s.id === state.scenario);
   document.getElementById('scBody').innerHTML = `<div>${sc.desc}</div><div class="steps">${sc.steps.map((s,i) => `<button class="btn ${i===state.step?'primary':''}" data-step="${i}" ${i>state.step?'disabled':''}>${i+1}. ${s[0]}</button>`).join('')}</div>`;
   document.querySelectorAll('[data-step]').forEach(b => b.onclick = () => { const i = +b.dataset.step; const patch = sc.steps[i][1]; state.answers = { ...patch }; state.changed = new Set(Object.keys(patch)); state.step = Math.min(i + 1, sc.steps.length - 1); render(); });
-  document.getElementById('openBox').innerHTML = '<b>Open questions this prototype raises</b><ul>' + OPEN.map(o => `<li>${o}</li>`).join('') + '</ul>';
+  document.getElementById('openBox').innerHTML = '<b>Resolved</b> on <a href="https://github.com/Marcel-Goehn/kraftwerk/issues/19">What does init ask, and what does it write?</a>: init runs check plus a dry run of the install and Feedback commands; a re-run recreates only .gitignore, a container Containerfile and config.local.toml (deleted prompts stay deleted = built-in); native projects get no Containerfile; .kraftwerk/.gitignore it is. No --yes and no dependency cache in v1.';
 }
 function startScenario(id) { const sc = SCENARIOS.find(s => s.id === id); state = { fixture: sc.fixture, answers:{}, changed:new Set(), scenario:id, step:0 }; render(); }
 document.getElementById('fixture').onchange = e => setFixture(e.target.value);
