@@ -44,6 +44,10 @@ _Avoid_: Phase, stage, agent run
 The agent program that carries out a Step, e.g. Claude Code, Codex, Pi. Distinct from the model provider it talks to (Anthropic, Bedrock, OpenRouter, …).
 _Avoid_: Agent provider, agent CLI, model (when the program is meant)
 
+**Tracker**:
+The issue tracker the Factory reads Specs and Tickets from and reports back to (GitHub Issues in v1). Like the Harness, it can be swapped for another one.
+_Avoid_: Issue source, backend, provider
+
 **Feedback command**:
 A project command that tells the agent whether its change works (e.g. tests, type check, lint). Declared once per project and made available to every Step.
 _Avoid_: Check, script, validation
