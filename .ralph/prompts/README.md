@@ -21,7 +21,7 @@ logic and no shell commands. An unknown placeholder is an error in `check`.
 |---|---|
 | `{{commands}}` | the whole Feedback commands section: heading, one sentence saying when to run them (worded per Step) and the `[commands]` map from `config.toml` as a list, e.g. ``- test: `go test ./...` ``. Nothing at all if `[commands]` is empty |
 | `{{commands.test}}` | just that one command (one placeholder per name in `[commands]`) |
-| `{{standards}}` | only if `standards = "<path>"` is set in config: a whole Coding standards section telling the agent to read that file and refactor the change to follow it. Without it: nothing |
+| `{{standards}}` | only if `standards = "<path>"` is set in config: a short paragraph telling the agent to read that file and that it wins over the built-in code-smell list. Without it: nothing |
 
 ## One loop, three prompts
 

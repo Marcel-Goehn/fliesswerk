@@ -2,13 +2,15 @@
 
 # Task
 
-Review Ticket «number»: «title»
+Review the code changes for Ticket «number»: «title». Check that they do what the
+Ticket asks, and improve how the code is written. Fix what you find yourself and
+commit it.
 
-Another agent has just implemented this Ticket. Review and improve only this
-Ticket's change. Its full text, its comments and the Spec it belongs to are below,
-so you don't need to fetch them.
-<!-- Standalone Ticket (no parent): "Its full text and its comments are below, so
-     you don't need to fetch them." and the whole Spec section is left out. -->
+The Ticket's full text, its comments and the Spec it belongs to are below, so you
+don't need to fetch them.
+<!-- Standalone Ticket (no parent): "The Ticket's full text and its comments are
+     below, so you don't need to fetch them." and the whole Spec section is left
+     out. Review then checks against the Ticket alone. -->
 
 <ticket>
 «Ticket body»
@@ -55,34 +57,72 @@ Read it with:
 
 # Review
 
-Go through the change in this order:
+Review the change along two axes, one after the other. Keep them apart: code that
+is well written but does the wrong thing fails, and so does code that does the
+right thing but is badly written.
 
-1. **Does it do what the Ticket asks, within the Spec?** Fix anything missing or
-   wrong. Check that the tests cover the behaviour the Ticket describes, at the
-   seams the Ticket or the Spec names, if any.
+## 1. Does it do what the Ticket asks?
 
-2. **Clarity.** Look for chances to:
-   - reduce unnecessary complexity and nesting
-   - remove redundant code and abstractions
-   - use clear names for variables and functions
-   - bring related logic together
-   - remove comments that only restate the code
-   - prefer explicit code over clever, compact code
+Compare the change with the Ticket, and with the Spec if there is one. Look for:
 
-3. **Keep the balance.** Don't:
-   - over-simplify until the code is harder to read
-   - merge unrelated concerns into one function
-   - remove abstractions that help organise the code
-   - break anything that already works
+- requirements the Ticket asks for that are missing or only partly done
+- requirements that look implemented, but where the implementation is wrong
+- behaviour the Ticket didn't ask for: remove it
+- edge cases that aren't handled
+- new or changed behaviour without a test, or tests that aren't at the seams the
+  Ticket or the Spec names
+- security problems: injection, leaked credentials, unchecked input
+
+Fix what you find.
+
+## 2. Is it well written?
 
 {{standards}}
 <!-- Renders as (nothing at all if `standards` isn't set in config):
 
-# Coding standards
-
-Refactor the change until it follows the coding standards in
-`docs/coding-standards.md`. Read that file before you start.
+Follow the coding standards in `docs/coding-standards.md`. Read that file first.
+Where they disagree with the smells below, the standards win.
 -->
+
+Check the change for these code smells. Each one is a judgement call, not a hard
+rule. Skip anything the project's tooling already enforces.
+
+- **Mysterious Name**: a function, variable or type whose name doesn't reveal what
+  it does or holds. → Rename it.
+- **Duplicated Code**: the same logic appears in more than one place in the
+  change. → Extract it and call it from both places.
+- **Feature Envy**: a function that reaches into another object's data more than
+  its own. → Move it to the data it uses.
+- **Data Clumps**: the same few fields or parameters keep travelling together.
+  → Bundle them into one type.
+- **Primitive Obsession**: a string or number standing in for a domain concept.
+  → Give the concept its own small type.
+- **Repeated Switches**: the same `switch` or `if` chain on the same type appears
+  more than once. → Replace it with polymorphism or one shared map.
+- **Shotgun Surgery**: one logical change needs scattered edits across many files.
+  → Gather what changes together into one module.
+- **Divergent Change**: one file is changed for several unrelated reasons.
+  → Split it so each part changes for one reason.
+- **Speculative Generality**: abstractions, parameters or hooks for needs the
+  Ticket doesn't have. → Delete them.
+- **Message Chains**: long `a.b().c().d()` navigation. → Hide it behind one
+  function on the first object.
+- **Middle Man**: a function or type that mostly just passes calls on.
+  → Remove it and call the real target directly.
+- **Refused Bequest**: a type that ignores most of what it inherits or implements.
+  → Use composition instead.
+
+Refactor what you find, without changing the behaviour the Ticket asks for.
+
+## Keep the balance
+
+Don't:
+
+- over-simplify until the code is harder to read
+- merge unrelated concerns into one function
+- remove abstractions that help organise the code
+- change code outside this Ticket's change
+- break anything that already works
 
 {{commands}}
 <!-- Renders as (nothing at all if [commands] is empty):
@@ -98,8 +138,8 @@ After your changes, run these and make them pass:
 
 # Commit
 
-If you changed anything, commit with a message starting `Review:` that says what
-you changed and why. If the change is already good, change nothing.
+If you changed anything, commit with a message that says what you fixed or
+refactored, and why. If the change is already good, change nothing.
 
 <!-- /✏️ YOURS -->
 
