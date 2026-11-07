@@ -225,7 +225,7 @@ func TestTransientErrorsPastThreeRetriesStopTheRunAndLeaveTheTicketUntouched(t *
 	if len(q.dirs) != 4 {
 		t.Errorf("the Step ran %d times, want 4: three retries", len(q.dirs))
 	}
-	if w := tr.Writes(); len(w) != 0 {
+	if w := ticketWrites(tr); len(w) != 0 {
 		t.Errorf("tracker writes = %+v, want every Ticket untouched", w)
 	}
 }

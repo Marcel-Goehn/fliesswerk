@@ -60,7 +60,7 @@ func (f *localFlags) overrides(fs *flag.FlagSet) []config.Override {
 // runCheck validates the config, resolves and tests every credential and
 // checks the Tracker's tools, and exits 3 if anything fails.
 func runCheck(args []string, stdout, stderr io.Writer) int {
-	values, root, code, ok := loadConfig("kraftwerk check", args, stderr, nil)
+	values, root, _, code, ok := loadConfig("kraftwerk check", args, 0, stderr, nil)
 	if !ok {
 		return code
 	}
@@ -106,14 +106,22 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		}
 		_, _ = fmt.Fprintf(stdout, "kraftwerk check: %s ok\n", c.Name)
 	}
+	others, err := claimedByOthers(ctx, tr)
+	if err != nil {
+		return fail(err)
+	}
+	for _, c := range others {
+		_, _ = fmt.Fprintf(stderr, "warning: %s; your Runs skip it\n", claimLine(c))
+	}
 	return exitOK
 }
 
 // loadConfig parses the local flags (and any extra ones register adds),
 // loads the config of the project around the current directory and prints
-// its diagnostics. root is the project root. ok is false when the command
-// must exit with code.
-func loadConfig(cmd string, args []string, stderr io.Writer, register func(*flag.FlagSet)) (values map[string]any, root string, code int, ok bool) {
+// its diagnostics. root is the project root, and rest the up to maxArgs
+// arguments after the flags. ok is false when the command must exit with
+// code.
+func loadConfig(cmd string, args []string, maxArgs int, stderr io.Writer, register func(*flag.FlagSet)) (values map[string]any, root string, rest []string, code int, ok bool) {
 	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var lf localFlags
@@ -121,17 +129,24 @@ func loadConfig(cmd string, args []string, stderr io.Writer, register func(*flag
 	if register != nil {
 		register(fs)
 	}
-	if err := fs.Parse(args); err != nil {
-		return nil, "", exitConfigError, false
-	}
-	if fs.NArg() > 0 {
-		_, _ = fmt.Fprintf(stderr, "%s: unexpected argument %q\n", cmd, fs.Arg(0))
-		return nil, "", exitConfigError, false
+	// Flags may come before and after the arguments.
+	for {
+		if err := fs.Parse(args); err != nil {
+			return nil, "", nil, exitConfigError, false
+		}
+		if fs.NArg() == 0 {
+			break
+		}
+		if len(rest) == maxArgs {
+			_, _ = fmt.Fprintf(stderr, "%s: unexpected argument %q\n", cmd, fs.Arg(0))
+			return nil, "", nil, exitConfigError, false
+		}
+		rest, args = append(rest, fs.Arg(0)), fs.Args()[1:]
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%s: can't find the current directory: %v\n", cmd, err)
-		return nil, "", exitConfigError, false
+		return nil, "", nil, exitConfigError, false
 	}
 
 	root = projectRoot(cwd)
@@ -141,9 +156,9 @@ func loadConfig(cmd string, args []string, stderr io.Writer, register func(*flag
 	}
 	if !r.OK() {
 		_, _ = fmt.Fprintf(stderr, "%s: the config is not valid; fix the errors above\n", cmd)
-		return nil, "", exitConfigError, false
+		return nil, "", nil, exitConfigError, false
 	}
-	return r.Values, root, exitOK, true
+	return r.Values, root, rest, exitOK, true
 }
 
 // projectRoot is the nearest directory at or above dir that holds

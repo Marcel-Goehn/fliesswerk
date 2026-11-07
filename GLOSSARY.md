@@ -28,6 +28,10 @@ _Avoid_: Task, issue (when the workable unit is meant)
 One whole execution of the Factory, from the moment it is started until it stops.
 _Avoid_: Session, job, loop (as a noun for the execution)
 
+**Claim**:
+The mark that a Spec (or a standalone Ticket) is being worked by someone's Runs: the in-progress label, with the claimer as assignee. A Run sets it the first time it takes a Ticket from the Spec. It lasts across Runs until the Spec's last Ticket closes or `kraftwerk release` drops it, and everyone else's Runs skip the Spec meanwhile. A Run works its own claimed Specs first ("finish what's started").
+_Avoid_: Lock, lease, reservation
+
 **Blocker**:
 An issue that must be closed before a Ticket can be worked on, as recorded by the tracker's own blocking relationship. Text in a Ticket's description never makes an issue a Blocker.
 _Avoid_: Dependency, prerequisite

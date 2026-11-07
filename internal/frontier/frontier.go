@@ -18,6 +18,12 @@ type Options struct {
 	// LinkBlockerFix names the fix for a text-only Blocker; it comes from
 	// the Tracker's Description.
 	LinkBlockerFix func(ticket, blocker tracker.ID) string
+	// User is the login whose Claims are the user's own; any other
+	// claimer's Specs are skipped.
+	User string
+	// Only, if set, names the one Spec or standalone Ticket to plan for, as
+	// a person typed it; every other Ticket is left out.
+	Only string
 }
 
 // Plan is what one Iteration would do with a Snapshot.
@@ -31,6 +37,10 @@ type Plan struct {
 	// Warnings are things a person should know, e.g. a Blocker outside the
 	// Ticket's Spec.
 	Warnings []string
+	// ClaimedByOthers are the Specs (and standalone Tickets) with ready
+	// Tickets that someone else claimed, in Spec order. Their Tickets are
+	// in neither Take, Later nor Skipped.
+	ClaimedByOthers []tracker.Claimed
 }
 
 // Skip is a Ticket that isn't ready, and why.
@@ -43,17 +53,39 @@ type Skip struct {
 	Fix      []string
 }
 
-// Compute plans one Iteration over snap. Tickets go in order of their
-// Spec, then their own order; a standalone Ticket is a Spec of one.
+// Compute plans one Iteration over snap, finishing what's started: the
+// Tickets of the user's claimed Specs go first, in claim order, then those
+// of unclaimed Specs by Spec order; within a Spec, by their own order. A
+// standalone Ticket is a Spec of one. Specs someone else claimed are
+// skipped.
 func Compute(snap tracker.Snapshot, opts Options) Plan {
 	var p Plan
-	tickets := slices.Clone(snap.Tickets)
+	var tickets []tracker.Ticket
+	for _, tk := range snap.Tickets {
+		if opts.Only == "" || tk.SpecID().Names(opts.Only) {
+			tickets = append(tickets, tk)
+		}
+	}
 	slices.SortStableFunc(tickets, func(a, b tracker.Ticket) int {
-		return cmp.Or(cmp.Compare(specOrder(a), specOrder(b)), cmp.Compare(a.ID.Order, b.ID.Order))
+		ca, cb := snap.ClaimOf(a), snap.ClaimOf(b)
+		return cmp.Or(
+			cmp.Compare(claimedFirst(ca), claimedFirst(cb)),
+			compareClaimDates(ca, cb),
+			cmp.Compare(a.SpecID().Order, b.SpecID().Order),
+			cmp.Compare(a.ID.Order, b.ID.Order),
+		)
 	})
+	others := map[string]bool{}
 	for _, tk := range tickets {
 		if tk.State != tracker.Open || !slices.Contains(tk.Labels, opts.ReadyLabel) {
 			continue // not something the Snapshot should hold; ignore it
+		}
+		if c := snap.ClaimOf(tk); c != nil && c.By != opts.User && !tk.HasChildren {
+			if spec := tk.SpecID(); !others[spec.Key] {
+				others[spec.Key] = true
+				p.ClaimedByOthers = append(p.ClaimedByOthers, tracker.Claimed{ID: spec, Title: specTitle(tk, snap), Claim: *c})
+			}
+			continue
 		}
 		if !tk.HasChildren {
 			p.Warnings = append(p.Warnings, outsideBlockers(tk, snap.Specs)...)
@@ -68,15 +100,40 @@ func Compute(snap tracker.Snapshot, opts Options) Plan {
 			p.Later = append(p.Later, tk)
 		}
 	}
+	slices.SortFunc(p.ClaimedByOthers, func(a, b tracker.Claimed) int { return cmp.Compare(a.ID.Order, b.ID.Order) })
 	return p
 }
 
-// specOrder is the order of the Spec tk belongs to.
-func specOrder(tk tracker.Ticket) int64 {
+// specTitle is the title of tk's Spec, or tk's own if it stands alone.
+func specTitle(tk tracker.Ticket, snap tracker.Snapshot) string {
 	if tk.Parent != nil {
-		return tk.Parent.Order
+		return snap.Specs[tk.Parent.Key].Title
 	}
-	return tk.ID.Order
+	return tk.Title
+}
+
+// claimedFirst puts claimed Specs before unclaimed ones.
+func claimedFirst(c *tracker.Claim) int {
+	if c != nil {
+		return 0
+	}
+	return 1
+}
+
+// compareClaimDates orders two Claims by date, a Claim of unknown date
+// after the dated ones. Unclaimed Specs compare equal.
+func compareClaimDates(a, b *tracker.Claim) int {
+	if a == nil || b == nil {
+		return 0
+	}
+	return cmp.Or(cmp.Compare(boolInt(a.At.IsZero()), boolInt(b.At.IsZero())), a.At.Compare(b.At))
+}
+
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // notReady reports why tk isn't ready, if it isn't.

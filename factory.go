@@ -38,9 +38,10 @@ var transientBackoff = factory.DefaultBackoff
 // remote is the git remote branches are cut from and pushed to.
 const remote = "origin"
 
-// runFactory runs the Factory over the ready Tickets and prints how the Run
-// ended. Only `kind = "none"` exists so far.
-func runFactory(values map[string]any, root string, stdout, stderr io.Writer) int {
+// runFactory runs the Factory over the ready Tickets (of only the Spec or
+// standalone Ticket only names, if set) and prints how the Run ended. Only
+// `kind = "none"` exists so far.
+func runFactory(values map[string]any, root, only string, stdout, stderr io.Writer) int {
 	if kind := stringAt(values, defaultSandbox, "sandbox", "kind"); kind != "none" {
 		_, _ = fmt.Fprintf(stderr, "kraftwerk run: the %s Sandbox isn't available in this kraftwerk yet; run with `--sandbox none --i-accept-unsandboxed-risk` (or set them in .kraftwerk/config.local.toml)\n",
 			kind)
@@ -99,6 +100,7 @@ func runFactory(values map[string]any, root string, stdout, stderr io.Writer) in
 		Backoff:        transientBackoff,
 		Redactor:       s.redactor,
 		RunID:          time.Now().Format(runIDFormat),
+		Only:           only,
 	})
 	return printResult(stdout, stderr, res)
 }
@@ -240,6 +242,7 @@ func printResult(stdout, stderr io.Writer, res factory.Result) int {
 	for _, f := range res.Failed {
 		_, _ = fmt.Fprintf(stdout, "  failed  %s  %s: %s\n", f.Ticket.ID, f.Ticket.Title, f.Reason)
 	}
+	printClaimedByOthers(stdout, res.ClaimedByOthers)
 	var setup *factory.SetupError
 	switch {
 	case errors.As(res.Stopped, &setup):

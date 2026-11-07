@@ -53,6 +53,23 @@ func tree(t *testing.T, root string) []string {
 	return out
 }
 
+// isRead reports whether a gh call only reads: `issue list`, `issue view`
+// or a `gh api` GET.
+func isRead(args []string) bool {
+	if len(args) < 2 {
+		return false
+	}
+	switch args[0] {
+	case "issue":
+		return args[1] == "list" || args[1] == "view"
+	case "api":
+		return !slices.ContainsFunc(args, func(a string) bool {
+			return slices.Contains([]string{"-X", "--method", "-f", "-F", "--field", "--raw-field", "--input"}, a)
+		})
+	}
+	return false
+}
+
 const dryRunProject = "version = 1\n[tracker]\nrepo = \"Marcel-Goehn/kraftwerk\"\n"
 
 func TestRunDryRun(t *testing.T) {
@@ -112,7 +129,7 @@ func TestRunDryRun(t *testing.T) {
 			t.Fatal("gh was never called")
 		}
 		for _, c := range calls {
-			if len(c.Args) < 2 || c.Args[0] != "issue" || !slices.Contains([]string{"list", "view"}, c.Args[1]) {
+			if !isRead(c.Args) {
 				t.Errorf("gh %s is not a read", strings.Join(c.Args, " "))
 			}
 			if c.GhToken != token {

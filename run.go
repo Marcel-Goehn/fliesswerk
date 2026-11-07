@@ -10,19 +10,24 @@ import (
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
 )
 
-// runRun starts a Run. With --dry-run it validates the config, reads the
-// Snapshot and prints Iteration 1 and every skipped Ticket, writing
-// nothing and starting nothing.
+// runRun starts a Run, over one Spec or standalone Ticket if an argument
+// names it. With --dry-run it validates the config, reads the Snapshot and
+// prints Iteration 1 and every skipped Ticket, writing nothing and
+// starting nothing.
 func runRun(args []string, stdout, stderr io.Writer) int {
 	var dryRun bool
-	values, root, code, ok := loadConfig("kraftwerk run", args, stderr, func(fs *flag.FlagSet) {
+	values, root, rest, code, ok := loadConfig("kraftwerk run", args, 1, stderr, func(fs *flag.FlagSet) {
 		fs.BoolVar(&dryRun, "dry-run", false, "show Iteration 1 and every skipped Ticket, writing nothing")
 	})
 	if !ok {
 		return code
 	}
+	var only string
+	if len(rest) == 1 {
+		only = rest[0]
+	}
 	if !dryRun {
-		return runFactory(values, root, stdout, stderr)
+		return runFactory(values, root, only, stdout, stderr)
 	}
 
 	s, code, ok := secretsForRun(values, root, stderr)
@@ -35,7 +40,13 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "kraftwerk run: %v\n", err)
 		return exitConfigError
 	}
-	snap, err := tr.Snapshot(context.Background())
+	ctx := context.Background()
+	user, err := tr.User(ctx)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "kraftwerk run: %v\n", err)
+		return exitStopped
+	}
+	snap, err := tr.Snapshot(ctx)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "kraftwerk run: %v\n", err)
 		return exitStopped
@@ -45,6 +56,8 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		ReadyLabel:     readyLabel(values),
 		MaxParallel:    limit,
 		LinkBlockerFix: tr.Describe().LinkBlockerFix,
+		User:           user,
+		Only:           only,
 	})
 	printPlan(stdout, stderr, p, limit)
 
@@ -81,6 +94,7 @@ func printPlan(stdout, stderr io.Writer, p frontier.Plan, limit int) {
 			}
 		}
 	}
+	printClaimedByOthers(stdout, p.ClaimedByOthers)
 	for _, w := range p.Warnings {
 		_, _ = fmt.Fprintf(stderr, "warning: %s\n", w)
 	}

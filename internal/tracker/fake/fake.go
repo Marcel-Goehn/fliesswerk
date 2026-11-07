@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
 )
@@ -27,20 +28,34 @@ type Issue struct {
 	// TextOnlyBlockers are numbers named as Blockers in text only.
 	TextOnlyBlockers []int
 	Comments         []tracker.Comment
+	Assignees        []string
+	// ClaimedBy and ClaimedAt are who added the in-progress label and
+	// when. An issue with the label is claimed; without ClaimedBy, by its
+	// first assignee.
+	ClaimedBy string
+	ClaimedAt time.Time
 }
 
 // Write is one recorded write.
 type Write struct {
-	Op     string // "comment", "close" or "labels"
+	Op     string // "comment", "close", "labels", "claim" or "release"
 	Ticket int
 	Text   string
 	Add    []string
 	Remove []string
+	// By is whose Claim a release drops.
+	By string
 }
 
 // Tracker is an in-memory Tracker. The zero value is not usable; use New.
 type Tracker struct {
 	ReadyLabel string
+	// InProgressLabel marks a claimed issue; New sets "in-progress".
+	InProgressLabel string
+	// Me is the login the fake's token acts as; New sets "me".
+	Me string
+	// Now stamps a Claim; New sets time.Now.
+	Now func() time.Time
 
 	mu     sync.Mutex
 	issues map[int]*Issue
@@ -52,7 +67,7 @@ var _ tracker.Tracker = (*Tracker)(nil)
 // New returns a fake Tracker holding issues, whose ready label is
 // readyLabel.
 func New(readyLabel string, issues ...Issue) *Tracker {
-	t := &Tracker{ReadyLabel: readyLabel, issues: map[int]*Issue{}}
+	t := &Tracker{ReadyLabel: readyLabel, InProgressLabel: "in-progress", Me: "me", Now: time.Now, issues: map[int]*Issue{}}
 	for _, i := range issues {
 		t.issues[i.Number] = &i
 	}
@@ -85,6 +100,9 @@ func (t *Tracker) Snapshot(context.Context) (tracker.Snapshot, error) {
 		tk := tracker.Ticket{
 			ID: ID(n), Title: i.Title, Body: i.Body, Labels: slices.Clone(i.Labels),
 			State: state(i.Closed), HasChildren: len(t.children(n)) > 0,
+		}
+		if i.Parent == 0 {
+			tk.Claim = t.claim(i)
 		}
 		for _, b := range i.BlockedBy {
 			closed := t.issues[b] != nil && t.issues[b].Closed
@@ -125,7 +143,7 @@ func (t *Tracker) children(parent int) []int {
 func (t *Tracker) spec(n int) tracker.Spec {
 	s := tracker.Spec{ID: ID(n)}
 	if p := t.issues[n]; p != nil {
-		s.Title, s.Body = p.Title, p.Body
+		s.Title, s.Body, s.Claim = p.Title, p.Body, t.claim(p)
 	}
 	for _, c := range t.children(n) {
 		i := t.issues[c]
@@ -195,6 +213,69 @@ func (t *Tracker) SetLabels(_ context.Context, ticket tracker.ID, add, remove []
 		}
 	}
 	t.writes = append(t.writes, Write{Op: "labels", Ticket: i.Number, Add: add, Remove: remove})
+	return nil
+}
+
+// claim is i's Claim, nil if it has none.
+func (t *Tracker) claim(i *Issue) *tracker.Claim {
+	if !slices.Contains(i.Labels, t.InProgressLabel) {
+		return nil
+	}
+	by := i.ClaimedBy
+	if by == "" && len(i.Assignees) > 0 {
+		by = i.Assignees[0]
+	}
+	return &tracker.Claim{By: by, At: i.ClaimedAt}
+}
+
+// User is Me.
+func (t *Tracker) User(context.Context) (string, error) { return t.Me, nil }
+
+// Claims returns every open claimed issue, by number.
+func (t *Tracker) Claims(context.Context) ([]tracker.Claimed, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var out []tracker.Claimed
+	for _, n := range t.numbers() {
+		i := t.issues[n]
+		if c := t.claim(i); c != nil && !i.Closed {
+			out = append(out, tracker.Claimed{ID: ID(n), Title: i.Title, Claim: *c})
+		}
+	}
+	return out, nil
+}
+
+// Claim adds the in-progress label and Me as assignee.
+func (t *Tracker) Claim(_ context.Context, id tracker.ID) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	i, err := t.issue(id)
+	if err != nil {
+		return err
+	}
+	if !slices.Contains(i.Labels, t.InProgressLabel) {
+		i.Labels = append(i.Labels, t.InProgressLabel)
+	}
+	if !slices.Contains(i.Assignees, t.Me) {
+		i.Assignees = append(i.Assignees, t.Me)
+	}
+	i.ClaimedBy, i.ClaimedAt = t.Me, t.Now()
+	t.writes = append(t.writes, Write{Op: "claim", Ticket: i.Number})
+	return nil
+}
+
+// Release removes the in-progress label and by as assignee.
+func (t *Tracker) Release(_ context.Context, id tracker.ID, by string) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	i, err := t.issue(id)
+	if err != nil {
+		return err
+	}
+	i.Labels = slices.DeleteFunc(i.Labels, func(l string) bool { return l == t.InProgressLabel })
+	i.Assignees = slices.DeleteFunc(i.Assignees, func(a string) bool { return a == by })
+	i.ClaimedBy, i.ClaimedAt = "", time.Time{}
+	t.writes = append(t.writes, Write{Op: "release", Ticket: i.Number, By: by})
 	return nil
 }
 

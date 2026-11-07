@@ -9,8 +9,9 @@ import (
 
 // Defaults for keys the config may leave out.
 const (
-	defaultReadyLabel  = "ready-for-agent"
-	defaultMaxParallel = 1
+	defaultReadyLabel      = "ready-for-agent"
+	defaultInProgressLabel = "in-progress"
+	defaultMaxParallel     = 1
 )
 
 // testTracker, when set and returning a Tracker, replaces the configured
@@ -28,10 +29,11 @@ func newTracker(values map[string]any, token string) (tracker.Tracker, error) {
 	}
 	// "github" is the only kind, and the default.
 	return github.New(github.Options{
-		Repo:       stringAt(values, "", "tracker", "repo"),
-		ReadyLabel: readyLabel(values),
-		Runner:     github.ExecRunner{Token: token},
-		GOOS:       runtime.GOOS,
+		Repo:            stringAt(values, "", "tracker", "repo"),
+		ReadyLabel:      readyLabel(values),
+		InProgressLabel: stringAt(values, defaultInProgressLabel, "tracker", "in_progress_label"),
+		Runner:          github.ExecRunner{Token: token},
+		GOOS:            runtime.GOOS,
 	}), nil
 }
 

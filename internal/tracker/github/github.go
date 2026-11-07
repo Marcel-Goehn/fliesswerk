@@ -4,6 +4,7 @@
 package github
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
@@ -35,7 +37,9 @@ type Options struct {
 	// current directory.
 	Repo       string
 	ReadyLabel string
-	Runner     Runner
+	// InProgressLabel marks a claimed Spec or standalone Ticket.
+	InProgressLabel string
+	Runner          Runner
 	// GOOS picks the install command `check` names; runtime.GOOS in
 	// production.
 	GOOS string
@@ -44,6 +48,9 @@ type Options struct {
 // Tracker is the GitHub Issues Tracker.
 type Tracker struct {
 	opts Options
+
+	mu   sync.Mutex
+	user string // the token's login, once read
 }
 
 var _ tracker.Tracker = (*Tracker)(nil)
@@ -77,6 +84,9 @@ type (
 		Parent    *ghRef `json:"parent"`
 		SubIssues ghRefs `json:"subIssues"`
 		BlockedBy ghRefs `json:"blockedBy"`
+		Assignees []struct {
+			Login string `json:"login"`
+		} `json:"assignees"`
 	}
 	ghComments struct {
 		Comments []struct {
@@ -91,9 +101,10 @@ type (
 
 const (
 	// listLimit caps one Snapshot; reaching it is an error, not a cut.
-	listLimit  = 1000
-	listFields = "number,title,body,labels,state,url,parent,subIssues,blockedBy"
-	specFields = "number,title,body,state,url,subIssues"
+	listLimit    = 1000
+	listFields   = "number,title,body,labels,state,url,parent,subIssues,blockedBy,assignees"
+	specFields   = "number,title,body,state,url,subIssues,labels,assignees"
+	claimsFields = "number,title,url,assignees"
 )
 
 // Snapshot reads every open issue with the ready label in one gh call,
@@ -141,6 +152,13 @@ func (t *Tracker) Snapshot(ctx context.Context) (tracker.Snapshot, error) {
 				tk.TextOnlyBlockers = append(tk.TextOnlyBlockers, ref)
 			}
 		}
+		if i.Parent == nil {
+			c, err := t.claimOf(ctx, tk.ID, i)
+			if err != nil {
+				return tracker.Snapshot{}, err
+			}
+			tk.Claim = c
+		}
 		if i.Parent != nil {
 			p := idFor(home, i.Parent.URL, i.Parent.Number)
 			tk.Parent = &p
@@ -165,7 +183,11 @@ func (t *Tracker) spec(ctx context.Context, home string, id tracker.ID) (tracker
 	if len(i.SubIssues.Nodes) < i.SubIssues.TotalCount {
 		return tracker.Spec{}, fmt.Errorf("gh returned only %d of the %d Tickets of Spec %s", len(i.SubIssues.Nodes), i.SubIssues.TotalCount, id.Display)
 	}
-	s := tracker.Spec{ID: id, Title: i.Title, Body: i.Body}
+	c, err := t.claimOf(ctx, id, i)
+	if err != nil {
+		return tracker.Spec{}, err
+	}
+	s := tracker.Spec{ID: id, Title: i.Title, Body: i.Body, Claim: c}
 	for _, c := range i.SubIssues.Nodes {
 		s.Tickets = append(s.Tickets, tracker.SpecTicket{ID: idFor(home, c.URL, c.Number), Title: c.Title, State: stateOf(c.State)})
 	}
@@ -219,6 +241,135 @@ func (t *Tracker) SetLabels(ctx context.Context, ticket tracker.ID, add, remove 
 	}
 	if _, err := t.opts.Runner.Run(ctx, nil, args...); err != nil {
 		return fmt.Errorf("setting the labels of %s: %w", ticket.Display, err)
+	}
+	return nil
+}
+
+// User is the login gh acts as, read once.
+func (t *Tracker) User(ctx context.Context) (string, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.user != "" {
+		return t.user, nil
+	}
+	out, err := t.opts.Runner.Run(ctx, nil, "api", "user", "--jq", ".login")
+	if err != nil {
+		return "", fmt.Errorf("reading the login gh acts as: %w", err)
+	}
+	t.user = strings.TrimSpace(string(out))
+	if t.user == "" {
+		return "", errors.New("gh printed no login for `gh api user`")
+	}
+	return t.user, nil
+}
+
+// Claims reads every open issue with the in-progress label in one gh
+// call, then each one's Claim.
+func (t *Tracker) Claims(ctx context.Context) ([]tracker.Claimed, error) {
+	args := t.args("issue", "list", "")
+	args = append(args, "--state", "open", "--label", t.opts.InProgressLabel, "--limit", strconv.Itoa(listLimit), "--json", claimsFields)
+	var issues []ghIssue
+	if err := t.runJSON(ctx, &issues, args...); err != nil {
+		return nil, fmt.Errorf("reading the claimed issues: %w", err)
+	}
+	if len(issues) >= listLimit {
+		return nil, fmt.Errorf("gh returned %d claimed issues, its limit; this kraftwerk can't read more", len(issues))
+	}
+	home := t.opts.Repo
+	out := make([]tracker.Claimed, 0, len(issues))
+	for _, i := range issues {
+		id := idFor(home, i.URL, i.Number)
+		c, err := t.readClaim(ctx, id, i)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, tracker.Claimed{ID: id, Title: i.Title, Claim: c})
+	}
+	return out, nil
+}
+
+// claimOf is the Claim on issue i, nil if it doesn't carry the
+// in-progress label.
+func (t *Tracker) claimOf(ctx context.Context, id tracker.ID, i ghIssue) (*tracker.Claim, error) {
+	for _, l := range i.Labels {
+		if l.Name == t.opts.InProgressLabel {
+			c, err := t.readClaim(ctx, id, i)
+			return &c, err
+		}
+	}
+	return nil, nil
+}
+
+// readClaim reads the Claim on issue i, which carries the in-progress
+// label. The claimer is the assignee who last added the label (a Run
+// adds both), or else the first assignee, or with none the last person to
+// add the label. The date is when the claimer last added it, unknown
+// without such an event.
+func (t *Tracker) readClaim(ctx context.Context, id tracker.ID, i ghIssue) (tracker.Claim, error) {
+	label, _ := json.Marshal(t.opts.InProgressLabel) // a JSON string is a jq string
+	filter := `.[] | select(.event == "labeled" and .label.name == ` + string(label) + `) | [.actor.login, .created_at] | @tsv`
+	out, err := t.opts.Runner.Run(ctx, nil, "api", "--paginate", t.apiPath(id.Key)+"/events", "--jq", filter)
+	if err != nil {
+		return tracker.Claim{}, fmt.Errorf("reading who claimed %s: %w", id.Display, err)
+	}
+	// Each event is "login<TAB>date", oldest first; a deleted user's login
+	// is empty.
+	last := map[string]time.Time{}
+	var labeller string
+	for line := range strings.Lines(string(out)) {
+		login, date, ok := strings.Cut(strings.TrimRight(line, "\r\n"), "\t")
+		if !ok || login == "" {
+			continue
+		}
+		at, err := time.Parse(time.RFC3339, date)
+		if err != nil {
+			return tracker.Claim{}, fmt.Errorf("reading who claimed %s: gh printed a date this kraftwerk can't read: %q", id.Display, date)
+		}
+		last[login], labeller = at, login
+	}
+	var c tracker.Claim
+	for _, a := range i.Assignees {
+		if at, ok := last[a.Login]; ok && (c.By == "" || at.After(c.At)) {
+			c = tracker.Claim{By: a.Login, At: at}
+		}
+	}
+	switch {
+	case c.By != "":
+	case len(i.Assignees) > 0:
+		c.By = i.Assignees[0].Login
+	case labeller != "":
+		c = tracker.Claim{By: labeller, At: last[labeller]}
+	}
+	return c, nil
+}
+
+// apiPath is the REST path of the issue with key. Without a configured
+// repo, gh fills in the one of the current directory.
+func (t *Tracker) apiPath(key string) string {
+	repo, n, ok := strings.Cut(key, "#")
+	if !ok {
+		repo, n = cmp.Or(t.opts.Repo, "{owner}/{repo}"), key
+	}
+	return "repos/" + repo + "/issues/" + n
+}
+
+// Claim adds the in-progress label and gh's own login as assignee.
+func (t *Tracker) Claim(ctx context.Context, id tracker.ID) error {
+	args := append(t.args("issue", "edit", id.Key), "--add-label", t.opts.InProgressLabel, "--add-assignee", "@me")
+	if _, err := t.opts.Runner.Run(ctx, nil, args...); err != nil {
+		return fmt.Errorf("claiming %s: %w", id.Display, err)
+	}
+	return nil
+}
+
+// Release removes the in-progress label and by as assignee.
+func (t *Tracker) Release(ctx context.Context, id tracker.ID, by string) error {
+	args := append(t.args("issue", "edit", id.Key), "--remove-label", t.opts.InProgressLabel)
+	if by != "" {
+		args = append(args, "--remove-assignee", by)
+	}
+	if _, err := t.opts.Runner.Run(ctx, nil, args...); err != nil {
+		return fmt.Errorf("releasing %s: %w", id.Display, err)
 	}
 	return nil
 }

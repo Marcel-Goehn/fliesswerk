@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -170,7 +171,7 @@ func TestATicketOfASpecIsImplementedPushedAndClosed(t *testing.T) {
 		t.Errorf("the internal Ticket branch was pushed: %s", got)
 	}
 
-	writes := tr.Writes()
+	writes := ticketWrites(tr)
 	if len(writes) != 1 || writes[0].Op != "close" || writes[0].Ticket != 2 {
 		t.Fatalf("tracker writes = %+v, want #2 closed", writes)
 	}
@@ -332,7 +333,7 @@ func TestAnAuthErrorStopsTheRun(t *testing.T) {
 	if res.Stopped == nil || !strings.Contains(res.Stopped.Error(), "Invalid API key") {
 		t.Fatalf("stopped = %v, want the auth error", res.Stopped)
 	}
-	if w := tr.Writes(); len(w) != 0 {
+	if w := ticketWrites(tr); len(w) != 0 {
 		t.Errorf("tracker writes = %+v, want the Ticket untouched", w)
 	}
 }
@@ -376,7 +377,7 @@ func TestARejectedPushLeavesTheSpecBranchAndTheTicketAsTheyWere(t *testing.T) {
 	if got := f.remoteRef(t, spec); got != theirs {
 		t.Errorf("the remote Spec branch is %s, want the human's commit %s kept", got, theirs)
 	}
-	if w := tr.Writes(); len(w) != 0 {
+	if w := ticketWrites(tr); len(w) != 0 {
 		t.Errorf("tracker writes = %+v, want #2 left open", w)
 	}
 	if !gitOK(f.work, "rev-parse", "--verify", "-q", "refs/heads/kraftwerk/ticket-2") {
@@ -490,7 +491,7 @@ func TestReviewThatCommitsFixesTheChangeAndItsFixesArePushed(t *testing.T) {
 	if !strings.Contains(out.String(), "#2 review: fixed it in 1 commit") {
 		t.Errorf("the log doesn't say review fixed it:\n%s", out.String())
 	}
-	if c := tr.Writes()[0].Text; !strings.Contains(c, "Added the cart.") || !strings.Contains(c, "Added the missing test.") {
+	if c := ticketWrites(tr)[0].Text; !strings.Contains(c, "Added the cart.") || !strings.Contains(c, "Added the missing test.") {
 		t.Errorf("close comment lacks implement's or review's summary:\n%s", c)
 	}
 }
@@ -574,7 +575,7 @@ func TestAFailedVerifyRetriesImplementOnceWithTheFailingOutput(t *testing.T) {
 	if strings.Contains(steps.seen[0].Prompt, "checking the cart") {
 		t.Error("the first implement prompt already has verify's output")
 	}
-	if c := tr.Writes()[0].Text; !strings.Contains(c, "Attempt 2.") {
+	if c := ticketWrites(tr)[0].Text; !strings.Contains(c, "Attempt 2.") {
 		t.Errorf("close comment lacks the last implement's summary:\n%s", c)
 	}
 }
@@ -618,4 +619,141 @@ func TestVerifyRunsAfterReviewsFix(t *testing.T) {
 	if len(res.Closed) != 1 || steps.names() != "implement review" {
 		t.Fatalf("result = %+v, Steps %q; want #2 closed with no retry", res, steps.names())
 	}
+}
+
+// ops lists the Tracker's writes as "<op> #<n>".
+func ops(tr *fake.Tracker) []string {
+	var out []string
+	for _, w := range tr.Writes() {
+		out = append(out, fmt.Sprintf("%s #%d", w.Op, w.Ticket))
+	}
+	return out
+}
+
+func TestTheFirstTicketTakenClaimsTheSpecAndItsLastCloseReleasesIt(t *testing.T) {
+	f := newFixture(t)
+	tr := fake.New(ready,
+		fake.Issue{Number: 1, Title: "Spec: Shopping cart", Assignees: []string{"lead"}},
+		fake.Issue{Number: 2, Title: "Add the cart", Labels: []string{ready}, Parent: 1},
+		fake.Issue{Number: 3, Title: "Add checkout", Labels: []string{ready}, Parent: 1},
+	)
+
+	res := factory.Run(context.Background(), options(f, tr, eachTicketCommits()))
+
+	if res.Stopped != nil || len(res.Failed) != 0 || len(res.Closed) != 2 {
+		t.Fatalf("result = %+v, want #2 and #3 closed", res)
+	}
+	if got, want := ops(tr), []string{"claim #1", "close #2", "close #3", "release #1"}; !slices.Equal(got, want) {
+		t.Fatalf("tracker writes = %v, want %v", got, want)
+	}
+	spec := issue(t, tr, 1)
+	if slices.Contains(spec.Labels, "in-progress") || !slices.Equal(spec.Assignees, []string{"lead"}) {
+		t.Fatalf("Spec #1 after the Run: labels %v, assignees %v; want the claim gone and the lead kept", spec.Labels, spec.Assignees)
+	}
+}
+
+// eachTicketCommits implements any Ticket with a file of its own.
+func eachTicketCommits() func(context.Context, factory.Step) harness.Outcome {
+	return func(ctx context.Context, s factory.Step) harness.Outcome {
+		name := "ticket-" + s.Ticket.ID.Branch + ".txt"
+		return commits(map[string]string{name: "done\n"}, "Did "+s.Ticket.ID.Display+".")(ctx, s)
+	}
+}
+
+func TestAClaimOutlastsTheRunWhileTheSpecHasOpenTickets(t *testing.T) {
+	f := newFixture(t)
+	tr := fake.New(ready,
+		fake.Issue{Number: 1, Title: "Spec: Shopping cart"},
+		fake.Issue{Number: 2, Title: "Add the cart", Labels: []string{ready}, Parent: 1},
+		fake.Issue{Number: 3, Title: "Not ready yet", Parent: 1},
+	)
+
+	res := factory.Run(context.Background(), options(f, tr, eachTicketCommits()))
+
+	if len(res.Closed) != 1 {
+		t.Fatalf("result = %+v, want #2 closed", res)
+	}
+	if got, want := ops(tr), []string{"claim #1", "close #2"}; !slices.Equal(got, want) {
+		t.Fatalf("tracker writes = %v, want %v", got, want)
+	}
+	if spec := issue(t, tr, 1); !slices.Contains(spec.Labels, "in-progress") || !slices.Equal(spec.Assignees, []string{"me"}) {
+		t.Fatalf("Spec #1: labels %v, assignees %v; want it still claimed by me", spec.Labels, spec.Assignees)
+	}
+}
+
+func TestASpecTheUserClaimedInAnEarlierRunIsNotClaimedAgain(t *testing.T) {
+	f := newFixture(t)
+	tr := fake.New(ready,
+		fake.Issue{Number: 1, Title: "Spec: Shopping cart", Labels: []string{"in-progress"}, Assignees: []string{"me"}},
+		fake.Issue{Number: 2, Title: "Add the cart", Labels: []string{ready}, Parent: 1},
+	)
+
+	factory.Run(context.Background(), options(f, tr, eachTicketCommits()))
+
+	if got, want := ops(tr), []string{"close #2", "release #1"}; !slices.Equal(got, want) {
+		t.Fatalf("tracker writes = %v, want %v", got, want)
+	}
+}
+
+func TestAStandaloneTicketIsClaimedOnItself(t *testing.T) {
+	f := newFixture(t)
+	tr := fake.New(ready, fake.Issue{Number: 5, Title: "Fix the typo", Labels: []string{ready}})
+
+	factory.Run(context.Background(), options(f, tr, eachTicketCommits()))
+
+	if got, want := ops(tr), []string{"claim #5", "close #5", "release #5"}; !slices.Equal(got, want) {
+		t.Fatalf("tracker writes = %v, want %v", got, want)
+	}
+}
+
+func TestARunSkipsSpecsClaimedByOthersAndReportsThem(t *testing.T) {
+	f := newFixture(t)
+	at := time.Date(2026, 11, 2, 9, 0, 0, 0, time.UTC)
+	tr := fake.New(ready,
+		fake.Issue{Number: 1, Title: "Spec: Shopping cart", Labels: []string{"in-progress"}, ClaimedBy: "alice", ClaimedAt: at},
+		fake.Issue{Number: 2, Title: "Add the cart", Labels: []string{ready}, Parent: 1},
+		fake.Issue{Number: 5, Title: "Fix the typo", Labels: []string{ready}},
+	)
+
+	res := factory.Run(context.Background(), options(f, tr, eachTicketCommits()))
+
+	if len(res.Closed) != 1 || res.Closed[0].ID.Display != "#5" {
+		t.Fatalf("closed = %+v, want only #5", res.Closed)
+	}
+	if len(res.ClaimedByOthers) != 1 || res.ClaimedByOthers[0].ID.Display != "#1" ||
+		res.ClaimedByOthers[0].Claim != (tracker.Claim{By: "alice", At: at}) {
+		t.Fatalf("claimed by others = %+v, want #1 by alice", res.ClaimedByOthers)
+	}
+	if res.NeedsFix {
+		t.Error("a Spec claimed by someone else needs no fix")
+	}
+}
+
+func TestOnlyLimitsTheRunToOneSpec(t *testing.T) {
+	f := newFixture(t)
+	tr := fake.New(ready,
+		fake.Issue{Number: 1, Title: "Spec: Shopping cart"},
+		fake.Issue{Number: 2, Title: "Add the cart", Labels: []string{ready}, Parent: 1},
+		fake.Issue{Number: 5, Title: "Fix the typo", Labels: []string{ready}},
+	)
+	opts := options(f, tr, eachTicketCommits())
+	opts.Only = "5"
+
+	res := factory.Run(context.Background(), opts)
+
+	if len(res.Closed) != 1 || res.Closed[0].ID.Display != "#5" {
+		t.Fatalf("closed = %+v, want only #5", res.Closed)
+	}
+}
+
+// ticketWrites are the Tracker's writes to Tickets, leaving out claims and
+// releases.
+func ticketWrites(tr *fake.Tracker) []fake.Write {
+	var out []fake.Write
+	for _, w := range tr.Writes() {
+		if w.Op != "claim" && w.Op != "release" {
+			out = append(out, w)
+		}
+	}
+	return out
 }

@@ -24,6 +24,28 @@ type ID struct {
 
 func (id ID) String() string { return id.Display }
 
+// Names reports whether ref, as a person typed it (e.g. "42" or "#42"),
+// names the issue. It compares ref with the ID's forms; it never parses
+// either.
+func (id ID) Names(ref string) bool {
+	return ref != "" && (ref == id.Key || ref == id.Display || ref == id.Branch)
+}
+
+// Claim is who started working a Spec (or a standalone Ticket) and when.
+// Other people's Runs skip a claimed Spec.
+type Claim struct {
+	// By is the claimer's login.
+	By string
+	At time.Time
+}
+
+// Claimed is an open issue that carries a Claim.
+type Claimed struct {
+	ID    ID
+	Title string
+	Claim Claim
+}
+
 // State is whether an issue is open or closed.
 type State int
 
@@ -63,6 +85,9 @@ type Ticket struct {
 	// TextOnlyBlockers are issues the Ticket's text names as Blockers that
 	// have no matching native blocking link. Text never makes a Blocker.
 	TextOnlyBlockers []ID
+	// Claim is the Ticket's own Claim, which only a standalone Ticket
+	// gets; nil if it has none.
+	Claim *Claim
 }
 
 // SpecTicket is one Ticket in a Spec's list.
@@ -70,6 +95,15 @@ type SpecTicket struct {
 	ID    ID
 	Title string
 	State State
+}
+
+// SpecID is the Spec the Ticket belongs to; a standalone Ticket is a Spec
+// of one, so it is its own.
+func (tk Ticket) SpecID() ID {
+	if tk.Parent != nil {
+		return *tk.Parent
+	}
+	return tk.ID
 }
 
 // Spec is the parent of one or more Tickets in the Snapshot.
@@ -80,6 +114,8 @@ type Spec struct {
 	// Tickets is the Spec's full list of sub-issues, in the Tracker's
 	// order.
 	Tickets []SpecTicket
+	// Claim is nil if nobody claimed the Spec.
+	Claim *Claim
 }
 
 // Snapshot is what the Tracker holds that the core needs to pick Tickets.
@@ -87,6 +123,15 @@ type Snapshot struct {
 	Tickets []Ticket
 	// Specs holds the parent of every Ticket that has one, by ID.Key.
 	Specs map[string]Spec
+}
+
+// ClaimOf is the Claim on tk's Spec, or on tk itself if it stands alone;
+// nil if there is none.
+func (s Snapshot) ClaimOf(tk Ticket) *Claim {
+	if tk.Parent != nil {
+		return s.Specs[tk.Parent.Key].Claim
+	}
+	return tk.Claim
 }
 
 // Comment is one comment on an issue.
@@ -97,7 +142,7 @@ type Comment struct {
 }
 
 // Tracker is the boundary every Tracker adapter implements. There are no
-// other writes than Comment, Close and SetLabels.
+// other writes than Comment, Close, SetLabels, Claim and Release.
 type Tracker interface {
 	// Snapshot reads every open Ticket with the ready label, and the Spec
 	// of each.
@@ -110,6 +155,17 @@ type Tracker interface {
 	Close(ctx context.Context, ticket ID, text string) error
 	// SetLabels adds and removes labels on a Ticket.
 	SetLabels(ctx context.Context, ticket ID, add, remove []string) error
+	// User is the login the Tracker's token acts as: the claims it holds
+	// are the user's own.
+	User(ctx context.Context) (string, error)
+	// Claims returns every open issue that carries a Claim.
+	Claims(ctx context.Context) ([]Claimed, error)
+	// Claim claims a Spec (or a standalone Ticket) for User: it gets the
+	// in-progress label and User as assignee.
+	Claim(ctx context.Context, id ID) error
+	// Release drops the Claim by on a Spec (or a standalone Ticket): the
+	// in-progress label and by as assignee.
+	Release(ctx context.Context, id ID, by string) error
 	// Describe tells the rest of the Factory what this Tracker needs.
 	Describe() Description
 }

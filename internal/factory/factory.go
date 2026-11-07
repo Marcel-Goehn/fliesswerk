@@ -78,6 +78,9 @@ type Options struct {
 	// RunID names the Run. A failure comment names it and the Run's log
 	// directory.
 	RunID string
+	// Only, if set, limits the Run to the one Spec or standalone Ticket it
+	// names, as a person typed it.
+	Only string
 }
 
 // Names of the Steps.
@@ -121,6 +124,9 @@ type Result struct {
 	// Stopped is why the Run stopped before its end, nil if it didn't. A
 	// *SetupError means the project isn't set up for a Run.
 	Stopped error
+	// ClaimedByOthers are the Specs with ready Tickets the Run skipped
+	// because someone else claimed them, as the last Iteration saw them.
+	ClaimedByOthers []tracker.Claimed
 }
 
 // SetupError is a problem with the project that a person must fix before
@@ -149,6 +155,10 @@ type run struct {
 	stoppedSpecs map[string]bool
 	// logs holds each Ticket's last rendered lines, by ID.Key.
 	logs map[string]*lastLines
+	// user is the login the Tracker acts as, whose Claims are this Run's.
+	user string
+	// claimed holds the Specs this Run claimed, by ID.Key.
+	claimed map[string]bool
 }
 
 // Run runs Iterations until the frontier is empty or MaxIterations is
@@ -158,12 +168,18 @@ func Run(ctx context.Context, opts Options) Result {
 		opts: opts, repo: git.Repo{Dir: opts.Root},
 		worktrees: filepath.Join(opts.Root, StateDir, "worktrees"),
 		specDirs:  map[string]string{}, done: map[string]bool{}, stoppedSpecs: map[string]bool{},
-		logs: map[string]*lastLines{},
+		logs: map[string]*lastLines{}, claimed: map[string]bool{},
 	}
 	if err := r.prepare(ctx); err != nil {
 		r.res.Stopped = err
 		return r.res
 	}
+	user, err := opts.Tracker.User(ctx)
+	if err != nil {
+		r.res.Stopped = fmt.Errorf("finding out whose claims are yours: %w", err)
+		return r.res
+	}
+	r.user = user
 	defer r.removeSpecWorktrees()
 
 	for i := 1; i <= opts.MaxIterations; i++ {
@@ -174,7 +190,9 @@ func Run(ctx context.Context, opts Options) Result {
 		}
 		plan := frontier.Compute(r.workable(snap), frontier.Options{
 			ReadyLabel: opts.ReadyLabel, MaxParallel: opts.MaxParallel, LinkBlockerFix: opts.LinkBlockerFix,
+			User: r.user, Only: opts.Only,
 		})
+		r.res.ClaimedByOthers = plan.ClaimedByOthers
 		for _, s := range plan.Skipped {
 			r.res.NeedsFix = r.res.NeedsFix || s.NeedsFix
 		}
@@ -229,7 +247,7 @@ func (r *run) workable(snap tracker.Snapshot) tracker.Snapshot {
 	out := snap
 	out.Tickets = nil
 	for _, tk := range snap.Tickets {
-		if r.done[tk.ID.Key] || r.stoppedSpecs[specOf(tk).Key] {
+		if r.done[tk.ID.Key] || r.stoppedSpecs[tk.SpecID().Key] {
 			continue
 		}
 		out.Tickets = append(out.Tickets, tk)
@@ -237,20 +255,11 @@ func (r *run) workable(snap tracker.Snapshot) tracker.Snapshot {
 	return out
 }
 
-// specOf is the Spec a Ticket belongs to; a standalone Ticket is a Spec of
-// one.
-func specOf(tk tracker.Ticket) tracker.ID {
-	if tk.Parent != nil {
-		return *tk.Parent
-	}
-	return tk.ID
-}
-
 // work takes one Ticket through implement, the fast-forward, the push and
 // the close. Only an error that stops the whole Run is returned; anything
 // else fails the Ticket alone.
 func (r *run) work(ctx context.Context, tk tracker.Ticket, snap tracker.Snapshot) error {
-	if r.stoppedSpecs[specOf(tk).Key] {
+	if r.stoppedSpecs[tk.SpecID().Key] {
 		return nil
 	}
 	r.done[tk.ID.Key] = true
@@ -261,6 +270,10 @@ func (r *run) work(ctx context.Context, tk tracker.Ticket, snap tracker.Snapshot
 		if s, ok := snap.Specs[tk.Parent.Key]; ok {
 			spec = &s
 		}
+	}
+	if err := r.claim(ctx, tk, snap); err != nil {
+		r.fail(tk, err.Error())
+		return nil
 	}
 	specBranch, err := r.specBranch(ctx, tk, spec)
 	if err != nil {
@@ -313,8 +326,8 @@ func (r *run) work(ctx context.Context, tk tracker.Ticket, snap tracker.Snapshot
 	// push leaves the local Spec branch where it was. Then the local one
 	// fast-forwards to it.
 	if err := r.repo.Push(ctx, r.opts.Remote, ticketBranch, specBranch); err != nil {
-		r.stoppedSpecs[specOf(tk).Key] = true
-		r.fail(tk, fmt.Sprintf("the push of %s was rejected, so %s stops for this Run: %v", specBranch, specOf(tk), err))
+		r.stoppedSpecs[tk.SpecID().Key] = true
+		r.fail(tk, fmt.Sprintf("the push of %s was rejected, so %s stops for this Run: %v", specBranch, tk.SpecID(), err))
 		return nil
 	}
 	r.tlogf(tk, "pushed %s", specBranch)
@@ -329,7 +342,55 @@ func (r *run) work(ctx context.Context, tk tracker.Ticket, snap tracker.Snapshot
 	r.res.Closed = append(r.res.Closed, tk)
 	r.tlogf(tk, "closed")
 	r.discard(ctx, b)
+	r.releaseIfFinished(ctx, tk, spec)
 	return nil
+}
+
+// claim claims the Ticket's Spec (or the Ticket, if it stands alone) the
+// first time a Run takes a Ticket from it. A Spec the user claimed before
+// keeps its Claim.
+func (r *run) claim(ctx context.Context, tk tracker.Ticket, snap tracker.Snapshot) error {
+	id := tk.SpecID()
+	if snap.ClaimOf(tk) != nil || r.claimed[id.Key] {
+		return nil
+	}
+	if err := r.opts.Tracker.Claim(ctx, id); err != nil {
+		return err
+	}
+	r.claimed[id.Key] = true
+	r.logf("%s: claimed", id)
+	return nil
+}
+
+// releaseIfFinished releases the Claim on the Ticket's Spec once its last
+// Ticket closed; a standalone Ticket's closing is its last. The Ticket is
+// closed already, so a failed release only warns.
+func (r *run) releaseIfFinished(ctx context.Context, tk tracker.Ticket, spec *tracker.Spec) {
+	if spec != nil {
+		for _, st := range spec.Tickets {
+			if st.State == tracker.Open && !r.closed(st.ID) {
+				return
+			}
+		}
+	} else if tk.Parent != nil {
+		return // without the Spec's Ticket list, it can't be known
+	}
+	id := tk.SpecID()
+	if err := r.opts.Tracker.Release(ctx, id, r.user); err != nil {
+		r.logf("%s: warning: its last Ticket closed, but releasing its claim failed: %v", id, err)
+		return
+	}
+	r.logf("%s: released (its last Ticket closed)", id)
+}
+
+// closed reports whether this Run closed the Ticket.
+func (r *run) closed(id tracker.ID) bool {
+	for _, tk := range r.res.Closed {
+		if tk.ID.Key == id.Key {
+			return true
+		}
+	}
+	return false
 }
 
 // build is one Ticket's work on its Ticket branch.

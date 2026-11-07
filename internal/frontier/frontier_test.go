@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/frontier"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
@@ -14,17 +15,26 @@ const ready = "ready-for-agent"
 
 func plan(t *testing.T, maxParallel int, issues ...fake.Issue) frontier.Plan {
 	t.Helper()
+	return planFor(t, frontier.Options{MaxParallel: maxParallel}, issues...)
+}
+
+// planFor plans over issues as the fake Tracker's user "me", with opts
+// on top of the ready label and the fix.
+func planFor(t *testing.T, opts frontier.Options, issues ...fake.Issue) frontier.Plan {
+	t.Helper()
 	tr := fake.New(ready, issues...)
 	snap, err := tr.Snapshot(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	return frontier.Compute(snap, frontier.Options{
-		ReadyLabel:     ready,
-		MaxParallel:    maxParallel,
-		LinkBlockerFix: tr.Describe().LinkBlockerFix,
-	})
+	opts.ReadyLabel, opts.LinkBlockerFix, opts.User = ready, tr.Describe().LinkBlockerFix, tr.Me
+	return frontier.Compute(snap, opts)
 }
+
+const inProgress = "in-progress"
+
+// day is a claim date, the nth of November 2026.
+func day(n int) time.Time { return time.Date(2026, 11, n, 9, 0, 0, 0, time.UTC) }
 
 func taken(p frontier.Plan) []string {
 	var out []string
@@ -185,5 +195,78 @@ func TestBlockerOutsideTheSpecIsRespectedAndWarned(t *testing.T) {
 	}
 	if !slices.Equal(p.Warnings, want) {
 		t.Fatalf("warnings = %q\nwant       %q", p.Warnings, want)
+	}
+}
+
+func TestTheUsersClaimedSpecsComeFirstInClaimOrderThenSpecsByNumber(t *testing.T) {
+	issues := []fake.Issue{
+		{Number: 10, Title: "Spec unclaimed"},
+		{Number: 20, Title: "Spec claimed second", Labels: []string{inProgress}, ClaimedBy: "me", ClaimedAt: day(2)},
+		{Number: 30, Title: "Spec claimed first", Labels: []string{inProgress}, ClaimedBy: "me", ClaimedAt: day(1)},
+		{Number: 5, Title: "Standalone", Labels: []string{ready}},
+		{Number: 11, Title: "A", Labels: []string{ready}, Parent: 10},
+		{Number: 22, Title: "B2", Labels: []string{ready}, Parent: 20},
+		{Number: 21, Title: "B1", Labels: []string{ready}, Parent: 20},
+		{Number: 31, Title: "C", Labels: []string{ready}, Parent: 30},
+		{Number: 40, Title: "Standalone, claimed", Labels: []string{ready, inProgress}, ClaimedBy: "me", ClaimedAt: day(3)},
+	}
+
+	p := planFor(t, frontier.Options{MaxParallel: 10}, issues...)
+
+	if got, want := taken(p), []string{"#31", "#21", "#22", "#40", "#5", "#11"}; !slices.Equal(got, want) {
+		t.Fatalf("taken = %v, want %v", got, want)
+	}
+}
+
+func TestSpecsClaimedByOthersAreSkippedAndListedWithClaimerAndDate(t *testing.T) {
+	issues := []fake.Issue{
+		{Number: 10, Title: "Alice's Spec", Labels: []string{inProgress}, Assignees: []string{"alice"}, ClaimedAt: day(4)},
+		{Number: 11, Title: "In it", Labels: []string{ready}, Parent: 10},
+		{Number: 12, Title: "Also in it", Labels: []string{ready}, Parent: 10},
+		{Number: 5, Title: "Bob's Ticket", Labels: []string{ready, inProgress}, ClaimedBy: "bob", ClaimedAt: day(2)},
+		{Number: 6, Title: "Free", Labels: []string{ready}},
+	}
+
+	p := planFor(t, frontier.Options{MaxParallel: 10}, issues...)
+
+	if got := taken(p); !slices.Equal(got, []string{"#6"}) {
+		t.Fatalf("taken = %v, want [#6]", got)
+	}
+	want := []tracker.Claimed{
+		{ID: fake.ID(5), Title: "Bob's Ticket", Claim: tracker.Claim{By: "bob", At: day(2)}},
+		{ID: fake.ID(10), Title: "Alice's Spec", Claim: tracker.Claim{By: "alice", At: day(4)}},
+	}
+	if !slices.Equal(p.ClaimedByOthers, want) {
+		t.Fatalf("claimed by others = %+v\nwant                %+v", p.ClaimedByOthers, want)
+	}
+	if len(p.Skipped) != 0 {
+		t.Fatalf("skipped = %+v, want none: claimed Specs are listed once, not per Ticket", p.Skipped)
+	}
+}
+
+func TestOnlyLimitsThePlanToOneSpecOrStandaloneTicket(t *testing.T) {
+	issues := []fake.Issue{
+		{Number: 10, Title: "Spec"},
+		{Number: 11, Title: "In it", Labels: []string{ready}, Parent: 10},
+		{Number: 5, Title: "Standalone", Labels: []string{ready}},
+		{Number: 20, Title: "Other Spec", Labels: []string{inProgress}, ClaimedBy: "alice"},
+		{Number: 21, Title: "In other", Labels: []string{ready}, Parent: 20},
+	}
+
+	for _, tc := range []struct {
+		only string
+		want []string
+	}{
+		{"10", []string{"#11"}},
+		{"#5", []string{"#5"}},
+		{"11", nil}, // a Ticket of a Spec is not a scope
+	} {
+		p := planFor(t, frontier.Options{MaxParallel: 10, Only: tc.only}, issues...)
+		if got := taken(p); !slices.Equal(got, tc.want) {
+			t.Errorf("only %s: taken = %v, want %v", tc.only, got, tc.want)
+		}
+		if len(p.ClaimedByOthers) != 0 {
+			t.Errorf("only %s: claimed by others = %+v, want none outside the scope", tc.only, p.ClaimedByOthers)
+		}
 	}
 }

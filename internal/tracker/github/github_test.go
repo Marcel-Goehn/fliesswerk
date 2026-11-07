@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/github"
@@ -52,11 +53,11 @@ func (r *fixtureRunner) Run(_ context.Context, stdin []byte, args ...string) ([]
 	return data, nil
 }
 
-const listArgs = "issue list --repo " + repo + " --state open --label ready-for-agent --limit 1000 --json number,title,body,labels,state,url,parent,subIssues,blockedBy"
-const viewSpecArgs = "issue view 31 --repo " + repo + " --json number,title,body,state,url,subIssues"
+const listArgs = "issue list --repo " + repo + " --state open --label ready-for-agent --limit 1000 --json number,title,body,labels,state,url,parent,subIssues,blockedBy,assignees"
+const viewSpecArgs = "issue view 31 --repo " + repo + " --json number,title,body,state,url,subIssues,labels,assignees"
 
 func newTracker(r *fixtureRunner) *github.Tracker {
-	return github.New(github.Options{Repo: repo, ReadyLabel: "ready-for-agent", Runner: r, GOOS: "linux"})
+	return github.New(github.Options{Repo: repo, ReadyLabel: "ready-for-agent", InProgressLabel: "in-progress", Runner: r, GOOS: "linux"})
 }
 
 func ticket(t *testing.T, snap tracker.Snapshot, display string) tracker.Ticket {
@@ -323,5 +324,116 @@ func TestSnapshotRefusesCutShortBlockerLists(t *testing.T) {
 	_, err := newTracker(r).Snapshot(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "#5") || !strings.Contains(err.Error(), "1 of its 2 Blockers") {
 		t.Fatalf("err = %v, want it to refuse #5's cut-short Blocker list", err)
+	}
+}
+
+// eventsArgs is the gh call that reads when issue n got the in-progress
+// label, and from whom.
+func eventsArgs(path string) string {
+	return "api --paginate " + path + `/events --jq .[] | select(.event == "labeled" and .label.name == "in-progress") | [.actor.login, .created_at] | @tsv`
+}
+
+func TestSnapshotReadsClaimsWithClaimerAndDate(t *testing.T) {
+	list := `[{"number":5,"title":"Alone","body":"","state":"OPEN","url":"https://github.com/` + repo + `/issues/5",
+		"labels":[{"name":"ready-for-agent"},{"name":"in-progress"}],"assignees":[{"login":"lead"},{"login":"alice"}],"parent":null,
+		"subIssues":{"nodes":[],"totalCount":0},"blockedBy":{"nodes":[],"totalCount":0}},
+		{"number":32,"title":"In a Spec","body":"","state":"OPEN","url":"https://github.com/` + repo + `/issues/32",
+		"labels":[{"name":"ready-for-agent"}],"assignees":[],"parent":{"number":31,"state":"OPEN","title":"S","url":"https://github.com/` + repo + `/issues/31"},
+		"subIssues":{"nodes":[],"totalCount":0},"blockedBy":{"nodes":[],"totalCount":0}},
+		{"number":8,"title":"Relabelled","body":"","state":"OPEN","url":"https://github.com/` + repo + `/issues/8",
+		"labels":[{"name":"ready-for-agent"},{"name":"in-progress"}],"assignees":[{"login":"carol"}],"parent":null,
+		"subIssues":{"nodes":[],"totalCount":0},"blockedBy":{"nodes":[],"totalCount":0}},
+		{"number":7,"title":"Unclaimed","body":"","state":"OPEN","url":"https://github.com/` + repo + `/issues/7",
+		"labels":[{"name":"ready-for-agent"}],"assignees":[{"login":"bob"}],"parent":null,
+		"subIssues":{"nodes":[],"totalCount":0},"blockedBy":{"nodes":[],"totalCount":0}}]`
+	spec := `{"number":31,"title":"S","body":"","state":"OPEN","url":"https://github.com/` + repo + `/issues/31",
+		"labels":[{"name":"in-progress"}],"assignees":[{"login":"bob"}],
+		"subIssues":{"nodes":[{"number":32,"state":"OPEN","title":"In a Spec","url":"https://github.com/` + repo + `/issues/32"}],"totalCount":1}}`
+	r := &fixtureRunner{t: t, inline: map[string]string{
+		listArgs:     list,
+		viewSpecArgs: spec,
+		// alice labelled #5 twice; the last time counts.
+		eventsArgs("repos/" + repo + "/issues/5"):  "alice\t2026-11-01T08:00:00Z\nalice\t2026-11-03T10:30:00Z\n",
+		eventsArgs("repos/" + repo + "/issues/31"): "",
+		// carol claimed #8; later a bot, and a since-deleted user, re-added the label.
+		eventsArgs("repos/" + repo + "/issues/8"): "carol\t2026-11-01T08:00:00Z\nbot\t2026-11-04T08:00:00Z\n\t2026-11-05T08:00:00Z\n",
+	}}
+
+	snap, err := newTracker(r).Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if c := ticket(t, snap, "#5").Claim; c == nil || *c != (tracker.Claim{By: "alice", At: time.Date(2026, 11, 3, 10, 30, 0, 0, time.UTC)}) {
+		t.Errorf("#5 claim = %+v, want alice's on 2026-11-03: the labeller, not the first assignee", c)
+	}
+	if c := snap.Specs["31"].Claim; c == nil || c.By != "bob" || !c.At.IsZero() {
+		t.Errorf("Spec #31 claim = %+v, want bob's (its assignee, without a labelled event) with no date", c)
+	}
+	if c := ticket(t, snap, "#8").Claim; c == nil || *c != (tracker.Claim{By: "carol", At: time.Date(2026, 11, 1, 8, 0, 0, 0, time.UTC)}) {
+		t.Errorf("#8 claim = %+v, want carol's on 2026-11-01: the claimer is an assignee, whoever re-added the label", c)
+	}
+	if c := ticket(t, snap, "#7").Claim; c != nil {
+		t.Errorf("#7 claim = %+v, want none: an assignee without the label is no claim", c)
+	}
+	if c := ticket(t, snap, "#32").Claim; c != nil {
+		t.Errorf("#32 claim = %+v, want none: a Ticket of a Spec is claimed on its Spec", c)
+	}
+}
+
+func TestClaimsListsEveryOpenClaimedIssue(t *testing.T) {
+	list := `[{"number":31,"title":"S","url":"https://github.com/` + repo + `/issues/31","assignees":[{"login":"bob"}]}]`
+	r := &fixtureRunner{t: t, inline: map[string]string{
+		"issue list --repo " + repo + " --state open --label in-progress --limit 1000 --json number,title,url,assignees": list,
+		eventsArgs("repos/" + repo + "/issues/31"): "bob\t2026-11-02T09:00:00Z\n",
+	}}
+
+	got, err := newTracker(r).Claims(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []tracker.Claimed{{
+		ID:    tracker.ID{Key: "31", Display: "#31", Branch: "31", Order: 31},
+		Title: "S", Claim: tracker.Claim{By: "bob", At: time.Date(2026, 11, 2, 9, 0, 0, 0, time.UTC)},
+	}}
+	if !slices.Equal(got, want) {
+		t.Fatalf("claims = %+v, want %+v", got, want)
+	}
+}
+
+func TestUserAsksGhOnce(t *testing.T) {
+	r := &fixtureRunner{t: t, inline: map[string]string{"api user --jq .login": "me\n"}}
+	tr := newTracker(r)
+
+	for range 2 {
+		if u, err := tr.User(context.Background()); err != nil || u != "me" {
+			t.Fatalf("user = %q, %v; want me", u, err)
+		}
+	}
+	if len(r.calls) != 1 {
+		t.Fatalf("calls = %q, want one", r.calls)
+	}
+}
+
+func TestClaimAndReleaseGoThroughGh(t *testing.T) {
+	ctx := context.Background()
+	id := tracker.ID{Key: "31", Display: "#31", Branch: "31"}
+	r := &fixtureRunner{t: t}
+	tr := newTracker(r)
+
+	if err := tr.Claim(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	if err := tr.Release(ctx, id, "alice"); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []call{
+		{args: "issue edit 31 --repo " + repo + " --add-label in-progress --add-assignee @me"},
+		{args: "issue edit 31 --repo " + repo + " --remove-label in-progress --remove-assignee alice"},
+	}
+	if !slices.Equal(r.calls, want) {
+		t.Fatalf("calls = %q\nwant    %q", r.calls, want)
 	}
 }

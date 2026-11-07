@@ -160,6 +160,13 @@ func newRunProject(t *testing.T, bin string, issues []fake.Issue, script string)
 // Harness and git on PATH.
 func (p *runProject) run(t *testing.T, args ...string) int {
 	t.Helper()
+	return p.kwk(t, append([]string{"run"}, args...)...)
+}
+
+// kwk runs any kraftwerk command in the user's checkout, with the fake
+// Tracker, the fake Harness and git.
+func (p *runProject) kwk(t *testing.T, args ...string) int {
+	t.Helper()
 	gitBin, err := exec.LookPath("git")
 	if err != nil {
 		t.Skip("no git")
@@ -169,8 +176,24 @@ func (p *runProject) run(t *testing.T, args ...string) int {
 	env = append(env, "KWK_FAKE_TRACKER="+p.trackerPath, "KWK_FAKE_HARNESS_SCRIPT="+p.scriptPath)
 	env = append(env, p.extraEnv...)
 	var code int
-	p.stdout, p.stderr, code = runEnv(t, p.bin, p.work, env, append([]string{"run"}, args...)...)
+	p.stdout, p.stderr, code = runEnv(t, p.bin, p.work, env, args...)
 	return code
+}
+
+// writes reads the fake Tracker's writes back, in order.
+func (p *runProject) writes(t *testing.T) []fake.Write {
+	t.Helper()
+	data, err := os.ReadFile(p.trackerPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st struct {
+		Writes []fake.Write `json:"writes"`
+	}
+	if err := json.Unmarshal(data, &st); err != nil {
+		t.Fatal(err)
+	}
+	return st.Writes
 }
 
 // issues reads the fake Tracker's issues back, by number.
