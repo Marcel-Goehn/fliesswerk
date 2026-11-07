@@ -29,7 +29,8 @@ func restrict(f *os.File) error {
 	if err != nil {
 		return err
 	}
-	return windows.SetSecurityInfo(windows.Handle(f.Fd()), windows.SE_FILE_OBJECT,
+	// By name, not through f: f's handle wasn't opened with WRITE_DAC.
+	return windows.SetNamedSecurityInfo(f.Name(), windows.SE_FILE_OBJECT,
 		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
 		nil, nil, acl, nil)
 }

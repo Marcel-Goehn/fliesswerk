@@ -81,7 +81,7 @@ func TestCommandSourceUsesStdout(t *testing.T) {
 		t.Errorf("Resolve of a failing command = %v, want it to name the command", err)
 	}
 
-	_, err = r.Resolve(context.Background(), source(t, map[string]any{"command": "echo"}))
+	_, err = r.Resolve(context.Background(), source(t, map[string]any{"command": "exit 0"}))
 	if err == nil || !strings.Contains(err.Error(), "printed nothing") {
 		t.Errorf("Resolve of a command that prints nothing = %v, want it to say so", err)
 	}
