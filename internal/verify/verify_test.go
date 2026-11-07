@@ -117,3 +117,16 @@ func TestDoubleQuotesInACommandReachTheProgramIntact(t *testing.T) {
 		t.Fatalf("failure = %v\n%s", f, f.Output)
 	}
 }
+
+func TestTheShellIsFoundWithoutPATH(t *testing.T) {
+	// The Factory may run with a PATH that lacks the system's own
+	// directories; the shell is the system's, not PATH's.
+	t.Setenv("PATH", t.TempDir())
+
+	f := verify.Run(context.Background(), t.TempDir(), os.Environ(), time.Minute,
+		[]verify.Command{{Name: "exit", Line: "exit 0"}})
+
+	if f != nil {
+		t.Fatalf("failure = %v", f)
+	}
+}
