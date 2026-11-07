@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
@@ -63,9 +64,13 @@ func implementer(values map[string]any, out io.Writer) func(context.Context, fac
 		ReportSchema:     harness.ReportSchema,
 		ScrubCredentials: boolAt(values, true, "sandbox", "scrub_credentials"),
 	}
+	idleTimeout := durationAt(values, step.DefaultIdleTimeout, "steps", "implement", "idle_timeout")
+	timeout := durationAt(values, step.DefaultTimeout, "steps", "implement", "timeout")
 	return func(ctx context.Context, req factory.Step) harness.Outcome {
 		r := step.Runner{
-			Harness: claudecode.ClaudeCode{}, // "claude_code" is the only Harness
+			Harness:     claudecode.ClaudeCode{}, // "claude_code" is the only Harness
+			IdleTimeout: idleTimeout,
+			Timeout:     timeout,
 			OnEvent: func(e harness.Event) {
 				if e.Kind == harness.ToolCall {
 					_, _ = fmt.Fprintln(out, strings.TrimSpace(fmt.Sprintf("%s implement: %s %s", req.Ticket.ID, e.Tool, e.Summary)))
@@ -81,6 +86,15 @@ func implementer(values map[string]any, out io.Writer) func(context.Context, fac
 // stepSetting is a Step's own setting, or else the top-level one.
 func stepSetting(values map[string]any, stepName, key string) string {
 	return stringAt(values, stringAt(values, "", key), "steps", stepName, key)
+}
+
+// durationAt is the duration at a key path, def if there is none. The
+// config has already checked that it parses.
+func durationAt(values map[string]any, def time.Duration, path ...string) time.Duration {
+	if d, err := time.ParseDuration(stringAt(values, "", path...)); err == nil {
+		return d
+	}
+	return def
 }
 
 // printResult prints how the Run ended and returns its exit code.

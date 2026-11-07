@@ -2,6 +2,7 @@ package step_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -100,6 +101,192 @@ func TestAHarnessLingeringAfterItsResultIsKilledAfterTheGrace(t *testing.T) {
 	if out.Kind != harness.Reported {
 		t.Fatalf("outcome = %+v, want the report given before the kill", out)
 	}
+}
+
+func TestAGrandchildHoldingStdoutIsKilledWithTheHarnessAfterTheGrace(t *testing.T) {
+	withFakeHarness(t, `{"sessions": [{"actions": [{"background": "beat"}],
+		"report": {"outcome": "done", "summary": "ok"}, "linger": "1m"}]}`)
+	dir := t.TempDir()
+	r := step.Runner{Harness: claudecode.ClaudeCode{}, Grace: 100 * time.Millisecond}
+
+	start := time.Now()
+	out := r.Run(context.Background(), newStep("go"), dir)
+
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Errorf("the Step took %s; the tree wasn't killed after the grace", elapsed)
+	}
+	if out.Kind != harness.Reported {
+		t.Errorf("outcome = %+v, want the report given before the kill", out)
+	}
+	assertStopped(t, filepath.Join(dir, "beat"))
+}
+
+func TestWhatAHarnessLeavesBehindIsKilledWhenItExits(t *testing.T) {
+	withFakeHarness(t, `{"sessions": [{"actions": [{"background": "beat"}, {"sleep": "300ms"}],
+		"report": {"outcome": "done", "summary": "ok"}}]}`)
+	dir := t.TempDir()
+
+	start := time.Now()
+	out := step.Runner{Harness: claudecode.ClaudeCode{}}.Run(context.Background(), newStep("go"), dir)
+
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Errorf("the Step took %s; it waited for the leftover process", elapsed)
+	}
+	if out.Kind != harness.Reported {
+		t.Errorf("outcome = %+v, want the report", out)
+	}
+	assertStopped(t, filepath.Join(dir, "beat"))
+}
+
+func TestOnLinuxAGrandchildThatLeavesTheProcessGroupIsKilledToo(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("only the PID namespace on Linux catches a process that calls setsid")
+	}
+	withFakeHarness(t, `{"sessions": [{"actions": [{"background": "beat", "detach": true}],
+		"report": {"outcome": "done", "summary": "ok"}, "linger": "1m"}]}`)
+	dir := t.TempDir()
+	r := step.Runner{Harness: claudecode.ClaudeCode{}, Grace: 100 * time.Millisecond}
+
+	start := time.Now()
+	r.Run(context.Background(), newStep("go"), dir)
+
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Errorf("the Step took %s; the detached grandchild kept the output open", elapsed)
+	}
+	assertStopped(t, filepath.Join(dir, "beat"))
+}
+
+// assertStopped fails unless the fake's background grandchild beating into
+// path has started and is dead now.
+func assertStopped(t *testing.T, path string) {
+	t.Helper()
+	size := func() int64 {
+		fi, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("the grandchild never ran: %v", err)
+		}
+		return fi.Size()
+	}
+	before := size()
+	time.Sleep(300 * time.Millisecond)
+	if after := size(); after != before {
+		t.Errorf("the grandchild is still running (%s grew from %d to %d bytes)", path, before, after)
+	}
+}
+
+func TestASilentStepFailsAtTheIdleTimeoutWithItsTree(t *testing.T) {
+	withFakeHarness(t, `{"sessions": [{"actions": [{"background": "beat"}, {"sleep": "1m"}],
+		"report": {"outcome": "done", "summary": "ok"}}]}`)
+	dir := t.TempDir()
+	r := step.Runner{Harness: claudecode.ClaudeCode{}, IdleTimeout: 500 * time.Millisecond}
+
+	start := time.Now()
+	out := r.Run(context.Background(), newStep("go"), dir)
+
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Errorf("the Step took %s; the idle timeout didn't fire", elapsed)
+	}
+	if out.Kind != harness.Failed || out.Class != harness.Other || !strings.Contains(out.Message, "idle timeout") {
+		t.Errorf("outcome = %+v, want an idle timeout failure", out)
+	}
+	assertStopped(t, filepath.Join(dir, "beat"))
+}
+
+func TestAStepThatKeepsTalkingFailsAtTheStepTimeout(t *testing.T) {
+	withFakeHarness(t, `{"sessions": [{"actions": [{"chatter": "1m"}],
+		"report": {"outcome": "done", "summary": "ok"}}]}`)
+	r := step.Runner{Harness: claudecode.ClaudeCode{}, IdleTimeout: 500 * time.Millisecond, Timeout: 1500 * time.Millisecond}
+
+	start := time.Now()
+	out := r.Run(context.Background(), newStep("go"), t.TempDir())
+
+	if elapsed := time.Since(start); elapsed < time.Second || elapsed > 6*time.Second {
+		t.Errorf("the Step took %s; want it killed at the Step timeout, not the idle one", elapsed)
+	}
+	if out.Kind != harness.Failed || out.Class != harness.Other || !strings.Contains(out.Message, "Step timeout") {
+		t.Errorf("outcome = %+v, want a Step timeout failure", out)
+	}
+}
+
+func TestEveryStepGetsTheNonInteractiveGitEnv(t *testing.T) {
+	withFakeHarness(t, `{"sessions": [{"report": {"outcome": "done", "summary": "ok"}}]}`)
+	logPath := filepath.Join(t.TempDir(), "log.jsonl")
+	t.Setenv("KWK_FAKE_HARNESS_LOG", logPath)
+	t.Setenv("GIT_EDITOR", "vim")
+
+	out := step.Runner{Harness: claudecode.ClaudeCode{}}.Run(context.Background(), newStep("go"), t.TempDir())
+
+	if out.Kind != harness.Reported {
+		t.Fatalf("outcome = %+v, want a report", out)
+	}
+	log := readInvocation(t, logPath)
+	for k, v := range map[string]string{"GIT_TERMINAL_PROMPT": "0", "GIT_EDITOR": "true", "GIT_PAGER": "cat"} {
+		if log.Env[k] != v {
+			t.Errorf("%s = %q, want %q", k, log.Env[k], v)
+		}
+	}
+}
+
+// npmShim is the shim npm writes for a package whose bin is an executable.
+const npmShim = "@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n" +
+	"\"%dp0%\\node_modules\\fake\\bin\\claude.exe\"   %*\r\n"
+
+func TestOnWindowsACmdShimIsFollowedToTheRealExecutable(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("cmd shims are a Windows thing")
+	}
+	path := os.Getenv("PATH")
+	withFakeHarness(t, `{"sessions": [{"report": {"outcome": "done", "summary": "ok"}}]}`)
+	shimDir := t.TempDir()
+	target := filepath.Join(shimDir, "node_modules", "fake", "bin", "claude.exe")
+	if err := os.MkdirAll(filepath.Dir(target), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	exe, err := os.ReadFile(filepath.Join(fakeDir, "claude.exe")) //nolint:gosec // the fake this test built
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, exe, 0o700); err != nil { //nolint:gosec // an executable must be executable
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(shimDir, "claude.cmd"), []byte(npmShim), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Only the shim is on PATH, not the fake itself.
+	t.Setenv("PATH", shimDir+string(os.PathListSeparator)+path)
+	logPath := filepath.Join(t.TempDir(), "log.jsonl")
+	t.Setenv("KWK_FAKE_HARNESS_LOG", logPath)
+
+	s := newStep("go")
+	out := step.Runner{Harness: claudecode.ClaudeCode{}}.Run(context.Background(), s, t.TempDir())
+
+	if out.Kind != harness.Reported {
+		t.Fatalf("outcome = %+v, want a report", out)
+	}
+	log := readInvocation(t, logPath)
+	if want := (claudecode.ClaudeCode{}).Command(s).Argv[1:]; strings.Join(log.Argv, "\x00") != strings.Join(want, "\x00") {
+		t.Errorf("the Harness got argv %q, want %q unchanged", log.Argv, want)
+	}
+}
+
+// invocation is how the fake Harness logged it was started.
+type invocation struct {
+	Argv []string          `json:"argv"`
+	Env  map[string]string `json:"env"`
+}
+
+// readInvocation reads the one invocation the fake Harness logged at path.
+func readInvocation(t *testing.T, path string) invocation {
+	t.Helper()
+	data, err := os.ReadFile(path) //nolint:gosec // the test names its log
+	if err != nil {
+		t.Fatal(err)
+	}
+	var inv invocation
+	if err := json.Unmarshal(data, &inv); err != nil {
+		t.Fatal(err)
+	}
+	return inv
 }
 
 func TestACancelledStepIsKilled(t *testing.T) {

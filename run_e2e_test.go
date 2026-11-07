@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
 )
@@ -290,5 +291,26 @@ func TestTheFakeTrackerNeverShips(t *testing.T) {
 
 	if code != 2 || !strings.Contains(stderr, "fakegh") {
 		t.Fatalf("exit code = %d, want 2 from gh, not the fake Tracker; stderr: %s", code, stderr)
+	}
+}
+
+func TestRunStopsASilentStepAtItsConfiguredIdleTimeout(t *testing.T) {
+	bin := buildTestKraftwerk(t)
+	p := newRunProject(t, bin, cartIssues(), `{"sessions": [{"match": "Ticket #2", "actions": [{"sleep": "1m"}],
+		"report": {"outcome": "done", "summary": "ok"}}]}`)
+	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"),
+		"[sandbox]\nkind = \"none\"\ni_accept_unsandboxed_risk = true\n[steps.implement]\nidle_timeout = \"1s\"\n")
+
+	start := time.Now()
+	code := p.run(t)
+
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+	}
+	if elapsed := time.Since(start); elapsed > 30*time.Second {
+		t.Errorf("the Run took %s; the configured idle timeout didn't apply", elapsed)
+	}
+	if !strings.Contains(p.stdout, "no output for 1s (idle timeout)") {
+		t.Errorf("stdout lacks the idle timeout:\n%s", p.stdout)
 	}
 }

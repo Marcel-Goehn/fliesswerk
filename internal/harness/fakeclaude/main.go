@@ -13,7 +13,11 @@
 //	  "actions": [
 //	    {"text": "Reading the cart."},
 //	    {"write": "src/cart.go", "content": "package cart\n"},
-//	    {"run": ["git", "commit", "-am", "Add cart"]}
+//	    {"run": ["git", "commit", "-am", "Add cart"]},
+//	    {"background": "beat"},  // start a grandchild that keeps stdout open
+//	    {"background": "beat", "detach": true},  // … in its own session (setsid)
+//	    {"sleep": "1m"},         // go silent
+//	    {"chatter": "1m"}        // write a text event every 50ms
 //	  ],
 //	  "report":  {"outcome": "done", "summary": "…"},  // left out: no report
 //	  "error":   "auth",         // auth | transient | other: fail instead
@@ -23,7 +27,12 @@
 //
 // The first session whose match is in the prompt runs. Every invocation is
 // appended to $KWK_FAKE_HARNESS_LOG, if set, as a JSON line
-// {"argv": […], "prompt": "…", "env": {…}} with the CLAUDE_CODE_* env.
+// {"argv": […], "prompt": "…", "env": {…}} with the CLAUDE_CODE_* and
+// GIT_* env.
+//
+// A `background` grandchild inherits stdout and stderr and appends a byte
+// to the named file, relative to the work dir, every 20ms until it is
+// killed: a test sees it is dead once the file stops growing.
 package main
 
 import (
@@ -56,11 +65,22 @@ type action struct {
 	Write   string   `json:"write"`
 	Content string   `json:"content"`
 	Run     []string `json:"run"`
+	// Background, Sleep and Chatter are a file name and durations.
+	Background string `json:"background"`
+	Sleep      string `json:"sleep"`
+	Chatter    string `json:"chatter"`
+	Detach     bool   `json:"detach"`
 }
+
+// envBeat makes the fake a background grandchild beating into this file.
+const envBeat = "KWK_FAKE_BEAT"
 
 const sessionID = "00000000-0000-4000-8000-00000000fa4e"
 
 func main() {
+	if path := os.Getenv(envBeat); path != "" {
+		beat(path)
+	}
 	args := os.Args[1:]
 	if len(args) == 1 && args[0] == "--version" {
 		fmt.Println("2.1.319 (Claude Code)")
@@ -101,11 +121,7 @@ func main() {
 	}
 
 	if s.Linger != "" {
-		d, err := time.ParseDuration(s.Linger)
-		if err != nil {
-			fail("fakeclaude: linger: %v", err)
-		}
-		time.Sleep(d)
+		time.Sleep(duration(s.Linger))
 	}
 	code := 0
 	if s.Error != "" {
@@ -203,6 +219,27 @@ func (w *writer) act(a action) {
 			result = err.Error()
 		}
 		w.toolCall("Write", map[string]any{"file_path": path, "content": a.Content}, result, err != nil)
+	case a.Background != "":
+		self, err := os.Executable()
+		if err != nil {
+			fail("fakeclaude: %v", err)
+		}
+		cmd := exec.Command(self) //nolint:gosec // the fake starts itself
+		cmd.Env = append(os.Environ(), envBeat+"="+filepath.Join(cwd(), filepath.FromSlash(a.Background)))
+		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+		if a.Detach {
+			detach(cmd)
+		}
+		if err := cmd.Start(); err != nil {
+			fail("fakeclaude: background: %v", err)
+		}
+	case a.Sleep != "":
+		time.Sleep(duration(a.Sleep))
+	case a.Chatter != "":
+		for end := time.Now().Add(duration(a.Chatter)); time.Now().Before(end); {
+			w.assistant(map[string]any{"type": "text", "text": "still working"})
+			time.Sleep(50 * time.Millisecond)
+		}
 	case len(a.Run) > 0:
 		cmd := exec.Command(a.Run[0], a.Run[1:]...) //nolint:gosec // a test script names the command
 		out, err := cmd.CombinedOutput()
@@ -270,7 +307,7 @@ func logInvocation(args []string, prompt string) {
 	}
 	env := map[string]string{}
 	for _, kv := range os.Environ() {
-		if k, v, _ := strings.Cut(kv, "="); strings.HasPrefix(k, "CLAUDE_CODE_") {
+		if k, v, _ := strings.Cut(kv, "="); strings.HasPrefix(k, "CLAUDE_CODE_") || strings.HasPrefix(k, "GIT_") {
 			env[k] = v
 		}
 	}
@@ -281,6 +318,26 @@ func logInvocation(args []string, prompt string) {
 	}
 	_, _ = f.Write(append(line, '\n'))
 	_ = f.Close()
+}
+
+func duration(s string) time.Duration {
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		fail("fakeclaude: %v", err)
+	}
+	return d
+}
+
+// beat appends a byte to path every 20ms, forever.
+func beat(path string) {
+	for {
+		f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec // the test names the file
+		if err == nil {
+			_, _ = f.Write([]byte{'.'})
+			_ = f.Close()
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 func hasFlag(args []string, name, value string) bool { return flagValue(args, name) == value }
