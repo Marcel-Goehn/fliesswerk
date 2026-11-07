@@ -448,7 +448,8 @@ func TestAFailureCommentDropsTheExcerptIfASecretSurvives(t *testing.T) {
 	// A key that spans lines gets past the redaction of each line.
 	key := "BEGIN KEY\nc2VjcmV0\nEND KEY"
 	opts := failOptions(f, tr, newFiles())
-	opts.Verify = []verify.Command{{Name: "test", Line: "echo BEGIN KEY && echo c2VjcmV0 && echo END KEY && git grep -q fixed -- cart.go"}}
+	// No space before &&: cmd.exe's echo would print it.
+	opts.Verify = []verify.Command{{Name: "test", Line: "echo BEGIN KEY&& echo c2VjcmV0&& echo END KEY&& git grep -q fixed -- cart.go"}}
 	opts.VerifyEnv = os.Environ()
 	opts.Redactor = redact.New(key)
 
