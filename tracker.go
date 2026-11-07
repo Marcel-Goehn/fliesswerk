@@ -87,6 +87,7 @@ func stringAt(values map[string]any, def string, path ...string) string {
 	return def
 }
 
+// intAt is the whole number at a key path, def if there is none.
 func intAt(values map[string]any, def int, path ...string) int {
 	if v, ok := valueAt(values, path...).(int64); ok {
 		return int(v)
@@ -94,6 +95,7 @@ func intAt(values map[string]any, def int, path ...string) int {
 	return def
 }
 
+// boolAt is the bool at a key path, def if there is none.
 func boolAt(values map[string]any, def bool, path ...string) bool {
 	if v, ok := valueAt(values, path...).(bool); ok {
 		return v

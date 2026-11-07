@@ -46,9 +46,7 @@ type Step struct {
 	Ticket tracker.Ticket
 	// Dir is where the Step runs: the project root inside the Ticket's
 	// worktree.
-	Dir string
-	// Branch is the Ticket branch checked out in the worktree.
-	Branch string
+	Dir    string
 	Prompt string
 }
 
@@ -237,7 +235,7 @@ func (r *run) work(ctx context.Context, tk tracker.Ticket, snap tracker.Snapshot
 
 	r.logf("%s implement: started on %s", tk.ID, ticketBranch)
 	out := r.opts.Implement(ctx, Step{
-		Ticket: tk, Dir: filepath.Join(ticketDir, r.rel), Branch: ticketBranch,
+		Ticket: tk, Dir: filepath.Join(ticketDir, r.rel),
 		Prompt: implementPrompt(tk, spec, ticketBranch),
 	})
 	switch {
@@ -263,16 +261,19 @@ func (r *run) work(ctx context.Context, tk tracker.Ticket, snap tracker.Snapshot
 		r.fail(tk, "reported done without changes")
 		return nil
 	}
-	if err := (git.Repo{Dir: specDir}).MergeFastForward(ctx, ticketBranch); err != nil {
-		r.fail(tk, fmt.Sprintf("%s can't be fast-forwarded to %s: %v", specBranch, ticketBranch, err))
-		return nil
-	}
-	if err := r.repo.Push(ctx, r.opts.Remote, specBranch); err != nil {
+	// The Ticket's tip goes to the remote Spec branch first, so a rejected
+	// push leaves the local Spec branch where it was. Then the local one
+	// fast-forwards to it.
+	if err := r.repo.Push(ctx, r.opts.Remote, ticketBranch, specBranch); err != nil {
 		r.stoppedSpecs[specOf(tk).Key] = true
 		r.fail(tk, fmt.Sprintf("the push of %s was rejected, so %s stops for this Run: %v", specBranch, specOf(tk), err))
 		return nil
 	}
 	r.logf("%s: pushed %s", tk.ID, specBranch)
+	if err := (git.Repo{Dir: specDir}).MergeFastForward(ctx, ticketBranch); err != nil {
+		r.fail(tk, fmt.Sprintf("%s was pushed, but the local branch can't be fast-forwarded to %s: %v", specBranch, ticketBranch, err))
+		return nil
+	}
 	if err := r.opts.Tracker.Close(ctx, tk.ID, closeComment(out.Report.Summary, commits, specBranch)); err != nil {
 		r.fail(tk, fmt.Sprintf("its commits are on %s, but closing it failed: %v", specBranch, err))
 		return nil
@@ -299,7 +300,7 @@ func (r *run) fail(tk tracker.Ticket, reason string) {
 func (r *run) specBranch(ctx context.Context, tk tracker.Ticket, spec *tracker.Spec) (string, error) {
 	kind, id, title := "ticket", tk.ID, tk.Title
 	if tk.Parent != nil {
-		kind, id = "spec", *tk.Parent
+		kind, id, title = "spec", *tk.Parent, ""
 		if spec != nil {
 			title = spec.Title
 		}
@@ -327,7 +328,7 @@ func (r *run) specBranch(ctx context.Context, tk tracker.Ticket, spec *tracker.S
 		r.logf("%s: continuing %s from %s", id, b, r.opts.Remote)
 		return b, r.repo.CreateBranch(ctx, b, r.opts.Remote+"/"+b)
 	}
-	b = prefix + Slug(title, kind)
+	b = prefix + slug(title, kind)
 	r.logf("%s: cutting %s from %s/%s", id, b, r.opts.Remote, r.opts.BaseBranch)
 	return b, r.repo.CreateBranch(ctx, b, r.opts.Remote+"/"+r.opts.BaseBranch)
 }
@@ -387,8 +388,7 @@ func (r *run) clearWorktree(ctx context.Context, dir string) error {
 	if err := os.RemoveAll(dir); err != nil {
 		return err
 	}
-	_, err := r.repo.Run(ctx, "worktree", "prune")
-	return err
+	return r.repo.PruneWorktrees(ctx)
 }
 
 // removeSpecWorktrees removes every Spec worktree at the end of the Run.

@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 )
 
@@ -174,19 +173,15 @@ func (r Repo) MergeFastForward(ctx context.Context, rev string) error {
 	return err
 }
 
-// Push pushes the local branch to the branch of the same name on remote.
-// It is never forced.
-func (r Repo) Push(ctx context.Context, remote, branch string) error {
-	ref := "refs/heads/" + branch
-	_, err := r.Run(ctx, "push", "--quiet", "--porcelain", remote, ref+":"+ref)
+// Push moves the branch dst on remote to the local branch src. It is
+// never forced, so the remote refuses it unless it is a fast-forward.
+func (r Repo) Push(ctx context.Context, remote, src, dst string) error {
+	_, err := r.Run(ctx, "push", "--quiet", "--porcelain", remote, "refs/heads/"+src+":refs/heads/"+dst)
 	return err
 }
 
-// Count is how many commits are reachable from to but not from from.
-func (r Repo) Count(ctx context.Context, from, to string) (int, error) {
-	out, err := r.Run(ctx, "rev-list", "--count", from+".."+to)
-	if err != nil {
-		return 0, err
-	}
-	return strconv.Atoi(out)
+// PruneWorktrees forgets worktrees whose directory is gone.
+func (r Repo) PruneWorktrees(ctx context.Context) error {
+	_, err := r.Run(ctx, "worktree", "prune")
+	return err
 }

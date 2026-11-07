@@ -19,15 +19,17 @@ const (
 	defaultBaseBranch    = "main"
 	defaultPrefix        = "kraftwerk"
 	defaultSandbox       = "container"
-	remote               = "origin"
 )
+
+// remote is the git remote branches are cut from and pushed to.
+const remote = "origin"
 
 // runFactory runs the Factory over the ready Tickets and prints how the Run
 // ended. Only `kind = "none"` exists so far, and only the implement Step.
 func runFactory(values map[string]any, root string, stdout, stderr io.Writer) int {
 	if kind := stringAt(values, defaultSandbox, "sandbox", "kind"); kind != "none" {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk run: the %s Sandbox isn't available in this kraftwerk yet; run with `--sandbox none --i-accept-unsandboxed-risk` (or set them in .kraftwerk/%s)\n",
-			kind, "config.local.toml")
+		_, _ = fmt.Fprintf(stderr, "kraftwerk run: the %s Sandbox isn't available in this kraftwerk yet; run with `--sandbox none --i-accept-unsandboxed-risk` (or set them in .kraftwerk/config.local.toml)\n",
+			kind)
 		return exitConfigError
 	}
 	tr, err := newTracker(values)
@@ -61,18 +63,18 @@ func implementer(values map[string]any, out io.Writer) func(context.Context, fac
 		ReportSchema:     harness.ReportSchema,
 		ScrubCredentials: boolAt(values, true, "sandbox", "scrub_credentials"),
 	}
-	return func(ctx context.Context, fs factory.Step) harness.Outcome {
+	return func(ctx context.Context, req factory.Step) harness.Outcome {
 		r := step.Runner{
 			Harness: claudecode.ClaudeCode{}, // "claude_code" is the only Harness
 			OnEvent: func(e harness.Event) {
 				if e.Kind == harness.ToolCall {
-					_, _ = fmt.Fprintln(out, strings.TrimSpace(fmt.Sprintf("%s implement: %s %s", fs.Ticket.ID, e.Tool, e.Summary)))
+					_, _ = fmt.Fprintln(out, strings.TrimSpace(fmt.Sprintf("%s implement: %s %s", req.Ticket.ID, e.Tool, e.Summary)))
 				}
 			},
 		}
 		st := s
-		st.Prompt = fs.Prompt
-		return r.Run(ctx, st, fs.Dir)
+		st.Prompt = req.Prompt
+		return r.Run(ctx, st, req.Dir)
 	}
 }
 
@@ -105,6 +107,7 @@ func printResult(stdout, stderr io.Writer, res factory.Result) int {
 	return exitOK
 }
 
+// pluralize is one if n is 1, else many.
 func pluralize(n int, one, many string) string {
 	if n == 1 {
 		return one

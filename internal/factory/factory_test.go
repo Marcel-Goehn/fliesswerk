@@ -343,3 +343,38 @@ func TestARunNeedsTheRuntimeStateIgnored(t *testing.T) {
 		t.Fatalf("stopped = %v, want a SetupError naming state/", res.Stopped)
 	}
 }
+
+func TestARejectedPushLeavesTheSpecBranchAndTheTicketAsTheyWere(t *testing.T) {
+	f := newFixture(t)
+	spec := "kraftwerk/spec-1-spec-shopping-cart"
+	git(t, f.work, "branch", spec, "main")
+	git(t, f.work, "push", "-q", "origin", spec)
+	localTip := git(t, f.work, "rev-parse", spec)
+	// Someone else pushes to the Spec branch.
+	other := filepath.Join(t.TempDir(), "other")
+	git(t, "", "clone", "-q", "-b", spec, f.remote, other)
+	write(t, filepath.Join(other, "theirs.txt"), "theirs\n")
+	git(t, other, "add", ".")
+	git(t, other, "commit", "-q", "-m", "Human commit")
+	git(t, other, "push", "-q", "origin", spec)
+	theirs := git(t, other, "rev-parse", "HEAD")
+	tr := fake.New(ready, cartSpec()...)
+
+	res := factory.Run(context.Background(), options(f, tr, commits(map[string]string{"cart.go": "package cart\n"}, "Done.")))
+
+	if len(res.Failed) != 1 || !strings.Contains(res.Failed[0].Reason, "push") {
+		t.Fatalf("failed = %+v, want #2 failed on the push", res.Failed)
+	}
+	if got := git(t, f.work, "rev-parse", spec); got != localTip {
+		t.Errorf("the local Spec branch moved to %s, want it left at %s", got, localTip)
+	}
+	if got := f.remoteRef(t, spec); got != theirs {
+		t.Errorf("the remote Spec branch is %s, want the human's commit %s kept", got, theirs)
+	}
+	if w := tr.Writes(); len(w) != 0 {
+		t.Errorf("tracker writes = %+v, want #2 left open", w)
+	}
+	if !gitOK(f.work, "rev-parse", "--verify", "-q", "refs/heads/kraftwerk/ticket-2") {
+		t.Error("the Ticket branch was deleted after the failed push")
+	}
+}

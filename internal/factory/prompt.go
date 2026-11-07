@@ -38,17 +38,17 @@ func closeComment(summary string, commits []git.Commit, branch string) string {
 	for _, c := range commits {
 		fmt.Fprintf(&b, "- %s %s\n", c.Short(), c.Subject)
 	}
-	fmt.Fprintf(&b, "\nClosed by Kraftwerk after pushing `%s`.\n", branch)
+	fmt.Fprintf(&b, "\nClosed by the Factory after pushing `%s`.\n", branch)
 	return b.String()
 }
 
 // maxSlug bounds a slug's length, so branch names stay readable.
 const maxSlug = 40
 
-// Slug turns a title into the branch-safe slug of a branch name: lower
+// slug turns a title into the branch-safe slug of a branch name: lower
 // case ASCII letters and digits, runs of anything else as one dash, cut
 // at a word boundary. A title with nothing usable gives fallback.
-func Slug(title, fallback string) string {
+func slug(title, fallback string) string {
 	var b strings.Builder
 	dash := false
 	for _, c := range strings.ToLower(title) {
