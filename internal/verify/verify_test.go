@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
 )
@@ -16,7 +17,7 @@ import (
 func TestEveryCommandPassing(t *testing.T) {
 	dir := t.TempDir()
 
-	f := verify.Run(context.Background(), dir, os.Environ(), []verify.Command{
+	f := verify.Run(context.Background(), dir, os.Environ(), time.Minute, []verify.Command{
 		{Name: "a", Line: "echo one"},
 		{Name: "b", Line: "echo two"},
 	})
@@ -27,7 +28,7 @@ func TestEveryCommandPassing(t *testing.T) {
 }
 
 func TestNoCommandsMeansNoChecks(t *testing.T) {
-	if f := verify.Run(context.Background(), t.TempDir(), os.Environ(), nil); f != nil {
+	if f := verify.Run(context.Background(), t.TempDir(), os.Environ(), time.Minute, nil); f != nil {
 		t.Fatalf("failure = %v, want none", f)
 	}
 }
@@ -36,7 +37,7 @@ func TestTheFirstFailingCommandStopsTheRestAndKeepsItsOutput(t *testing.T) {
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "ran")
 
-	f := verify.Run(context.Background(), dir, os.Environ(), []verify.Command{
+	f := verify.Run(context.Background(), dir, os.Environ(), time.Minute, []verify.Command{
 		{Name: "ok", Line: "echo fine"},
 		{Name: "test", Line: "git --no-such-flag"},
 		{Name: "after", Line: "echo x > ran"},
@@ -67,7 +68,7 @@ func TestCommandsRunInTheDirWithTheGivenEnv(t *testing.T) {
 		line = "echo %KWK_VERIFY_PROBE%> out.txt"
 	}
 
-	if f := verify.Run(context.Background(), dir, env, []verify.Command{{Name: "probe", Line: line}}); f != nil {
+	if f := verify.Run(context.Background(), dir, env, time.Minute, []verify.Command{{Name: "probe", Line: line}}); f != nil {
 		t.Fatalf("failure = %v", f)
 	}
 
@@ -87,5 +88,32 @@ func TestTailKeepsTheLastLines(t *testing.T) {
 	}
 	if got := f.Tail(10); got != "1\n2\n3\n4" {
 		t.Errorf("Tail(10) = %q, want all four lines", got)
+	}
+}
+
+func TestACommandThatHangsIsStoppedAtTheTimeoutWithWhatItStarted(t *testing.T) {
+	// The shell starts a child that holds the output open; both must go.
+	line := "sleep 30 & sleep 30"
+	if runtime.GOOS == "windows" {
+		line = "start /b ping -n 30 127.0.0.1 >nul & ping -n 30 127.0.0.1 >nul"
+	}
+	start := time.Now()
+
+	f := verify.Run(context.Background(), t.TempDir(), os.Environ(), 300*time.Millisecond, []verify.Command{{Name: "slow", Line: line}})
+
+	if f == nil || !strings.Contains(f.Error(), "300ms") {
+		t.Fatalf("failure = %v, want the timeout", f)
+	}
+	if elapsed := time.Since(start); elapsed > 10*time.Second {
+		t.Errorf("Run took %s; the command wasn't stopped at its timeout", elapsed)
+	}
+}
+
+func TestDoubleQuotesInACommandReachTheProgramIntact(t *testing.T) {
+	f := verify.Run(context.Background(), t.TempDir(), os.Environ(), time.Minute,
+		[]verify.Command{{Name: "quoted", Line: `git -c "kwk.probe=1" --version`}})
+
+	if f != nil {
+		t.Fatalf("failure = %v\n%s", f, f.Output)
 	}
 }

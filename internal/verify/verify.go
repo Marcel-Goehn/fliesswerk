@@ -5,9 +5,8 @@ package verify
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
-	"os/exec"
-	"runtime"
 	"strings"
 	"time"
 )
@@ -27,6 +26,7 @@ type Failure struct {
 	Err    error
 }
 
+// Error names the command and why it failed.
 func (f *Failure) Error() string {
 	return fmt.Sprintf("`%s` (%s) failed: %v", f.Command.Name, f.Command.Line, f.Err)
 }
@@ -38,25 +38,35 @@ func (f *Failure) Tail(n int) string {
 }
 
 // waitDelay bounds how long Run waits for a command's output once it has
-// exited or been stopped, in case something it started holds the pipes.
+// exited or been stopped, in case something escaped the kill and holds
+// the pipes.
 const waitDelay = 5 * time.Second
 
 // Run runs cmds one after another in dir with env, stopping at the first
-// that fails. No commands means no checks.
-func Run(ctx context.Context, dir string, env []string, cmds []Command) *Failure {
+// that fails. A command still running after timeout is stopped, with
+// every process it started. No commands means no checks.
+func Run(ctx context.Context, dir string, env []string, timeout time.Duration, cmds []Command) *Failure {
 	for _, c := range cmds {
-		var sh *exec.Cmd
-		if runtime.GOOS == "windows" {
-			sh = exec.CommandContext(ctx, "cmd.exe", "/d", "/s", "/c", c.Line) //nolint:gosec // the project's own Feedback command
-		} else {
-			sh = exec.CommandContext(ctx, "sh", "-c", c.Line) //nolint:gosec // the project's own Feedback command
+		if f := run(ctx, dir, env, timeout, c); f != nil {
+			return f
 		}
-		sh.Dir, sh.Env, sh.WaitDelay = dir, env, waitDelay
-		var out bytes.Buffer
-		sh.Stdout, sh.Stderr = &out, &out
-		if err := sh.Run(); err != nil {
-			return &Failure{Command: c, Output: out.String(), Err: err}
-		}
+	}
+	return nil
+}
+
+func run(ctx context.Context, dir string, env []string, timeout time.Duration, c Command) *Failure {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	sh := shell(ctx, c.Line)
+	sh.Dir, sh.Env, sh.WaitDelay = dir, env, waitDelay
+	var out bytes.Buffer
+	sh.Stdout, sh.Stderr = &out, &out
+	err := sh.Run()
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		err = fmt.Errorf("still running after %s (timeout)", timeout)
+	}
+	if err != nil {
+		return &Failure{Command: c, Output: out.String(), Err: err}
 	}
 	return nil
 }

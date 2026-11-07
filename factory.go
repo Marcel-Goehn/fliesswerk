@@ -71,6 +71,7 @@ func runFactory(values map[string]any, root string, stdout, stderr io.Writer) in
 		Review:         boolAt(values, true, "steps", "review", "enabled"),
 		Verify:         verifyCommands(values),
 		VerifyEnv:      s.commandEnv(boolAt(values, true, "sandbox", "scrub_credentials")),
+		VerifyTimeout:  step.DefaultTimeout,
 		Out:            stdout,
 		LinkBlockerFix: tr.Describe().LinkBlockerFix,
 	})
@@ -95,13 +96,13 @@ func stepRunner(values map[string]any, sec *secrets, out io.Writer) func(context
 	scrub := boolAt(values, true, "sandbox", "scrub_credentials")
 	env, unset := sec.stepEnv(scrub)
 	return func(ctx context.Context, req factory.Step) harness.Outcome {
-		set := settingsOf(values, req.Name)
+		settings := settingsOf(values, req.Name)
 		r := step.Runner{
-			Harness:     set.harness,
+			Harness:     settings.harness,
 			Env:         env,
 			Unset:       unset,
-			IdleTimeout: set.idleTimeout,
-			Timeout:     set.timeout,
+			IdleTimeout: settings.idleTimeout,
+			Timeout:     settings.timeout,
 			OnEvent: func(e harness.Event) {
 				if e.Kind == harness.ToolCall {
 					_, _ = fmt.Fprintln(out, strings.TrimSpace(fmt.Sprintf("%s %s: %s %s", req.Ticket.ID, req.Name, e.Tool, e.Summary)))
@@ -110,8 +111,8 @@ func stepRunner(values map[string]any, sec *secrets, out io.Writer) func(context
 		}
 		return r.Run(ctx, harness.Step{
 			Prompt:           req.Prompt,
-			Model:            set.model,
-			Effort:           set.effort,
+			Model:            settings.model,
+			Effort:           settings.effort,
 			ReportSchema:     harness.ReportSchema,
 			ScrubCredentials: scrub,
 		}, req.Dir)

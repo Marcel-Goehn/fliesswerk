@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/frontier"
 	"github.com/Marcel-Goehn/kraftwerk/internal/git"
@@ -44,6 +45,8 @@ type Options struct {
 	Verify []verify.Command
 	// VerifyEnv is the env Verify runs with.
 	VerifyEnv []string
+	// VerifyTimeout stops a Feedback command that runs longer.
+	VerifyTimeout time.Duration
 	// Out gets a line for everything the Run does.
 	Out io.Writer
 	// LinkBlockerFix comes from the Tracker's Description.
@@ -331,7 +334,7 @@ func (r *run) verify(ctx context.Context, b build) *verify.Failure {
 		return nil
 	}
 	r.logf("%s verify: started", b.tk.ID)
-	f := verify.Run(ctx, b.dir, r.opts.VerifyEnv, r.opts.Verify)
+	f := verify.Run(ctx, b.dir, r.opts.VerifyEnv, r.opts.VerifyTimeout, r.opts.Verify)
 	if f == nil {
 		r.logf("%s verify: passed", b.tk.ID)
 		return nil
@@ -364,10 +367,10 @@ func (r *run) implementAndReview(ctx context.Context, b build, failed *verify.Fa
 		return "", "the agent can't do it: " + out.Report.Reason, nil
 	}
 	summary = out.Report.Summary
-	if n, err := r.count(ctx, b.base, b.branch); err != nil || n == 0 {
+	if n, err := r.countCommits(ctx, b.base, b.branch); err != nil || n == 0 {
 		return "", errOr(err, "reported done without changes"), nil
 	}
-	implemented, err := r.count(ctx, start, b.branch)
+	implemented, err := r.countCommits(ctx, start, b.branch)
 	if err != nil {
 		return "", err.Error(), nil
 	}
@@ -388,7 +391,7 @@ func (r *run) implementAndReview(ctx context.Context, b build, failed *verify.Fa
 		r.logf("%s review: warning: reported cannot_do (%s); review can only approve or fix, so it counts as done",
 			tk.ID, firstNonEmpty(out.Report.Reason, out.Report.Summary))
 	}
-	fixes, err := r.count(ctx, before, b.branch)
+	fixes, err := r.countCommits(ctx, before, b.branch)
 	if err != nil {
 		return "", err.Error(), nil
 	}
@@ -414,8 +417,8 @@ func stepFailed(tk tracker.Ticket, name string, out harness.Outcome) (failure st
 	return "", nil
 }
 
-// count is how many commits branch has on top of from.
-func (r *run) count(ctx context.Context, from, branch string) (int, error) {
+// countCommits is how many commits branch has on top of from.
+func (r *run) countCommits(ctx context.Context, from, branch string) (int, error) {
 	commits, err := r.repo.Log(ctx, from, branch)
 	return len(commits), err
 }
@@ -544,6 +547,7 @@ func errOr(err error, msg string) string {
 	return msg
 }
 
+// firstNonEmpty is a, or b when a is empty.
 func firstNonEmpty(a, b string) string {
 	if a != "" {
 		return a
@@ -551,6 +555,7 @@ func firstNonEmpty(a, b string) string {
 	return b
 }
 
+// plural is one if n is 1, else many.
 func plural(n int, one, many string) string {
 	if n == 1 {
 		return one

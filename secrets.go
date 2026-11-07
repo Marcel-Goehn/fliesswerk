@@ -171,10 +171,10 @@ func (s *secrets) stepEnv(scrub bool) (env map[string]string, unset []string) {
 }
 
 // commandEnv is the env of the Feedback commands the Factory runs itself.
-// They run the agent's code, so they get what the agent's own commands
-// get: the Factory's env without host-only variables and, when scrubbing,
-// without the Harness's credential variables; the project secrets only
-// when scrubbing is off. Never the Harness's configured credential.
+// They run the agent's code, so they get no more than the agent's own
+// commands: the Factory's env without host-only variables, the project
+// secrets only when scrubbing is off, and never a Harness credential,
+// not even one from the Factory's own env while scrubbing is on.
 func (s *secrets) commandEnv(scrub bool) []string {
 	unset := slices.Clone(s.hostOnly)
 	if scrub {

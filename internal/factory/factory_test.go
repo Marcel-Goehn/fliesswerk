@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
@@ -113,7 +114,7 @@ func commits(files map[string]string, summary string) func(context.Context, fact
 	}
 }
 
-func options(f fixture, tr tracker.Tracker, implement func(context.Context, factory.Step) harness.Outcome) factory.Options {
+func options(f fixture, tr tracker.Tracker, runStep func(context.Context, factory.Step) harness.Outcome) factory.Options {
 	return factory.Options{
 		Tracker:       tr,
 		Root:          f.work,
@@ -123,7 +124,8 @@ func options(f fixture, tr tracker.Tracker, implement func(context.Context, fact
 		ReadyLabel:    ready,
 		MaxParallel:   1,
 		MaxIterations: 10,
-		RunStep:       implement,
+		RunStep:       runStep,
+		VerifyTimeout: time.Minute,
 		Out:           io.Discard,
 	}
 }
@@ -405,6 +407,7 @@ type byStep struct {
 	seen []factory.Step
 }
 
+// run is the RunStep that dispatches by name.
 func (b *byStep) run(ctx context.Context, s factory.Step) harness.Outcome {
 	b.seen = append(b.seen, s)
 	fn, ok := b.fns[s.Name]
@@ -414,6 +417,7 @@ func (b *byStep) run(ctx context.Context, s factory.Step) harness.Outcome {
 	return fn(ctx, s)
 }
 
+// names lists the Steps seen, in order.
 func (b *byStep) names() string {
 	var n []string
 	for _, s := range b.seen {
@@ -422,6 +426,7 @@ func (b *byStep) names() string {
 	return strings.Join(n, " ")
 }
 
+// reports is a Step that commits nothing and reports outcome.
 func reports(outcome, summary string) func(context.Context, factory.Step) harness.Outcome {
 	return func(context.Context, factory.Step) harness.Outcome {
 		return harness.Outcome{Kind: harness.Reported, Report: harness.Report{Outcome: outcome, Summary: summary, Reason: summary}}
