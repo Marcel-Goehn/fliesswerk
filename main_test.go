@@ -200,7 +200,11 @@ func projectDir(t *testing.T, files map[string]string) string {
 		t.Fatal(err)
 	}
 	for name, content := range files {
-		if err := os.WriteFile(filepath.Join(root, ".kraftwerk", name), []byte(content), 0o600); err != nil {
+		path := filepath.Join(root, ".kraftwerk", filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}

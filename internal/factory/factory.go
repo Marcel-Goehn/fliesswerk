@@ -18,6 +18,7 @@ import (
 	"github.com/Marcel-Goehn/kraftwerk/internal/frontier"
 	"github.com/Marcel-Goehn/kraftwerk/internal/git"
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
+	"github.com/Marcel-Goehn/kraftwerk/internal/prompt"
 	"github.com/Marcel-Goehn/kraftwerk/internal/redact"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
 	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
@@ -59,6 +60,15 @@ type Options struct {
 	// always is one: files, directories (ending in "/") or globs, relative
 	// to the project root.
 	ProtectedPaths []string
+	// Prompts are the project's editable parts of the prompts, by Step;
+	// a Step without one gets the built-in part.
+	Prompts map[string]prompt.Part
+	// Commands are the Feedback commands the prompts' `{{commands}}`
+	// lists.
+	Commands []verify.Command
+	// Standards is the Coding standards file review is told to follow, ""
+	// for none.
+	Standards string
 	// Backoff is how long to wait before a Step's nth retry after a
 	// transient error; nil is DefaultBackoff.
 	Backoff func(retry int) time.Duration
@@ -275,7 +285,17 @@ func (r *run) work(ctx context.Context, tk tracker.Ticket, snap tracker.Snapshot
 		return nil
 	}
 
-	b := build{tk: tk, spec: spec, branch: ticketBranch, worktree: ticketDir, dir: filepath.Join(ticketDir, r.rel), base: specTip}
+	pc, err := r.promptContext(ctx, tk, spec, ticketBranch)
+	if err != nil {
+		r.fail(tk, err.Error())
+		return nil
+	}
+	recent, err := r.recentCommits(ctx, specTip)
+	if err != nil {
+		r.fail(tk, err.Error())
+		return nil
+	}
+	b := build{tk: tk, prompt: pc, recent: recent, branch: ticketBranch, worktree: ticketDir, dir: filepath.Join(ticketDir, r.rel), base: specTip}
 	summary, failed, stop := r.build(ctx, b)
 	if stop != nil {
 		return stop
@@ -314,8 +334,10 @@ func (r *run) work(ctx context.Context, tk tracker.Ticket, snap tracker.Snapshot
 
 // build is one Ticket's work on its Ticket branch.
 type build struct {
-	tk   tracker.Ticket
-	spec *tracker.Spec
+	tk tracker.Ticket
+	// prompt and recent are what its Steps are told.
+	prompt prompt.Context
+	recent prompt.Recent
 	// branch is the Ticket branch, checked out in worktree; dir is the
 	// project root inside it.
 	branch, worktree, dir string
@@ -379,7 +401,7 @@ func (r *run) implementAndReview(ctx context.Context, b build, verifyFailed *ver
 		return "", factoryFailure(err), nil
 	}
 	r.tlogf(tk, "implement: started on %s", b.branch)
-	out, failed, stop := r.runStep(ctx, Step{Name: Implement, Ticket: tk, Dir: b.dir, Prompt: implementPrompt(tk, b.spec, b.branch, r.protectedPaths(), verifyFailed), Log: r.stepLog(tk, Implement)})
+	out, failed, stop := r.runStep(ctx, Step{Name: Implement, Ticket: tk, Dir: b.dir, Prompt: prompt.Implement(r.part(Implement), b.prompt, b.recent, verifyFailed), Log: r.stepLog(tk, Implement)})
 	if failed != nil || stop != nil {
 		return "", failed, stop
 	}
@@ -408,7 +430,7 @@ func (r *run) implementAndReview(ctx context.Context, b build, verifyFailed *ver
 		return "", factoryFailure(err), nil
 	}
 	r.tlogf(tk, "review: started")
-	out, failed, stop = r.runStep(ctx, Step{Name: Review, Ticket: tk, Dir: b.dir, Prompt: reviewPrompt(tk, b.spec, b.branch, b.base, r.protectedPaths()), Log: r.stepLog(tk, Review)})
+	out, failed, stop = r.runStep(ctx, Step{Name: Review, Ticket: tk, Dir: b.dir, Prompt: prompt.Review(r.part(Review), b.prompt, b.base), Log: r.stepLog(tk, Review)})
 	if failed != nil || stop != nil {
 		return "", failed, stop
 	}

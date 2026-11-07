@@ -1,101 +1,63 @@
 package factory
 
 import (
+	"context"
 	"fmt"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/git"
+	"github.com/Marcel-Goehn/kraftwerk/internal/prompt"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
-	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
 )
 
-// implementPrompt is the minimal built-in implement prompt: the Ticket,
-// its Spec, the rules and how to report. A retry after a failed verify
-// also gets the failing command's output.
-func implementPrompt(tk tracker.Ticket, spec *tracker.Spec, branch string, protected []string, failed *verify.Failure) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "# Task\n\nImplement Ticket %s: %s. Commit your work on the branch `%s`, which is checked out in the current directory.\n\n", tk.ID, tk.Title, branch)
-	ticketAndSpec(&b, tk, spec)
-	if failed != nil {
-		fence := codeFence(failed.Output)
-		fmt.Fprintf(&b, "## The Factory's checks failed\n\nThis is a retry. Your earlier commits are on the branch, but after them the Feedback command `%s` (`%s`) failed (%v). Its last lines:\n\n%s\n%s\n%s\n\nFix the cause, then commit.\n\n",
-			failed.Command.Name, failed.Command.Line, failed.Err, fence, failed.Tail(retryOutputLines), fence)
+// promptContext is what every Step of the Ticket is told, read once
+// before implement: its comments and its Spec, whose Ticket list counts
+// the Tickets this Run closed as closed. A sequential Run works on one
+// Ticket at a time, so none of the others is in progress.
+func (r *run) promptContext(ctx context.Context, tk tracker.Ticket, spec *tracker.Spec, branch string) (prompt.Context, error) {
+	comments, err := r.opts.Tracker.Comments(ctx, tk.ID)
+	if err != nil {
+		return prompt.Context{}, fmt.Errorf("reading its comments: %w", err)
 	}
-	rules(&b, branch, protected)
-	b.WriteString(`## Done
-
-When you are finished, report "done" with a short summary of what you changed.
-
-Report "cannot_do", with the reason, only if:
-
-1. the Ticket is ambiguous, or context is missing
-2. it needs a change to a Protected path
-3. it needs something from outside: a service, a credential, or another team's change
-4. tests fail and you can't fix them, including failures that were already there
-5. the Ticket is already done or no longer makes sense
-
-Anything else means try harder: nobody will answer questions.
-`)
-	return b.String()
-}
-
-// rules writes the fixed bottom's reminder and Rules.
-func rules(b *strings.Builder, branch string, protected []string) {
-	quoted := make([]string, len(protected))
-	for i, p := range protected {
-		quoted[i] = "`" + p + "`"
-	}
-	fmt.Fprintf(b, `Do not close the Ticket. The Factory closes it after your commits are merged and pushed.
-
-## Rules
-
-- Commit on %s. Don't push, switch branches, rebase or rewrite history.
-- Don't change the Protected paths: %s. A commit that does is rejected, and the Ticket goes back to a person.
-- Don't leave commented-out code or TODO comments.
-
-`, "`"+branch+"`", strings.Join(quoted, ", "))
-}
-
-// retryOutputLines is how many of a failed Feedback command's last lines
-// a retried implement gets.
-const retryOutputLines = 100
-
-// codeFence is a run of backticks longer than any in text, so text can't
-// end the block it is fenced in.
-func codeFence(text string) string {
-	longest, run := 0, 0
-	for _, c := range text {
-		if c == '`' {
-			run++
-			longest = max(longest, run)
-		} else {
-			run = 0
-		}
-	}
-	return strings.Repeat("`", max(3, longest+1))
-}
-
-// reviewPrompt is the minimal built-in review prompt: the Ticket, its
-// Spec, what changed since base, the rules and how to report.
-func reviewPrompt(tk tracker.Ticket, spec *tracker.Spec, branch, base string, protected []string) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "# Task\n\nReview the change made for Ticket %s: %s, with fresh eyes. Check that it does what the Ticket asks and that it is well written. Fix what you find and commit the fixes on the branch `%s`, which is checked out in the current directory. If it is fine as it is, commit nothing.\n\n", tk.ID, tk.Title, branch)
-	ticketAndSpec(&b, tk, spec)
-	fmt.Fprintf(&b, "## What changed\n\nThe change starts at the base commit `%s`. See it with `git log %s..HEAD` and `git diff %s..HEAD`. Review only this change.\n\n", base, base, base)
-	rules(&b, branch, protected)
-	b.WriteString(`## Done
-
-When you are finished, report "done" with a short summary of what you found and fixed, or that the change is fine as it is.
-`)
-	return b.String()
-}
-
-// ticketAndSpec writes the Ticket's and its Spec's sections.
-func ticketAndSpec(b *strings.Builder, tk tracker.Ticket, spec *tracker.Spec) {
-	fmt.Fprintf(b, "## Ticket %s: %s\n\n%s\n\n", tk.ID, tk.Title, strings.TrimSpace(tk.Body))
 	if spec != nil {
-		fmt.Fprintf(b, "## Spec %s: %s\n\n%s\n\n", spec.ID, spec.Title, strings.TrimSpace(spec.Body))
+		s := *spec
+		s.Tickets = slices.Clone(spec.Tickets)
+		for i, st := range s.Tickets {
+			if slices.ContainsFunc(r.res.Closed, func(c tracker.Ticket) bool { return c.ID.Key == st.ID.Key }) {
+				s.Tickets[i].State = tracker.Closed
+			}
+		}
+		spec = &s
 	}
+	return prompt.Context{
+		Ticket: tk, Comments: comments, Spec: spec,
+		Branch: branch, Protected: r.protectedPaths(), Commands: r.opts.Commands, Standards: r.opts.Standards,
+	}, nil
+}
+
+// recentCommits are the Spec branch's commits since the base branch, or,
+// while it has none, the base branch's last ones.
+func (r *run) recentCommits(ctx context.Context, specTip string) (prompt.Recent, error) {
+	base := r.opts.Remote + "/" + r.opts.BaseBranch
+	recent := prompt.Recent{BaseBranch: r.opts.BaseBranch, OnSpecBranch: true}
+	var err error
+	if recent.Commits, err = r.repo.Messages(ctx, base+".."+specTip); err != nil || len(recent.Commits) > 0 {
+		return recent, err
+	}
+	recent.OnSpecBranch = false
+	recent.Commits, err = r.repo.Messages(ctx, "-n", strconv.Itoa(prompt.RecentCommits), base)
+	return recent, err
+}
+
+// part is the project's editable part of step's prompt, or the built-in
+// one.
+func (r *run) part(step string) string {
+	if p, ok := r.opts.Prompts[step]; ok {
+		return p.Text
+	}
+	return prompt.Builtin(step, prompt.Latest(step))
 }
 
 // closeComment is the last comment on a Ticket the Factory closes.

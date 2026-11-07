@@ -65,6 +65,12 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 	_, _ = fmt.Fprintln(stdout, "kraftwerk check: the config is valid")
+	prompts, ok := loadPrompts(root, stderr)
+	if !ok {
+		_, _ = fmt.Fprintln(stderr, "kraftwerk check: fix the errors above")
+		return exitConfigError
+	}
+	warnAboutPrompts(prompts, stderr)
 	ctx := context.Background()
 	fail := func(err error) int {
 		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)

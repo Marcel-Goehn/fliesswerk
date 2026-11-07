@@ -214,3 +214,29 @@ func (r Repo) PruneWorktrees(ctx context.Context) error {
 	_, err := r.Run(ctx, "worktree", "prune")
 	return err
 }
+
+// Message is one commit with its full message.
+type Message struct {
+	SHA  string
+	Text string
+}
+
+// Short is the commit's abbreviated SHA.
+func (m Message) Short() string { return m.SHA[:min(len(m.SHA), 7)] }
+
+// Messages lists the commits `git log --no-merges args…` names, newest
+// first, with their full messages.
+func (r Repo) Messages(ctx context.Context, args ...string) ([]Message, error) {
+	out, err := r.Run(ctx, append([]string{"log", "--no-merges", "--format=%H%x00%B%x1e"}, args...)...)
+	if err != nil {
+		return nil, err
+	}
+	var msgs []Message
+	for _, rec := range strings.Split(out, "\x1e") {
+		sha, text, ok := strings.Cut(strings.TrimSpace(rec), "\x00")
+		if ok {
+			msgs = append(msgs, Message{SHA: sha, Text: strings.TrimSpace(text)})
+		}
+	}
+	return msgs, nil
+}

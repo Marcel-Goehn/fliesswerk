@@ -8,6 +8,7 @@ import (
 	"sync"
 	"unicode/utf8"
 
+	"github.com/Marcel-Goehn/kraftwerk/internal/prompt"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
 	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
 )
@@ -124,7 +125,7 @@ func (r *run) writeExcerpt(b *strings.Builder, tk tracker.Ticket, f *failure) {
 		b.WriteString("The log excerpt was left out: a secret survived its redaction.\n\n")
 		return
 	}
-	fence := codeFence(text)
+	fence := prompt.CodeFence(text)
 	fmt.Fprintf(b, "<details><summary>%s</summary>\n\n%s\n%s\n%s\n\n</details>\n\n", summary, fence, text, fence)
 }
 

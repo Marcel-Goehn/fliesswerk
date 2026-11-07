@@ -18,11 +18,12 @@ func main() {
 }
 
 const usage = `Usage:
-  kraftwerk check            validate the config, test the credentials and check the Tracker's tools
-  kraftwerk run              implement the ready Tickets, Iteration by Iteration
-  kraftwerk run --dry-run    show what Iteration 1 would take, and what is skipped and why
-  kraftwerk auth set <key>   store a secret, read from a hidden prompt, in your user-level credentials file
-  kraftwerk --version        print the version
+  kraftwerk check                 validate the config, test the credentials and check the Tracker's tools
+  kraftwerk run                   implement the ready Tickets, Iteration by Iteration
+  kraftwerk run --dry-run         show what Iteration 1 would take, and what is skipped and why
+  kraftwerk prompts diff <step>   show how the built-in prompt of a Step changed since your file's version
+  kraftwerk auth set <key>        store a secret, read from a hidden prompt, in your user-level credentials file
+  kraftwerk --version             print the version
 `
 
 // Exit codes, as fixed by the Spec (#31). A usage error counts as a config
@@ -45,6 +46,9 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 	}
 	if len(args) > 0 && args[0] == "run" {
 		return runRun(args[1:], stdout, stderr)
+	}
+	if len(args) > 0 && args[0] == "prompts" {
+		return runPrompts(args[1:], stdout, stderr)
 	}
 	if len(args) > 0 && args[0] == "auth" {
 		return runAuth(args[1:], os.Stdin, stdout, stderr)

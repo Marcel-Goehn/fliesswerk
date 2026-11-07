@@ -203,7 +203,7 @@ func cartIssues() []fake.Issue {
 // approves is a fake Harness session that reviews any Ticket and approves
 // it. It goes first, since an implement session's match may also be in the
 // review prompt.
-const approves = `{"match": "Review the change", "report": {"outcome": "done", "summary": "Looks good."}}`
+const approves = `{"match": "Review the code changes", "report": {"outcome": "done", "summary": "Looks good."}}`
 
 func TestRunImplementsATicketEndToEnd(t *testing.T) {
 	bin := buildTestKraftwerk(t)
@@ -361,7 +361,7 @@ func TestReviewApprovesInAFreshSession(t *testing.T) {
 
 func TestReviewFixesWhatItFinds(t *testing.T) {
 	bin := buildTestKraftwerk(t)
-	p := newRunProject(t, bin, cartIssues(), `{"sessions": [{"match": "Review the change", "actions": [
+	p := newRunProject(t, bin, cartIssues(), `{"sessions": [{"match": "Review the code changes", "actions": [
 		{"write": "cart/cart_test.go", "content": "package cart\n"},
 		{"run": ["git", "add", "cart/cart_test.go"]},
 		{"run": ["git", "commit", "-q", "-m", "Test the cart"]}
@@ -380,9 +380,9 @@ func TestReviewFixesWhatItFinds(t *testing.T) {
 
 func TestVerifyFailsThenPassesAfterImplementRetriesWithItsOutput(t *testing.T) {
 	bin := buildTestKraftwerk(t)
-	// The retry's prompt holds verify's output, so its session matches it.
+	// Only the retry's prompt says it is one, so its session matches that.
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, `+
-		implementsCart("cart.go lacks the fix", `package cart // fixed\n`)+`, `+
+		implementsCart("This is a retry", `package cart // fixed\n`)+`, `+
 		implementsCart("Implement Ticket #2", `package cart\n`)+`]}`)
 	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), "verify = [\"test\"]\n"+noSandbox+
 		"[commands]\ntest = \"git grep -q fixed -- cart/cart.go || (echo cart.go lacks the fix && exit 1)\"\n")

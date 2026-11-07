@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
@@ -43,6 +44,11 @@ func runFactory(values map[string]any, root string, stdout, stderr io.Writer) in
 	if kind := stringAt(values, defaultSandbox, "sandbox", "kind"); kind != "none" {
 		_, _ = fmt.Fprintf(stderr, "kraftwerk run: the %s Sandbox isn't available in this kraftwerk yet; run with `--sandbox none --i-accept-unsandboxed-risk` (or set them in .kraftwerk/config.local.toml)\n",
 			kind)
+		return exitConfigError
+	}
+	prompts, ok := loadPrompts(root, stderr)
+	if !ok {
+		_, _ = fmt.Fprintln(stderr, "kraftwerk run: the prompt files are not valid; fix the errors above")
 		return exitConfigError
 	}
 	ctx := context.Background()
@@ -87,6 +93,9 @@ func runFactory(values map[string]any, root string, stdout, stderr io.Writer) in
 		Out:            stdout,
 		LinkBlockerFix: tr.Describe().LinkBlockerFix,
 		ProtectedPaths: protectedPaths(values),
+		Prompts:        prompts,
+		Commands:       feedbackCommands(values),
+		Standards:      stringAt(values, "", "standards"),
 		Backoff:        transientBackoff,
 		Redactor:       s.redactor,
 		RunID:          time.Now().Format(runIDFormat),
@@ -196,6 +205,19 @@ func verifyCommands(values map[string]any) []verify.Command {
 		name, _ := n.(string)
 		cmds = append(cmds, verify.Command{Name: name, Line: stringAt(values, "", "commands", name)})
 	}
+	return cmds
+}
+
+// feedbackCommands are every Feedback command in [commands], by name,
+// for the prompts' `{{commands}}`.
+func feedbackCommands(values map[string]any) []verify.Command {
+	m, _ := valueAt(values, "commands").(map[string]any)
+	cmds := make([]verify.Command, 0, len(m))
+	for name, line := range m {
+		s, _ := line.(string)
+		cmds = append(cmds, verify.Command{Name: name, Line: s})
+	}
+	slices.SortFunc(cmds, func(a, b verify.Command) int { return strings.Compare(a.Name, b.Name) })
 	return cmds
 }
 
