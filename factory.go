@@ -21,7 +21,18 @@ const (
 	defaultBaseBranch    = "main"
 	defaultPrefix        = "kraftwerk"
 	defaultSandbox       = "container"
+	defaultCannotDoLabel = "needs-investigation"
+	// defaultComposeFile is the compose file of a project that defines
+	// Services without naming one.
+	defaultComposeFile = "compose.yaml"
 )
+
+// runIDFormat makes a Run's id from its start time.
+const runIDFormat = "2006-01-02T15-04-05"
+
+// transientBackoff is the wait before a Step's retry after a transient
+// error; tests shorten it.
+var transientBackoff = factory.DefaultBackoff
 
 // remote is the git remote branches are cut from and pushed to.
 const remote = "origin"
@@ -65,15 +76,20 @@ func runFactory(values map[string]any, root string, stdout, stderr io.Writer) in
 		BaseBranch:     stringAt(values, defaultBaseBranch, "branches", "base_branch"),
 		Prefix:         stringAt(values, defaultPrefix, "branches", "prefix"),
 		ReadyLabel:     readyLabel(values),
+		CannotDoLabel:  stringAt(values, defaultCannotDoLabel, "tracker", "cannot_do_label"),
 		MaxParallel:    maxParallel(values),
 		MaxIterations:  intAt(values, defaultMaxIterations, "max_iterations"),
-		RunStep:        stepRunner(values, s, stdout),
+		RunStep:        stepRunner(values, s),
 		Review:         boolAt(values, true, "steps", "review", "enabled"),
 		Verify:         verifyCommands(values),
 		VerifyEnv:      s.commandEnv(boolAt(values, true, "sandbox", "scrub_credentials")),
 		VerifyTimeout:  step.DefaultTimeout,
 		Out:            stdout,
 		LinkBlockerFix: tr.Describe().LinkBlockerFix,
+		ProtectedPaths: protectedPaths(values),
+		Backoff:        transientBackoff,
+		Redactor:       s.redactor,
+		RunID:          time.Now().Format(runIDFormat),
 	})
 	return printResult(stdout, stderr, res)
 }
@@ -91,8 +107,9 @@ func secretsForRun(values map[string]any, root string, stderr io.Writer) (s *sec
 }
 
 // stepRunner runs each Step with its own settings and the Harness's
-// credentials in its env, printing a line per tool call.
-func stepRunner(values map[string]any, sec *secrets, out io.Writer) func(context.Context, factory.Step) harness.Outcome {
+// credentials in its env, rendering a line per tool call and the agent's
+// text as verbose lines.
+func stepRunner(values map[string]any, sec *secrets) func(context.Context, factory.Step) harness.Outcome {
 	scrub := boolAt(values, true, "sandbox", "scrub_credentials")
 	env, unset := sec.stepEnv(scrub)
 	return func(ctx context.Context, req factory.Step) harness.Outcome {
@@ -104,8 +121,11 @@ func stepRunner(values map[string]any, sec *secrets, out io.Writer) func(context
 			IdleTimeout: settings.idleTimeout,
 			Timeout:     settings.timeout,
 			OnEvent: func(e harness.Event) {
-				if e.Kind == harness.ToolCall {
-					_, _ = fmt.Fprintln(out, strings.TrimSpace(fmt.Sprintf("%s %s: %s %s", req.Ticket.ID, req.Name, e.Tool, e.Summary)))
+				switch e.Kind {
+				case harness.ToolCall:
+					req.Log(strings.TrimSpace(e.Tool+" "+e.Summary), false)
+				case harness.Text:
+					req.Log(e.Text, true)
 				}
 			},
 		}
@@ -143,6 +163,28 @@ func settingsOf(values map[string]any, name string) stepSettings {
 // def.
 func stepSetting(values map[string]any, stepName, key, def string) string {
 	return stringAt(values, stringAt(values, def, key), "steps", stepName, key)
+}
+
+// protectedPaths are the Protected paths the config names, besides
+// .kraftwerk/: the compose file, the standards file and protected_paths.
+func protectedPaths(values map[string]any) []string {
+	var paths []string
+	services, _ := valueAt(values, "services").(map[string]any)
+	if compose := stringAt(values, "", "services", "compose_file"); compose != "" {
+		paths = append(paths, compose)
+	} else if len(services) > 0 {
+		paths = append(paths, defaultComposeFile)
+	}
+	if standards := stringAt(values, "", "standards"); standards != "" {
+		paths = append(paths, standards)
+	}
+	extra, _ := valueAt(values, "protected_paths").([]any)
+	for _, p := range extra {
+		if s, ok := p.(string); ok {
+			paths = append(paths, s)
+		}
+	}
+	return paths
 }
 
 // verifyCommands are the Feedback commands `verify` names, in its order.

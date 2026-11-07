@@ -99,7 +99,11 @@ func (f fixture) remoteRef(t *testing.T, branch string) string {
 func commits(files map[string]string, summary string) func(context.Context, factory.Step) harness.Outcome {
 	return func(_ context.Context, s factory.Step) harness.Outcome {
 		for name, content := range files {
-			if err := os.WriteFile(filepath.Join(s.Dir, name), []byte(content), 0o600); err != nil {
+			path := filepath.Join(s.Dir, filepath.FromSlash(name))
+			if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+				return harness.Outcome{Kind: harness.Failed, Class: harness.Other, Message: err.Error()}
+			}
+			if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 				return harness.Outcome{Kind: harness.Failed, Class: harness.Other, Message: err.Error()}
 			}
 			for _, args := range [][]string{{"add", name}, {"commit", "-q", "-m", "Add " + name}} {
@@ -190,7 +194,7 @@ func TestATicketOfASpecIsImplementedPushedAndClosed(t *testing.T) {
 	}
 }
 
-func TestDoneWithoutCommitsFailsAndKeepsTheTicketBranch(t *testing.T) {
+func TestDoneWithoutCommitsHandsTheTicketBackWithoutARetry(t *testing.T) {
 	f := newFixture(t)
 	tr := fake.New(ready, cartSpec()...)
 	calls := 0
@@ -199,22 +203,20 @@ func TestDoneWithoutCommitsFailsAndKeepsTheTicketBranch(t *testing.T) {
 		return harness.Outcome{Kind: harness.Reported, Report: harness.Report{Outcome: harness.Done, Summary: "All good."}}
 	}
 
-	res := factory.Run(context.Background(), options(f, tr, nothing))
+	res := factory.Run(context.Background(), failOptions(f, tr, nothing))
 
-	if len(res.Failed) != 1 || res.Failed[0].Reason != "reported done without changes" {
+	if len(res.Failed) != 1 || res.Failed[0].Reason != "implement reported done without changes" {
 		t.Fatalf("failed = %+v, want #2 reported done without changes", res.Failed)
 	}
 	if calls != 1 {
 		t.Errorf("implement ran %d times, want once: a failed Ticket isn't taken again in the same Run", calls)
 	}
-	if w := tr.Writes(); len(w) != 0 {
-		t.Errorf("tracker writes = %+v, want none: the Ticket stays open", w)
+	handedBack(t, tr, 2, "reported done without changes")
+	if gitOK(f.work, "rev-parse", "--verify", "-q", "refs/heads/kraftwerk/ticket-2") {
+		t.Error("the Ticket branch was kept after the Ticket was handed back")
 	}
-	if !gitOK(f.work, "rev-parse", "--verify", "-q", "refs/heads/kraftwerk/ticket-2") {
-		t.Error("the Ticket branch was deleted after a failure")
-	}
-	if got := git(t, f.work, "worktree", "list", "--porcelain"); !strings.Contains(got, "ticket-2") || strings.Contains(got, "spec-1") {
-		t.Errorf("want the Ticket worktree kept and the Spec worktree removed:\n%s", got)
+	if got := git(t, f.work, "worktree", "list", "--porcelain"); strings.Count(got, "worktree ") != 1 {
+		t.Errorf("Factory worktrees are left:\n%s", got)
 	}
 	if got := f.remoteRef(t, "kraftwerk/spec-1-spec-shopping-cart"); got != "" {
 		t.Errorf("the Spec branch was pushed without any work: %s", got)
@@ -577,7 +579,7 @@ func TestAFailedVerifyRetriesImplementOnceWithTheFailingOutput(t *testing.T) {
 	}
 }
 
-func TestVerifyFailingAgainAfterTheRetryFailsTheTicket(t *testing.T) {
+func TestVerifyFailingAgainAfterTheRetryHandsTheTicketBack(t *testing.T) {
 	f := newFixture(t)
 	tr := fake.New(ready, cartSpec()...)
 	n := 0
@@ -585,7 +587,7 @@ func TestVerifyFailingAgainAfterTheRetryFailsTheTicket(t *testing.T) {
 		n++
 		return commits(map[string]string{fmt.Sprintf("f%d.go", n): "package cart\n"}, "Done.")(ctx, s)
 	}
-	opts := options(f, tr, implement)
+	opts := failOptions(f, tr, implement)
 	opts.Verify, opts.VerifyEnv = []verify.Command{checkFixed}, os.Environ()
 
 	res := factory.Run(context.Background(), opts)
@@ -596,9 +598,7 @@ func TestVerifyFailingAgainAfterTheRetryFailsTheTicket(t *testing.T) {
 	if n != 2 {
 		t.Errorf("implement ran %d times, want 2: one retry", n)
 	}
-	if w := tr.Writes(); len(w) != 0 {
-		t.Errorf("tracker writes = %+v, want #2 left open", w)
-	}
+	handedBack(t, tr, 2, "`test`")
 	if got := f.remoteRef(t, "kraftwerk/spec-1-spec-shopping-cart"); got != "" {
 		t.Errorf("the Spec branch was pushed with failing checks: %s", got)
 	}

@@ -23,10 +23,13 @@
 //	  "error":   "auth",         // auth | transient | other: fail instead
 //	  "exit":    0,              // exit code; default 1 after an error, else 0
 //	  "linger":  "1m",           // keep running after the result line
-//	  "expand":  true            // fill in $VAR from the env everywhere
+//	  "expand":  true,           // fill in $VAR from the env everywhere
+//	  "times":   1               // run at most this often; 0 is no limit
 //	}]}
 //
-// The first session whose match is in the prompt runs. Every invocation is
+// The first session whose match is in the prompt, and that hasn't run
+// its times yet, runs. How often each has run is kept next to the
+// script, in <script>.runs. Every invocation is
 // appended to $KWK_FAKE_HARNESS_LOG, if set, as a JSON line
 // {"argv": […], "prompt": "…", "env": {…}} with the CLAUDE_CODE_*,
 // ANTHROPIC_* and GIT_* env, and the variables named in the
@@ -63,6 +66,8 @@ type session struct {
 	// Expand fills $VAR in texts, commands, written content and the
 	// report from the env, as an agent that leaks a secret would.
 	Expand bool `json:"expand"`
+	// Times is how often the session may run; 0 is no limit.
+	Times int `json:"times"`
 }
 
 type action struct {
@@ -164,10 +169,21 @@ func pick(prompt string) session {
 	if err := json.Unmarshal(data, &sc); err != nil {
 		fail("fakeclaude: %s: %v", path, err)
 	}
-	for _, s := range sc.Sessions {
-		if strings.Contains(prompt, s.Match) {
-			return s
+	runsPath := path + ".runs"
+	runs := map[int]int{}
+	if data, err := os.ReadFile(runsPath); err == nil { //nolint:gosec // next to the test's script
+		_ = json.Unmarshal(data, &runs)
+	}
+	for i, s := range sc.Sessions {
+		if !strings.Contains(prompt, s.Match) || s.Times > 0 && runs[i] >= s.Times {
+			continue
 		}
+		runs[i]++
+		data, _ := json.Marshal(runs)
+		if err := os.WriteFile(runsPath, data, 0o600); err != nil { //nolint:gosec // next to the test's script
+			fail("fakeclaude: %v", err)
+		}
+		return s
 	}
 	fail("fakeclaude: no session in %s matches the prompt", path)
 	return session{}

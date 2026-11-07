@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -171,6 +172,27 @@ func (r Repo) Log(ctx context.Context, from, to string) ([]Commit, error) {
 		commits = append(commits, Commit{SHA: sha, Subject: subject})
 	}
 	return commits, nil
+}
+
+// Touched lists, once each and sorted, the files the commits reachable
+// from to but not from from changed, even if a later one changed them
+// back. Paths are relative to r.Dir, with forward slashes, and files
+// outside it are left out. A rename counts as both of its paths.
+func (r Repo) Touched(ctx context.Context, from, to string) ([]string, error) {
+	out, err := r.Run(ctx, "log", "--format=", "--name-only", "--no-renames", "--relative", "-z", from+".."+to)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var files []string
+	for _, f := range strings.Split(out, "\x00") {
+		if f = strings.TrimSpace(f); f != "" && !seen[f] {
+			seen[f] = true
+			files = append(files, f)
+		}
+	}
+	sort.Strings(files)
+	return files, nil
 }
 
 // MergeFastForward moves the branch checked out in r.Dir forward to rev,

@@ -261,7 +261,7 @@ func TestRunImplementsATicketEndToEnd(t *testing.T) {
 	}
 }
 
-func TestRunWithAFailedTicketExits1AndLeavesItOpen(t *testing.T) {
+func TestRunHandsATicketDoneWithoutChangesBackAndExits1(t *testing.T) {
 	bin := buildTestKraftwerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [{"match": "Ticket #2", "report": {"outcome": "done", "summary": "Nothing to do."}}]}`)
 
@@ -273,9 +273,7 @@ func TestRunWithAFailedTicketExits1AndLeavesItOpen(t *testing.T) {
 	if !strings.Contains(p.stdout, "reported done without changes") {
 		t.Errorf("stdout lacks the reason:\n%s", p.stdout)
 	}
-	if issues := p.issues(t); issues[2].Closed || len(issues[2].Comments) != 0 {
-		t.Errorf("#2 = %+v, want it open and untouched", issues[2])
-	}
+	p.handedBack(t, 2, "reported done without changes")
 	if got := gitIn(t, p.remote, "for-each-ref", "--format=%(refname:short)"); got != "main" {
 		t.Errorf("branches on the remote = %q, want main only", got)
 	}
@@ -315,9 +313,10 @@ func TestRunStopsASilentStepAtItsConfiguredIdleTimeout(t *testing.T) {
 	if elapsed := time.Since(start); elapsed > 30*time.Second {
 		t.Errorf("the Run took %s; the configured idle timeout didn't apply", elapsed)
 	}
-	if !strings.Contains(p.stdout, "no output for 1s (idle timeout)") {
-		t.Errorf("stdout lacks the idle timeout:\n%s", p.stdout)
+	if !strings.Contains(p.stdout, "no output for 1s (idle timeout); retrying in a fresh session") {
+		t.Errorf("stdout lacks the idle timeout and its retry:\n%s", p.stdout)
 	}
+	p.handedBack(t, 2, "(idle timeout), again after a retry")
 }
 
 // implementsCart is a fake Harness session that implements #2 by

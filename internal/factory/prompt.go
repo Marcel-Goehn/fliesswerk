@@ -12,7 +12,7 @@ import (
 // implementPrompt is the minimal built-in implement prompt: the Ticket,
 // its Spec, the rules and how to report. A retry after a failed verify
 // also gets the failing command's output.
-func implementPrompt(tk tracker.Ticket, spec *tracker.Spec, branch string, failed *verify.Failure) string {
+func implementPrompt(tk tracker.Ticket, spec *tracker.Spec, branch string, protected []string, failed *verify.Failure) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Task\n\nImplement Ticket %s: %s. Commit your work on the branch `%s`, which is checked out in the current directory.\n\n", tk.ID, tk.Title, branch)
 	ticketAndSpec(&b, tk, spec)
@@ -21,18 +21,39 @@ func implementPrompt(tk tracker.Ticket, spec *tracker.Spec, branch string, faile
 		fmt.Fprintf(&b, "## The Factory's checks failed\n\nThis is a retry. Your earlier commits are on the branch, but after them the Feedback command `%s` (`%s`) failed (%v). Its last lines:\n\n%s\n%s\n%s\n\nFix the cause, then commit.\n\n",
 			failed.Command.Name, failed.Command.Line, failed.Err, fence, failed.Tail(retryOutputLines), fence)
 	}
-	fmt.Fprintf(&b, `Do not close the Ticket. The Factory closes it after your commits are merged and pushed.
+	rules(&b, branch, protected)
+	b.WriteString(`## Done
+
+When you are finished, report "done" with a short summary of what you changed.
+
+Report "cannot_do", with the reason, only if:
+
+1. the Ticket is ambiguous, or context is missing
+2. it needs a change to a Protected path
+3. it needs something from outside: a service, a credential, or another team's change
+4. tests fail and you can't fix them, including failures that were already there
+5. the Ticket is already done or no longer makes sense
+
+Anything else means try harder: nobody will answer questions.
+`)
+	return b.String()
+}
+
+// rules writes the fixed bottom's reminder and Rules.
+func rules(b *strings.Builder, branch string, protected []string) {
+	quoted := make([]string, len(protected))
+	for i, p := range protected {
+		quoted[i] = "`" + p + "`"
+	}
+	fmt.Fprintf(b, `Do not close the Ticket. The Factory closes it after your commits are merged and pushed.
 
 ## Rules
 
 - Commit on %s. Don't push, switch branches, rebase or rewrite history.
+- Don't change the Protected paths: %s. A commit that does is rejected, and the Ticket goes back to a person.
 - Don't leave commented-out code or TODO comments.
 
-## Done
-
-When you are finished, report "done" with a short summary of what you changed. Report "cannot_do" with the reason only if the Ticket is ambiguous or lacks context, needs something from outside (a service, a credential, another team's change), has tests failing that you can't fix, or is already done. Anything else means try harder: nobody will answer questions.
-`, "`"+branch+"`")
-	return b.String()
+`, "`"+branch+"`", strings.Join(quoted, ", "))
 }
 
 // retryOutputLines is how many of a failed Feedback command's last lines
@@ -56,22 +77,16 @@ func codeFence(text string) string {
 
 // reviewPrompt is the minimal built-in review prompt: the Ticket, its
 // Spec, what changed since base, the rules and how to report.
-func reviewPrompt(tk tracker.Ticket, spec *tracker.Spec, branch, base string) string {
+func reviewPrompt(tk tracker.Ticket, spec *tracker.Spec, branch, base string, protected []string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Task\n\nReview the change made for Ticket %s: %s, with fresh eyes. Check that it does what the Ticket asks and that it is well written. Fix what you find and commit the fixes on the branch `%s`, which is checked out in the current directory. If it is fine as it is, commit nothing.\n\n", tk.ID, tk.Title, branch)
 	ticketAndSpec(&b, tk, spec)
 	fmt.Fprintf(&b, "## What changed\n\nThe change starts at the base commit `%s`. See it with `git log %s..HEAD` and `git diff %s..HEAD`. Review only this change.\n\n", base, base, base)
-	fmt.Fprintf(&b, `Do not close the Ticket. The Factory closes it after your commits are merged and pushed.
-
-## Rules
-
-- Commit on %s. Don't push, switch branches, rebase or rewrite history.
-- Don't leave commented-out code or TODO comments.
-
-## Done
+	rules(&b, branch, protected)
+	b.WriteString(`## Done
 
 When you are finished, report "done" with a short summary of what you found and fixed, or that the change is fine as it is.
-`, "`"+branch+"`")
+`)
 	return b.String()
 }
 
