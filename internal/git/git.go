@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -42,9 +43,15 @@ func (r Repo) Run(ctx context.Context, args ...string) (string, error) {
 	return strings.TrimSpace(stdout.String()), nil
 }
 
-// TopLevel is the root of the working tree around r.Dir.
-func (r Repo) TopLevel(ctx context.Context) (string, error) {
-	return r.Run(ctx, "rev-parse", "--show-toplevel")
+// Prefix is r.Dir relative to the root of its working tree, "" at the
+// root. Git works it out, so it holds whatever path r.Dir is reached by
+// (a symlink, a short Windows name).
+func (r Repo) Prefix(ctx context.Context) (string, error) {
+	out, err := r.Run(ctx, "rev-parse", "--show-prefix")
+	if err != nil {
+		return "", err
+	}
+	return filepath.FromSlash(strings.TrimSuffix(out, "/")), nil
 }
 
 // IsIgnored reports whether git ignores path, relative to r.Dir.

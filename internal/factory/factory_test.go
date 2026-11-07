@@ -378,3 +378,22 @@ func TestARejectedPushLeavesTheSpecBranchAndTheTicketAsTheyWere(t *testing.T) {
 		t.Error("the Ticket branch was deleted after the failed push")
 	}
 }
+
+// TestARunWorksWhenTheRootIsNotGitsCanonicalPath covers a project root
+// that names the checkout differently than git does: through a symlink,
+// like macOS's /var → /private/var, or Windows' 8.3 short names.
+func TestARunWorksWhenTheRootIsNotGitsCanonicalPath(t *testing.T) {
+	f := newFixture(t)
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(f.work, link); err != nil {
+		t.Skipf("can't make a symlink: %v", err)
+	}
+	opts := options(f, fake.New(ready, cartSpec()...), commits(map[string]string{"cart.go": "package cart\n"}, "Done."))
+	opts.Root = link
+
+	res := factory.Run(context.Background(), opts)
+
+	if len(res.Closed) != 1 {
+		t.Fatalf("result = %+v, want #2 closed", res)
+	}
+}

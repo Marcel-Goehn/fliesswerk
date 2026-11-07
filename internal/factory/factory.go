@@ -149,13 +149,11 @@ func Run(ctx context.Context, opts Options) Result {
 // prepare checks that the runtime state is git-ignored and fetches the
 // base branch.
 func (r *run) prepare(ctx context.Context) error {
-	top, err := r.repo.TopLevel(ctx)
+	rel, err := r.repo.Prefix(ctx)
 	if err != nil {
 		return &SetupError{Msg: fmt.Sprintf("%s is not in a git checkout: %v", r.opts.Root, err)}
 	}
-	if r.rel, err = filepath.Rel(top, r.opts.Root); err != nil {
-		return err
-	}
+	r.rel = rel
 	probe := filepath.ToSlash(filepath.Join(StateDir, "worktrees", "probe"))
 	ignored, err := r.repo.IsIgnored(ctx, probe)
 	if err != nil {
