@@ -1,6 +1,12 @@
 # golangci-lint v2. Blocking run: every finding here fails CI.
 version: "2"
 
+# Also lint the scripted fake Harness, which only builds with this test-only
+# tag (internal/harness/fakeclaude).
+run:
+  build-tags:
+    - kwkfake
+
 linters:
   default: standard
   enable:

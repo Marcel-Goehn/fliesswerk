@@ -3,6 +3,10 @@
 # here; the blocking run (.golangci.yml) is what fails on them.
 version: "2"
 
+run:
+  build-tags:
+    - kwkfake
+
 linters:
   default: none
   enable:
