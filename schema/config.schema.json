@@ -1,0 +1,747 @@
+{
+  "$id": "https://raw.githubusercontent.com/Marcel-Goehn/kraftwerk/main/schema/config.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "description": "Kraftwerk configuration.",
+  "properties": {
+    "branches": {
+      "additionalProperties": false,
+      "description": "Branch names.",
+      "properties": {
+        "base_branch": {
+          "description": "The remote branch Spec branches are cut from.",
+          "type": "string"
+        },
+        "prefix": {
+          "description": "The prefix of every branch the Factory creates.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "commands": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Feedback commands, by name.",
+      "type": "object"
+    },
+    "effort": {
+      "description": "The reasoning effort every Step uses unless the Step sets its own.",
+      "type": "string"
+    },
+    "factory": {
+      "description": "A semver range the Factory's version must match, e.g. \"1\".",
+      "type": "string"
+    },
+    "harness": {
+      "description": "The Harness every Step uses unless the Step sets its own.",
+      "enum": [
+        "claude_code"
+      ],
+      "type": "string"
+    },
+    "harnesses": {
+      "additionalProperties": false,
+      "description": "Per-Harness settings, by Harness name.",
+      "properties": {
+        "claude_code": {
+          "additionalProperties": false,
+          "description": "Settings of the Claude Code Harness.",
+          "properties": {
+            "access_key_id": {
+              "additionalProperties": false,
+              "description": "Where the AWS access key id comes from (method = \"bedrock\"). Setting a Harness credential is allowed only in config.local.toml or as a CLI flag, never in config.toml.",
+              "maxProperties": 1,
+              "minProperties": 1,
+              "properties": {
+                "command": {
+                  "description": "Run this command and use its stdout.",
+                  "type": "string"
+                },
+                "dotenv": {
+                  "description": "Read this key from .kraftwerk/.env, which must be git-ignored.",
+                  "type": "string"
+                },
+                "env": {
+                  "description": "Read from this environment variable.",
+                  "type": "string"
+                },
+                "stored": {
+                  "description": "Read this key from the user-level credentials file written by `kraftwerk auth set`.",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "base_url": {
+              "description": "The gateway's URL (method = \"gateway\").",
+              "type": "string"
+            },
+            "method": {
+              "description": "How to sign in.",
+              "enum": [
+                "oauth_token",
+                "api_key",
+                "bedrock",
+                "gateway"
+              ],
+              "type": "string"
+            },
+            "profile": {
+              "description": "The AWS profile (method = \"bedrock\").",
+              "type": "string"
+            },
+            "region": {
+              "description": "The AWS region (method = \"bedrock\").",
+              "type": "string"
+            },
+            "role_arn": {
+              "description": "A role to assume for Bedrock (method = \"bedrock\").",
+              "type": "string"
+            },
+            "secret": {
+              "additionalProperties": false,
+              "description": "Where the token or API key comes from. Setting a Harness credential is allowed only in config.local.toml or as a CLI flag, never in config.toml.",
+              "maxProperties": 1,
+              "minProperties": 1,
+              "properties": {
+                "command": {
+                  "description": "Run this command and use its stdout.",
+                  "type": "string"
+                },
+                "dotenv": {
+                  "description": "Read this key from .kraftwerk/.env, which must be git-ignored.",
+                  "type": "string"
+                },
+                "env": {
+                  "description": "Read from this environment variable.",
+                  "type": "string"
+                },
+                "stored": {
+                  "description": "Read this key from the user-level credentials file written by `kraftwerk auth set`.",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "secret_access_key": {
+              "additionalProperties": false,
+              "description": "Where the AWS secret access key comes from (method = \"bedrock\"). Setting a Harness credential is allowed only in config.local.toml or as a CLI flag, never in config.toml.",
+              "maxProperties": 1,
+              "minProperties": 1,
+              "properties": {
+                "command": {
+                  "description": "Run this command and use its stdout.",
+                  "type": "string"
+                },
+                "dotenv": {
+                  "description": "Read this key from .kraftwerk/.env, which must be git-ignored.",
+                  "type": "string"
+                },
+                "env": {
+                  "description": "Read from this environment variable.",
+                  "type": "string"
+                },
+                "stored": {
+                  "description": "Read this key from the user-level credentials file written by `kraftwerk auth set`.",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "hooks": {
+      "additionalProperties": false,
+      "description": "Hooks, by the moment they run at.",
+      "properties": {
+        "run_end": {
+          "description": "Runs on the host when a Run ends.",
+          "items": {
+            "additionalProperties": false,
+            "oneOf": [
+              {
+                "required": [
+                  "run"
+                ]
+              },
+              {
+                "required": [
+                  "parallel"
+                ]
+              }
+            ],
+            "properties": {
+              "parallel": {
+                "description": "Shell commands run at once; on the first failure the others are stopped.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "run": {
+                "description": "A shell command.",
+                "type": "string"
+              },
+              "secrets": {
+                "description": "Project secrets a host Hook gets (Sandbox Hooks get them all).",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "timeout": {
+                "description": "Stop the Hook after this long. Default 5m.",
+                "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$",
+                "type": "string"
+              },
+              "where": {
+                "description": "Where the Hook runs.",
+                "enum": [
+                  "host"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "run_start": {
+          "description": "Runs on the host when a Run starts.",
+          "items": {
+            "additionalProperties": false,
+            "oneOf": [
+              {
+                "required": [
+                  "run"
+                ]
+              },
+              {
+                "required": [
+                  "parallel"
+                ]
+              }
+            ],
+            "properties": {
+              "parallel": {
+                "description": "Shell commands run at once; on the first failure the others are stopped.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "run": {
+                "description": "A shell command.",
+                "type": "string"
+              },
+              "secrets": {
+                "description": "Project secrets a host Hook gets (Sandbox Hooks get them all).",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "timeout": {
+                "description": "Stop the Hook after this long. Default 5m.",
+                "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$",
+                "type": "string"
+              },
+              "where": {
+                "description": "Where the Hook runs.",
+                "enum": [
+                  "host"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "sandbox_created": {
+          "description": "Runs when a Sandbox has been created.",
+          "items": {
+            "additionalProperties": false,
+            "oneOf": [
+              {
+                "required": [
+                  "run"
+                ]
+              },
+              {
+                "required": [
+                  "parallel"
+                ]
+              }
+            ],
+            "properties": {
+              "parallel": {
+                "description": "Shell commands run at once; on the first failure the others are stopped.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "run": {
+                "description": "A shell command.",
+                "type": "string"
+              },
+              "secrets": {
+                "description": "Project secrets a host Hook gets (Sandbox Hooks get them all).",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "timeout": {
+                "description": "Stop the Hook after this long. Default 5m.",
+                "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$",
+                "type": "string"
+              },
+              "where": {
+                "description": "Where the Hook runs.",
+                "enum": [
+                  "sandbox",
+                  "host"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "spec_finished": {
+          "description": "Runs on the host when a Spec's last Ticket closes.",
+          "items": {
+            "additionalProperties": false,
+            "oneOf": [
+              {
+                "required": [
+                  "run"
+                ]
+              },
+              {
+                "required": [
+                  "parallel"
+                ]
+              }
+            ],
+            "properties": {
+              "parallel": {
+                "description": "Shell commands run at once; on the first failure the others are stopped.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "run": {
+                "description": "A shell command.",
+                "type": "string"
+              },
+              "secrets": {
+                "description": "Project secrets a host Hook gets (Sandbox Hooks get them all).",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "timeout": {
+                "description": "Stop the Hook after this long. Default 5m.",
+                "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$",
+                "type": "string"
+              },
+              "where": {
+                "description": "Where the Hook runs.",
+                "enum": [
+                  "host"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "logs": {
+      "additionalProperties": false,
+      "description": "Run logs.",
+      "properties": {
+        "keep_days": {
+          "description": "How many days Run logs are kept: a positive whole number, or \"forever\".",
+          "oneOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "const": "forever"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "max_iterations": {
+      "description": "How many Iterations a Run may have. Default 10.",
+      "minimum": 1,
+      "type": "integer"
+    },
+    "max_parallel": {
+      "description": "How many Tickets an Iteration works on at once. Default 1.",
+      "minimum": 1,
+      "type": "integer"
+    },
+    "model": {
+      "description": "The model every Step uses unless the Step sets its own.",
+      "type": "string"
+    },
+    "network": {
+      "additionalProperties": false,
+      "description": "The host's network.",
+      "properties": {
+        "ca_certs": {
+          "description": "PEM files trusted in every Sandbox on top of the system roots.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "upstream_proxy": {
+          "description": "The proxy the egress proxy chains to, instead of the host's HTTPS_PROXY.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "protected_paths": {
+      "description": "Extra Protected paths: files, directories or globs the agent may not change.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "sandbox": {
+      "additionalProperties": false,
+      "description": "The Sandbox each Step runs in.",
+      "properties": {
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Environment variables set in every Sandbox. Not for secrets: use [sandbox.secrets].",
+          "type": "object"
+        },
+        "i_accept_unsandboxed_risk": {
+          "description": "Required with kind = \"none\": you accept that the agent runs with no Sandbox. Setting the acknowledgement for running without a Sandbox is allowed only in config.local.toml or as a CLI flag, never in config.toml.",
+          "type": "boolean"
+        },
+        "kind": {
+          "description": "The Sandbox kind. \"none\" also needs i_accept_unsandboxed_risk = true. Setting kind = \"none\" (no Sandbox) is allowed only in config.local.toml or as a CLI flag, never in config.toml.",
+          "enum": [
+            "container",
+            "native",
+            "none"
+          ],
+          "type": "string"
+        },
+        "network": {
+          "additionalProperties": false,
+          "description": "Network access from the Sandbox.",
+          "properties": {
+            "allow": {
+              "description": "Hosts the Sandbox may reach, besides the Harness's own endpoints. Setting allow = [\"*\"] (open network) is allowed only in config.local.toml or as a CLI flag, never in config.toml.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "read_only_paths": {
+          "description": "Extra paths a native Sandbox may read.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "run_args": {
+          "description": "Extra container engine flags.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "scrub_credentials": {
+          "description": "Keep credentials out of the env of the agent's own commands. Default true.",
+          "type": "boolean"
+        },
+        "secrets": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "maxProperties": 1,
+            "minProperties": 1,
+            "properties": {
+              "command": {
+                "description": "Run this command and use its stdout.",
+                "type": "string"
+              },
+              "dotenv": {
+                "description": "Read this key from .kraftwerk/.env, which must be git-ignored.",
+                "type": "string"
+              },
+              "env": {
+                "description": "Read from this environment variable.",
+                "type": "string"
+              },
+              "stored": {
+                "description": "Read this key from the user-level credentials file written by `kraftwerk auth set`.",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "description": "Project secrets, by environment variable name, each naming where it comes from.",
+          "type": "object"
+        },
+        "writable_paths": {
+          "description": "Extra paths a native Sandbox may write.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "services": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "description": "A Service.",
+        "properties": {
+          "env": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Environment variables with {host} and {port} templates.",
+            "type": "object"
+          },
+          "shared": {
+            "description": "One copy serves the whole Run instead of one per Sandbox.",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "description": "Services from the compose file, by name.",
+      "properties": {
+        "compose_file": {
+          "description": "The compose file Services come from.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "standards": {
+      "description": "The Coding standards file, read only by the review Step.",
+      "type": "string"
+    },
+    "steps": {
+      "additionalProperties": false,
+      "description": "Per-Step settings.",
+      "properties": {
+        "implement": {
+          "additionalProperties": false,
+          "description": "Settings of the implement Step.",
+          "properties": {
+            "effort": {
+              "description": "The reasoning effort for this Step, if the Harness has one.",
+              "type": "string"
+            },
+            "enabled": {
+              "description": "Whether the implement Step runs.",
+              "type": "boolean"
+            },
+            "harness": {
+              "description": "The Harness for this Step. A Step that sets it must also set `model`.",
+              "enum": [
+                "claude_code"
+              ],
+              "type": "string"
+            },
+            "idle_timeout": {
+              "description": "Stop the Step after this long without output. Default 10m.",
+              "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$",
+              "type": "string"
+            },
+            "model": {
+              "description": "The model for this Step.",
+              "type": "string"
+            },
+            "timeout": {
+              "description": "Stop the Step after this long. Default 60m.",
+              "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "merge": {
+          "additionalProperties": false,
+          "description": "Settings of the merge Step.",
+          "properties": {
+            "effort": {
+              "description": "The reasoning effort for this Step, if the Harness has one.",
+              "type": "string"
+            },
+            "enabled": {
+              "description": "Whether the merge Step runs.",
+              "type": "boolean"
+            },
+            "harness": {
+              "description": "The Harness for this Step. A Step that sets it must also set `model`.",
+              "enum": [
+                "claude_code"
+              ],
+              "type": "string"
+            },
+            "idle_timeout": {
+              "description": "Stop the Step after this long without output. Default 10m.",
+              "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$",
+              "type": "string"
+            },
+            "model": {
+              "description": "The model for this Step.",
+              "type": "string"
+            },
+            "timeout": {
+              "description": "Stop the Step after this long. Default 60m.",
+              "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "review": {
+          "additionalProperties": false,
+          "description": "Settings of the review Step.",
+          "properties": {
+            "effort": {
+              "description": "The reasoning effort for this Step, if the Harness has one.",
+              "type": "string"
+            },
+            "enabled": {
+              "description": "Whether the review Step runs.",
+              "type": "boolean"
+            },
+            "harness": {
+              "description": "The Harness for this Step. A Step that sets it must also set `model`.",
+              "enum": [
+                "claude_code"
+              ],
+              "type": "string"
+            },
+            "idle_timeout": {
+              "description": "Stop the Step after this long without output. Default 10m.",
+              "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$",
+              "type": "string"
+            },
+            "model": {
+              "description": "The model for this Step.",
+              "type": "string"
+            },
+            "timeout": {
+              "description": "Stop the Step after this long. Default 60m.",
+              "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "tracker": {
+      "additionalProperties": false,
+      "description": "Where Tickets live.",
+      "properties": {
+        "cannot_do_label": {
+          "description": "The label a Ticket gets when the agent can't do it.",
+          "type": "string"
+        },
+        "in_progress_label": {
+          "description": "The label that marks a claimed Spec.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "The Tracker.",
+          "enum": [
+            "github"
+          ],
+          "type": "string"
+        },
+        "ready_label": {
+          "description": "The label that marks a Ticket Ready for agent.",
+          "type": "string"
+        },
+        "repo": {
+          "description": "The repository, as owner/name.",
+          "type": "string"
+        },
+        "token": {
+          "additionalProperties": false,
+          "description": "Where the Tracker token comes from. Setting a Tracker credential is allowed only in config.local.toml or as a CLI flag, never in config.toml.",
+          "maxProperties": 1,
+          "minProperties": 1,
+          "properties": {
+            "command": {
+              "description": "Run this command and use its stdout.",
+              "type": "string"
+            },
+            "dotenv": {
+              "description": "Read this key from .kraftwerk/.env, which must be git-ignored.",
+              "type": "string"
+            },
+            "env": {
+              "description": "Read from this environment variable.",
+              "type": "string"
+            },
+            "stored": {
+              "description": "Read this key from the user-level credentials file written by `kraftwerk auth set`.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "verify": {
+      "description": "Names from [commands] the Factory runs itself to check a change.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "version": {
+      "const": 1,
+      "description": "The config format version. Must be 1.",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "version"
+  ],
+  "title": "Kraftwerk config",
+  "type": "object"
+}

@@ -18,6 +18,7 @@ func main() {
 }
 
 const usage = `Usage:
+  kraftwerk check       validate .kraftwerk/config.toml and config.local.toml
   kraftwerk --version   print the version
 `
 
@@ -33,6 +34,9 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 1 && args[0] == "--version" {
 		_, _ = fmt.Fprintf(stdout, "kraftwerk %s\n", versionString())
 		return exitOK
+	}
+	if len(args) > 0 && args[0] == "check" {
+		return runCheck(args[1:], stdout, stderr)
 	}
 	if len(args) > 0 {
 		_, _ = fmt.Fprintf(stderr, "kraftwerk: unknown argument %q\n", args[0])
