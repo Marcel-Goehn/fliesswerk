@@ -60,6 +60,10 @@ _Avoid_: Style guide, conventions (when the file is meant)
 A shell command the Factory runs at a named moment of a Run (e.g. when a Sandbox is created), either on the host or inside the Sandbox.
 _Avoid_: Callback, lifecycle script
 
+**Service**:
+A supporting program the Factory starts for a Run from the project's compose file (e.g. a database). Every Sandbox can reach it, while all other network access stays denied.
+_Avoid_: Container (when the concept is meant), dependency, backing service
+
 **Protected path**:
 A file or directory in the project that the agent may not change, because the Factory itself relies on it (its own configuration, the services it starts). An Iteration that changes one is rejected.
 _Avoid_: Read-only file, locked file

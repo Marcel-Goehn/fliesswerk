@@ -14,3 +14,4 @@ Besides the container Sandbox, the Factory offers a native Sandbox: the Step run
 - The Factory owns an egress proxy. The model token still has to reach the provider, so exfiltration over an allowed host, and domain fronting through broad domains, remain documented residual risks.
 - Native Windows has no native Sandbox in v1: container or `none` only, and native works inside WSL2. An MXC-based backend may come later.
 - Two escape hatches, `kind = "none"` and network `allow = ["*"]`, are accepted only from `config.local.toml` or a CLI flag, never from the committed config, so a committed change can't disarm the Sandbox for everyone. Every Run prints a warning when either is active.
+- Container Sandboxes reach the egress proxy through a proxy sidecar on a Factory-owned internal network per Sandbox, and Services by alias on that network ([ADR 0004](0004-services-over-factory-owned-internal-network-with-proxy-sidecar.md)).
