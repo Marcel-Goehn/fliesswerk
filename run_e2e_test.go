@@ -200,9 +200,14 @@ func cartIssues() []fake.Issue {
 	}
 }
 
+// approves is a fake Harness session that reviews any Ticket and approves
+// it. It goes first, since an implement session's match may also be in the
+// review prompt.
+const approves = `{"match": "Review the change", "report": {"outcome": "done", "summary": "Looks good."}}`
+
 func TestRunImplementsATicketEndToEnd(t *testing.T) {
 	bin := buildTestKraftwerk(t)
-	p := newRunProject(t, bin, cartIssues(), `{"sessions": [{"match": "Ticket #2", "actions": [
+	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, {"match": "Ticket #2", "actions": [
 		{"write": "cart/cart.go", "content": "package cart\n"},
 		{"run": ["git", "add", "cart/cart.go"]},
 		{"run": ["git", "commit", "-q", "-m", "Add the cart package"]}
@@ -312,5 +317,128 @@ func TestRunStopsASilentStepAtItsConfiguredIdleTimeout(t *testing.T) {
 	}
 	if !strings.Contains(p.stdout, "no output for 1s (idle timeout)") {
 		t.Errorf("stdout lacks the idle timeout:\n%s", p.stdout)
+	}
+}
+
+// implementsCart is a fake Harness session that implements #2 by
+// committing cart/cart.go with content.
+func implementsCart(match, content string) string {
+	return `{"match": "` + match + `", "actions": [
+		{"write": "cart/cart.go", "content": "` + content + `"},
+		{"run": ["git", "add", "cart/cart.go"]},
+		{"run": ["git", "commit", "-q", "-m", "Add the cart package"]}
+	], "report": {"outcome": "done", "summary": "Added the cart package."}}`
+}
+
+// specLog is the subjects of the Spec branch's commits on the remote, on
+// top of main.
+func (p *runProject) specLog(t *testing.T) string {
+	t.Helper()
+	return gitIn(t, p.remote, "log", "--format=%s", "main..kraftwerk/spec-1-spec-shopping-cart")
+}
+
+func TestReviewApprovesInAFreshSession(t *testing.T) {
+	bin := buildTestKraftwerk(t)
+	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, `+implementsCart("Implement Ticket #2", `package cart\n`)+`]}`)
+	logPath := filepath.Join(t.TempDir(), "harness.jsonl")
+	p.extraEnv = []string{"KWK_FAKE_HARNESS_LOG=" + logPath}
+
+	if code := p.run(t); code != 0 {
+		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+	}
+	if n := len(harnessCalls(t, logPath)); n != 2 {
+		t.Errorf("the Harness ran %d times, want two sessions: implement and review", n)
+	}
+	if !strings.Contains(p.stdout, "#2 review: approved") {
+		t.Errorf("stdout lacks the approval:\n%s", p.stdout)
+	}
+	if got := p.specLog(t); got != "Add the cart package" {
+		t.Errorf("Spec branch commits = %q, want implement's only", got)
+	}
+	if !p.issues(t)[2].Closed {
+		t.Error("#2 wasn't closed")
+	}
+}
+
+func TestReviewFixesWhatItFinds(t *testing.T) {
+	bin := buildTestKraftwerk(t)
+	p := newRunProject(t, bin, cartIssues(), `{"sessions": [{"match": "Review the change", "actions": [
+		{"write": "cart/cart_test.go", "content": "package cart\n"},
+		{"run": ["git", "add", "cart/cart_test.go"]},
+		{"run": ["git", "commit", "-q", "-m", "Test the cart"]}
+	], "report": {"outcome": "done", "summary": "Added a missing test."}}, `+implementsCart("Implement Ticket #2", `package cart\n`)+`]}`)
+
+	if code := p.run(t); code != 0 {
+		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+	}
+	if got := p.specLog(t); got != "Test the cart\nAdd the cart package" {
+		t.Errorf("Spec branch commits = %q, want implement's and review's", got)
+	}
+	if !strings.Contains(p.stdout, "#2 review: fixed it in 1 commit") {
+		t.Errorf("stdout lacks the fix:\n%s", p.stdout)
+	}
+}
+
+func TestVerifyFailsThenPassesAfterImplementRetriesWithItsOutput(t *testing.T) {
+	bin := buildTestKraftwerk(t)
+	// The retry's prompt holds verify's output, so its session matches it.
+	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, `+
+		implementsCart("cart.go lacks the fix", `package cart // fixed\n`)+`, `+
+		implementsCart("Implement Ticket #2", `package cart\n`)+`]}`)
+	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), "verify = [\"test\"]\n"+noSandbox+
+		"[commands]\ntest = \"git grep -q fixed -- cart/cart.go || (echo cart.go lacks the fix && exit 1)\"\n")
+	logPath := filepath.Join(t.TempDir(), "harness.jsonl")
+	p.extraEnv = []string{"KWK_FAKE_HARNESS_LOG=" + logPath}
+
+	if code := p.run(t); code != 0 {
+		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+	}
+	if n := len(harnessCalls(t, logPath)); n != 4 {
+		t.Errorf("the Harness ran %d times, want implement and review twice", n)
+	}
+	for _, want := range []string{"#2 verify: `test`", "implement retries with its output", "#2 verify: passed"} {
+		if !strings.Contains(p.stdout, want) {
+			t.Errorf("stdout lacks %q:\n%s", want, p.stdout)
+		}
+	}
+	if !p.issues(t)[2].Closed {
+		t.Error("#2 wasn't closed")
+	}
+}
+
+func TestEachStepGetsItsOwnSettingsOrElseTheTopLevelOnes(t *testing.T) {
+	bin := buildTestKraftwerk(t)
+	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, `+implementsCart("Implement Ticket #2", `package cart\n`)+`]}`)
+	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), "model = \"top-model\"\neffort = \"high\"\n"+noSandbox+
+		"[steps.implement]\neffort = \"low\"\n[steps.review]\nharness = \"claude_code\"\nmodel = \"review-model\"\n")
+	logPath := filepath.Join(t.TempDir(), "harness.jsonl")
+	p.extraEnv = []string{"KWK_FAKE_HARNESS_LOG=" + logPath}
+
+	if code := p.run(t); code != 0 {
+		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+	}
+	calls := harnessCalls(t, logPath)
+	if len(calls) != 2 {
+		t.Fatalf("the Harness ran %d times, want implement and review", len(calls))
+	}
+	for i, want := range []string{"--model top-model --effort low", "--model review-model --effort high"} {
+		if got := strings.Join(calls[i].Argv, " "); !strings.Contains(got, want) {
+			t.Errorf("Step %d argv = %q, want %q", i+1, got, want)
+		}
+	}
+}
+
+func TestReviewDisabledRunsImplementAlone(t *testing.T) {
+	bin := buildTestKraftwerk(t)
+	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+implementsCart("Implement Ticket #2", `package cart\n`)+`]}`)
+	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), noSandbox+"[steps.review]\nenabled = false\n")
+	logPath := filepath.Join(t.TempDir(), "harness.jsonl")
+	p.extraEnv = []string{"KWK_FAKE_HARNESS_LOG=" + logPath}
+
+	if code := p.run(t); code != 0 {
+		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+	}
+	if n := len(harnessCalls(t, logPath)); n != 1 {
+		t.Errorf("the Harness ran %d times, want implement only", n)
 	}
 }

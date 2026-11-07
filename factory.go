@@ -12,6 +12,7 @@ import (
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
 	"github.com/Marcel-Goehn/kraftwerk/internal/step"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
+	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
 )
 
 // Defaults for the keys of a Run the config may leave out.
@@ -26,7 +27,7 @@ const (
 const remote = "origin"
 
 // runFactory runs the Factory over the ready Tickets and prints how the Run
-// ended. Only `kind = "none"` exists so far, and only the implement Step.
+// ended. Only `kind = "none"` exists so far.
 func runFactory(values map[string]any, root string, stdout, stderr io.Writer) int {
 	if kind := stringAt(values, defaultSandbox, "sandbox", "kind"); kind != "none" {
 		_, _ = fmt.Fprintf(stderr, "kraftwerk run: the %s Sandbox isn't available in this kraftwerk yet; run with `--sandbox none --i-accept-unsandboxed-risk` (or set them in .kraftwerk/config.local.toml)\n",
@@ -66,7 +67,10 @@ func runFactory(values map[string]any, root string, stdout, stderr io.Writer) in
 		ReadyLabel:     readyLabel(values),
 		MaxParallel:    maxParallel(values),
 		MaxIterations:  intAt(values, defaultMaxIterations, "max_iterations"),
-		Implement:      implementer(values, s, stdout),
+		RunStep:        stepRunner(values, s, stdout),
+		Review:         boolAt(values, true, "steps", "review", "enabled"),
+		Verify:         verifyCommands(values),
+		VerifyEnv:      s.commandEnv(boolAt(values, true, "sandbox", "scrub_credentials")),
 		Out:            stdout,
 		LinkBlockerFix: tr.Describe().LinkBlockerFix,
 	})
@@ -85,41 +89,71 @@ func secretsForRun(values map[string]any, root string, stderr io.Writer) (s *sec
 	return s, exitOK, true
 }
 
-// implementer runs the implement Step with the configured Harness, its
-// credentials in the Step's env, printing a line per tool call.
-func implementer(values map[string]any, sec *secrets, out io.Writer) func(context.Context, factory.Step) harness.Outcome {
+// stepRunner runs each Step with its own settings and the Harness's
+// credentials in its env, printing a line per tool call.
+func stepRunner(values map[string]any, sec *secrets, out io.Writer) func(context.Context, factory.Step) harness.Outcome {
 	scrub := boolAt(values, true, "sandbox", "scrub_credentials")
-	s := harness.Step{
-		Model:            stepSetting(values, "implement", "model"),
-		Effort:           stepSetting(values, "implement", "effort"),
-		ReportSchema:     harness.ReportSchema,
-		ScrubCredentials: scrub,
-	}
 	env, unset := sec.stepEnv(scrub)
-	idleTimeout := durationAt(values, step.DefaultIdleTimeout, "steps", "implement", "idle_timeout")
-	timeout := durationAt(values, step.DefaultTimeout, "steps", "implement", "timeout")
 	return func(ctx context.Context, req factory.Step) harness.Outcome {
+		set := settingsOf(values, req.Name)
 		r := step.Runner{
-			Harness:     theHarness,
+			Harness:     set.harness,
 			Env:         env,
 			Unset:       unset,
-			IdleTimeout: idleTimeout,
-			Timeout:     timeout,
+			IdleTimeout: set.idleTimeout,
+			Timeout:     set.timeout,
 			OnEvent: func(e harness.Event) {
 				if e.Kind == harness.ToolCall {
-					_, _ = fmt.Fprintln(out, strings.TrimSpace(fmt.Sprintf("%s implement: %s %s", req.Ticket.ID, e.Tool, e.Summary)))
+					_, _ = fmt.Fprintln(out, strings.TrimSpace(fmt.Sprintf("%s %s: %s %s", req.Ticket.ID, req.Name, e.Tool, e.Summary)))
 				}
 			},
 		}
-		st := s
-		st.Prompt = req.Prompt
-		return r.Run(ctx, st, req.Dir)
+		return r.Run(ctx, harness.Step{
+			Prompt:           req.Prompt,
+			Model:            set.model,
+			Effort:           set.effort,
+			ReportSchema:     harness.ReportSchema,
+			ScrubCredentials: scrub,
+		}, req.Dir)
 	}
 }
 
-// stepSetting is a Step's own setting, or else the top-level one.
-func stepSetting(values map[string]any, stepName, key string) string {
-	return stringAt(values, stringAt(values, "", key), "steps", stepName, key)
+// stepSettings are how one Step runs.
+type stepSettings struct {
+	harness              harness.Harness
+	model, effort        string
+	idleTimeout, timeout time.Duration
+}
+
+// settingsOf resolves a Step's settings: its own keys in [steps.<name>],
+// then the top-level ones, then the built-in defaults. An empty model or
+// effort leaves the Harness's own default.
+func settingsOf(values map[string]any, name string) stepSettings {
+	return stepSettings{
+		harness:     harnesses[stepSetting(values, name, "harness", defaultHarness)],
+		model:       stepSetting(values, name, "model", ""),
+		effort:      stepSetting(values, name, "effort", ""),
+		idleTimeout: durationAt(values, step.DefaultIdleTimeout, "steps", name, "idle_timeout"),
+		timeout:     durationAt(values, step.DefaultTimeout, "steps", name, "timeout"),
+	}
+}
+
+// stepSetting is a Step's own setting, or else the top-level one, or else
+// def.
+func stepSetting(values map[string]any, stepName, key, def string) string {
+	return stringAt(values, stringAt(values, def, key), "steps", stepName, key)
+}
+
+// verifyCommands are the Feedback commands `verify` names, in its order.
+// The config has already checked that each is in [commands].
+func verifyCommands(values map[string]any) []verify.Command {
+	names, _ := valueAt(values, "verify").([]any)
+	cmds := make([]verify.Command, 0, len(names))
+	for _, n := range names {
+		name, _ := n.(string)
+		cmds = append(cmds, verify.Command{Name: name, Line: stringAt(values, "", "commands", name)})
+	}
+	return cmds
 }
 
 // durationAt is the duration at a key path, def if there is none. The

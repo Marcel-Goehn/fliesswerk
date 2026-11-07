@@ -15,6 +15,7 @@ import (
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
+	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
 )
 
 const ready = "ready-for-agent"
@@ -122,7 +123,7 @@ func options(f fixture, tr tracker.Tracker, implement func(context.Context, fact
 		ReadyLabel:    ready,
 		MaxParallel:   1,
 		MaxIterations: 10,
-		Implement:     implement,
+		RunStep:       implement,
 		Out:           io.Discard,
 	}
 }
@@ -395,5 +396,221 @@ func TestARunWorksWhenTheRootIsNotGitsCanonicalPath(t *testing.T) {
 
 	if len(res.Closed) != 1 {
 		t.Fatalf("result = %+v, want #2 closed", res)
+	}
+}
+
+// byStep runs each Step's function by name, recording the Steps it saw.
+type byStep struct {
+	fns  map[string]func(context.Context, factory.Step) harness.Outcome
+	seen []factory.Step
+}
+
+func (b *byStep) run(ctx context.Context, s factory.Step) harness.Outcome {
+	b.seen = append(b.seen, s)
+	fn, ok := b.fns[s.Name]
+	if !ok {
+		return harness.Outcome{Kind: harness.Failed, Class: harness.Other, Message: "no " + s.Name + " in the test"}
+	}
+	return fn(ctx, s)
+}
+
+func (b *byStep) names() string {
+	var n []string
+	for _, s := range b.seen {
+		n = append(n, s.Name)
+	}
+	return strings.Join(n, " ")
+}
+
+func reports(outcome, summary string) func(context.Context, factory.Step) harness.Outcome {
+	return func(context.Context, factory.Step) harness.Outcome {
+		return harness.Outcome{Kind: harness.Reported, Report: harness.Report{Outcome: outcome, Summary: summary, Reason: summary}}
+	}
+}
+
+func TestReviewApprovesWithoutCommitsInAFreshStepOnTheSameWorktree(t *testing.T) {
+	f := newFixture(t)
+	base := git(t, f.work, "rev-parse", "HEAD")
+	tr := fake.New(ready, cartSpec()...)
+	steps := &byStep{fns: map[string]func(context.Context, factory.Step) harness.Outcome{
+		factory.Implement: commits(map[string]string{"cart.go": "package cart\n"}, "Added the cart."),
+		factory.Review:    reports(harness.Done, "Looks good."),
+	}}
+	opts := options(f, tr, steps.run)
+	opts.Review = true
+
+	res := factory.Run(context.Background(), opts)
+
+	if len(res.Closed) != 1 || len(res.Failed) != 0 {
+		t.Fatalf("result = %+v, want #2 closed", res)
+	}
+	if got := steps.names(); got != "implement review" {
+		t.Fatalf("Steps = %q, want implement then review", got)
+	}
+	impl, rev := steps.seen[0], steps.seen[1]
+	if rev.Dir != impl.Dir {
+		t.Errorf("review ran in %s, want implement's worktree %s", rev.Dir, impl.Dir)
+	}
+	for _, want := range []string{"Review", "#2", base} {
+		if !strings.Contains(rev.Prompt, want) {
+			t.Errorf("review prompt lacks %q:\n%s", want, rev.Prompt)
+		}
+	}
+	if got := git(t, f.remote, "log", "--format=%s", "main..kraftwerk/spec-1-spec-shopping-cart"); got != "Add cart.go" {
+		t.Errorf("Spec branch commits = %q, want implement's only", got)
+	}
+}
+
+func TestReviewThatCommitsFixesTheChangeAndItsFixesArePushed(t *testing.T) {
+	f := newFixture(t)
+	tr := fake.New(ready, cartSpec()...)
+	var out strings.Builder
+	steps := &byStep{fns: map[string]func(context.Context, factory.Step) harness.Outcome{
+		factory.Implement: commits(map[string]string{"cart.go": "package cart\n"}, "Added the cart."),
+		factory.Review:    commits(map[string]string{"cart_test.go": "package cart\n"}, "Added the missing test."),
+	}}
+	opts := options(f, tr, steps.run)
+	opts.Review, opts.Out = true, &out
+
+	res := factory.Run(context.Background(), opts)
+
+	if len(res.Closed) != 1 {
+		t.Fatalf("result = %+v, want #2 closed", res)
+	}
+	if got := git(t, f.remote, "log", "--format=%s", "main..kraftwerk/spec-1-spec-shopping-cart"); got != "Add cart_test.go\nAdd cart.go" {
+		t.Errorf("Spec branch commits = %q, want implement's and review's", got)
+	}
+	if !strings.Contains(out.String(), "#2 review: fixed it in 1 commit") {
+		t.Errorf("the log doesn't say review fixed it:\n%s", out.String())
+	}
+	if c := tr.Writes()[0].Text; !strings.Contains(c, "Added the cart.") || !strings.Contains(c, "Added the missing test.") {
+		t.Errorf("close comment lacks implement's or review's summary:\n%s", c)
+	}
+}
+
+func TestAReviewCannotDoCountsAsDoneWithAWarning(t *testing.T) {
+	f := newFixture(t)
+	tr := fake.New(ready, cartSpec()...)
+	var out strings.Builder
+	steps := &byStep{fns: map[string]func(context.Context, factory.Step) harness.Outcome{
+		factory.Implement: commits(map[string]string{"cart.go": "package cart\n"}, "Added the cart."),
+		factory.Review:    reports(harness.CannotDo, "I'd rather not."),
+	}}
+	opts := options(f, tr, steps.run)
+	opts.Review, opts.Out = true, &out
+
+	res := factory.Run(context.Background(), opts)
+
+	if len(res.Closed) != 1 || len(res.Failed) != 0 {
+		t.Fatalf("result = %+v, want #2 closed", res)
+	}
+	if !strings.Contains(out.String(), "#2 review: warning: reported cannot_do (I'd rather not.)") {
+		t.Errorf("the log lacks the warning:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "#2 review: approved") {
+		t.Errorf("a review without commits isn't logged as approved:\n%s", out.String())
+	}
+}
+
+func TestReviewDisabledIsSkipped(t *testing.T) {
+	f := newFixture(t)
+	steps := &byStep{fns: map[string]func(context.Context, factory.Step) harness.Outcome{
+		factory.Implement: commits(map[string]string{"cart.go": "package cart\n"}, "Added the cart."),
+	}}
+	opts := options(f, fake.New(ready, cartSpec()...), steps.run)
+	opts.Review = false
+
+	res := factory.Run(context.Background(), opts)
+
+	if len(res.Closed) != 1 || steps.names() != "implement" {
+		t.Fatalf("result = %+v, Steps %q; want #2 closed after implement alone", res, steps.names())
+	}
+}
+
+// checkFixed is a Feedback command, portable between sh and cmd.exe, that
+// prints a line and then passes only if cart.go says "fixed".
+var checkFixed = verify.Command{Name: "test", Line: "echo checking the cart && git grep -q fixed -- cart.go"}
+
+func TestAFailedVerifyRetriesImplementOnceWithTheFailingOutput(t *testing.T) {
+	f := newFixture(t)
+	tr := fake.New(ready, cartSpec()...)
+	n := 0
+	implement := func(ctx context.Context, s factory.Step) harness.Outcome {
+		n++
+		content := "package cart\n"
+		if n == 2 {
+			content = "package cart // fixed\n"
+		}
+		return commits(map[string]string{"cart.go": content}, fmt.Sprintf("Attempt %d.", n))(ctx, s)
+	}
+	steps := &byStep{fns: map[string]func(context.Context, factory.Step) harness.Outcome{
+		factory.Implement: implement,
+		factory.Review:    reports(harness.Done, "Fine."),
+	}}
+	opts := options(f, tr, steps.run)
+	opts.Review, opts.Verify, opts.VerifyEnv = true, []verify.Command{checkFixed}, os.Environ()
+
+	res := factory.Run(context.Background(), opts)
+
+	if len(res.Closed) != 1 || len(res.Failed) != 0 {
+		t.Fatalf("result = %+v, want #2 closed after the retry", res)
+	}
+	if got := steps.names(); got != "implement review implement review" {
+		t.Fatalf("Steps = %q, want implement and review twice", got)
+	}
+	retry := steps.seen[2].Prompt
+	for _, want := range []string{"`test`", "checking the cart"} {
+		if !strings.Contains(retry, want) {
+			t.Errorf("the retried implement prompt lacks %q:\n%s", want, retry)
+		}
+	}
+	if strings.Contains(steps.seen[0].Prompt, "checking the cart") {
+		t.Error("the first implement prompt already has verify's output")
+	}
+	if c := tr.Writes()[0].Text; !strings.Contains(c, "Attempt 2.") {
+		t.Errorf("close comment lacks the last implement's summary:\n%s", c)
+	}
+}
+
+func TestVerifyFailingAgainAfterTheRetryFailsTheTicket(t *testing.T) {
+	f := newFixture(t)
+	tr := fake.New(ready, cartSpec()...)
+	n := 0
+	implement := func(ctx context.Context, s factory.Step) harness.Outcome {
+		n++
+		return commits(map[string]string{fmt.Sprintf("f%d.go", n): "package cart\n"}, "Done.")(ctx, s)
+	}
+	opts := options(f, tr, implement)
+	opts.Verify, opts.VerifyEnv = []verify.Command{checkFixed}, os.Environ()
+
+	res := factory.Run(context.Background(), opts)
+
+	if len(res.Failed) != 1 || !strings.Contains(res.Failed[0].Reason, "`test`") {
+		t.Fatalf("failed = %+v, want #2 failed naming `test`", res.Failed)
+	}
+	if n != 2 {
+		t.Errorf("implement ran %d times, want 2: one retry", n)
+	}
+	if w := tr.Writes(); len(w) != 0 {
+		t.Errorf("tracker writes = %+v, want #2 left open", w)
+	}
+	if got := f.remoteRef(t, "kraftwerk/spec-1-spec-shopping-cart"); got != "" {
+		t.Errorf("the Spec branch was pushed with failing checks: %s", got)
+	}
+}
+
+func TestVerifyRunsAfterReviewsFix(t *testing.T) {
+	f := newFixture(t)
+	steps := &byStep{fns: map[string]func(context.Context, factory.Step) harness.Outcome{
+		factory.Implement: commits(map[string]string{"cart.go": "package cart\n"}, "Added the cart."),
+		factory.Review:    commits(map[string]string{"cart.go": "package cart // fixed\n"}, "Fixed it."),
+	}}
+	opts := options(f, fake.New(ready, cartSpec()...), steps.run)
+	opts.Review, opts.Verify, opts.VerifyEnv = true, []verify.Command{checkFixed}, os.Environ()
+
+	res := factory.Run(context.Background(), opts)
+
+	if len(res.Closed) != 1 || steps.names() != "implement review" {
+		t.Fatalf("result = %+v, Steps %q; want #2 closed with no retry", res, steps.names())
 	}
 }

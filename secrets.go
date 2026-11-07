@@ -7,18 +7,28 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/credentials"
+	"github.com/Marcel-Goehn/kraftwerk/internal/git"
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness/claudecode"
 	"github.com/Marcel-Goehn/kraftwerk/internal/redact"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/github"
 )
 
-// theHarness is the Harness every Step uses: "claude_code" is the only one.
-var theHarness harness.Harness = claudecode.ClaudeCode{}
+// harnesses are the Harnesses compiled in, by config name.
+var harnesses = map[string]harness.Harness{"claude_code": claudecode.ClaudeCode{}}
+
+// defaultHarness is the Harness of a Step that names none, at its level or
+// the top level.
+const defaultHarness = "claude_code"
+
+// theHarness is the Harness whose credentials a Run resolves: "claude_code"
+// is the only one, so every Step uses it.
+var theHarness = harnesses[defaultHarness]
 
 // testCallTimeout bounds a credential's free test call.
 const testCallTimeout = 30 * time.Second
@@ -158,6 +168,29 @@ func (s *secrets) stepEnv(scrub bool) (env map[string]string, unset []string) {
 		unset = append(unset, s.harnessEnv...)
 	}
 	return env, unset
+}
+
+// commandEnv is the env of the Feedback commands the Factory runs itself.
+// They run the agent's code, so they get what the agent's own commands
+// get: the Factory's env without host-only variables and, when scrubbing,
+// without the Harness's credential variables; the project secrets only
+// when scrubbing is off. Never the Harness's configured credential.
+func (s *secrets) commandEnv(scrub bool) []string {
+	unset := slices.Clone(s.hostOnly)
+	if scrub {
+		unset = append(unset, s.harnessEnv...)
+	}
+	env := slices.DeleteFunc(os.Environ(), func(kv string) bool {
+		name, _, _ := strings.Cut(kv, "=")
+		return slices.ContainsFunc(unset, func(u string) bool { return strings.EqualFold(u, name) })
+	})
+	env = append(env, git.NonInteractiveEnv...)
+	if !scrub {
+		for k, v := range s.project {
+			env = append(env, k+"="+v)
+		}
+	}
+	return env
 }
 
 // redacted are stdout and stderr behind the redactor.

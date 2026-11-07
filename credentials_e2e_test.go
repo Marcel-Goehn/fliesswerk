@@ -223,7 +223,7 @@ func TestARunDeliversSecretsToTheStepAndRedactsThemEverywhere(t *testing.T) {
 	srv, _ := fakeGateway(t, "gw-secret-token")
 	// The agent leaks both secrets: into a tool call the terminal shows,
 	// and into its report, which becomes the close comment.
-	p := newRunProject(t, bin, cartIssues(), `{"sessions": [{"match": "Ticket #2", "expand": true, "actions": [
+	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, {"match": "Ticket #2", "expand": true, "actions": [
 		{"run": ["git", "commit", "-q", "--allow-empty", "-m", "token $ANTHROPIC_AUTH_TOKEN db $DB_PASSWORD"]}
 	], "report": {"outcome": "done", "summary": "Used $ANTHROPIC_AUTH_TOKEN and $DB_PASSWORD."}}]}`)
 	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), noSandbox+"scrub_credentials = false\n"+
@@ -239,16 +239,18 @@ func TestARunDeliversSecretsToTheStepAndRedactsThemEverywhere(t *testing.T) {
 		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
 	}
 	calls := harnessCalls(t, logPath)
-	if len(calls) != 1 {
-		t.Fatalf("the Harness ran %d times, want once", len(calls))
+	if len(calls) != 2 {
+		t.Fatalf("the Harness ran %d times, want twice: implement and review", len(calls))
 	}
-	env := calls[0].Env
-	if env["ANTHROPIC_AUTH_TOKEN"] != "gw-secret-token" || env["ANTHROPIC_BASE_URL"] != srv.URL || env["DB_PASSWORD"] != "db-secret-pw" {
-		t.Errorf("the Step's env = %v, want the gateway credential and the project secret", env)
-	}
-	for _, a := range calls[0].Argv {
-		if strings.Contains(a, "gw-secret-token") || strings.Contains(a, "db-secret-pw") {
-			t.Errorf("a secret is on the command line: %q", calls[0].Argv)
+	for _, c := range calls {
+		env := c.Env
+		if env["ANTHROPIC_AUTH_TOKEN"] != "gw-secret-token" || env["ANTHROPIC_BASE_URL"] != srv.URL || env["DB_PASSWORD"] != "db-secret-pw" {
+			t.Errorf("the Step's env = %v, want the gateway credential and the project secret", env)
+		}
+		for _, a := range c.Argv {
+			if strings.Contains(a, "gw-secret-token") || strings.Contains(a, "db-secret-pw") {
+				t.Errorf("a secret is on the command line: %q", c.Argv)
+			}
 		}
 	}
 
@@ -265,7 +267,7 @@ func TestARunDeliversSecretsToTheStepAndRedactsThemEverywhere(t *testing.T) {
 
 func TestWithScrubbingOnTheAgentGetsNoProjectSecretOrTrackerToken(t *testing.T) {
 	bin := buildTestKraftwerk(t)
-	p := newRunProject(t, bin, cartIssues(), `{"sessions": [{"match": "Ticket #2", "actions": [
+	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, {"match": "Ticket #2", "actions": [
 		{"run": ["git", "commit", "-q", "--allow-empty", "-m", "work"]}
 	], "report": {"outcome": "done", "summary": "ok"}}]}`)
 	// Both secrets come from the Factory's own env, which the Step would
@@ -280,12 +282,14 @@ func TestWithScrubbingOnTheAgentGetsNoProjectSecretOrTrackerToken(t *testing.T) 
 		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
 	}
 	calls := harnessCalls(t, logPath)
-	if len(calls) != 1 {
-		t.Fatalf("the Harness ran %d times, want once", len(calls))
+	if len(calls) != 2 {
+		t.Fatalf("the Harness ran %d times, want twice: implement and review", len(calls))
 	}
-	for _, name := range []string{"DB_PASSWORD", "KWK_GH_PAT", "GH_TOKEN"} {
-		if _, ok := calls[0].Env[name]; ok {
-			t.Errorf("the agent got %s with scrubbing on", name)
+	for _, c := range calls {
+		for _, name := range []string{"DB_PASSWORD", "KWK_GH_PAT", "GH_TOKEN"} {
+			if _, ok := c.Env[name]; ok {
+				t.Errorf("the agent got %s with scrubbing on", name)
+			}
 		}
 	}
 }
