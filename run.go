@@ -10,20 +10,19 @@ import (
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
 )
 
-// runRun starts a Run. Only --dry-run exists so far: it validates the
-// config, reads the Snapshot and prints Iteration 1 and every skipped
-// Ticket. It writes nothing and starts nothing.
+// runRun starts a Run. With --dry-run it validates the config, reads the
+// Snapshot and prints Iteration 1 and every skipped Ticket, writing
+// nothing and starting nothing.
 func runRun(args []string, stdout, stderr io.Writer) int {
 	var dryRun bool
-	values, code, ok := loadConfig("kraftwerk run", args, stderr, func(fs *flag.FlagSet) {
+	values, root, code, ok := loadConfig("kraftwerk run", args, stderr, func(fs *flag.FlagSet) {
 		fs.BoolVar(&dryRun, "dry-run", false, "show Iteration 1 and every skipped Ticket, writing nothing")
 	})
 	if !ok {
 		return code
 	}
 	if !dryRun {
-		_, _ = fmt.Fprintln(stderr, "kraftwerk run: this kraftwerk can't run Tickets yet; use `kraftwerk run --dry-run` to preview a Run")
-		return exitConfigError
+		return runFactory(values, root, stdout, stderr)
 	}
 
 	tr, err := newTracker(values)

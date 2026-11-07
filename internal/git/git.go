@@ -1,0 +1,192 @@
+// Package git runs the git commands the Factory needs, on the host, with
+// the user's own git credentials. Nothing here ever checks out, resets or
+// writes into the user's checkout: branches are made with `git branch`
+// and worked in worktrees the Factory owns.
+package git
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"strconv"
+	"strings"
+)
+
+// NonInteractiveEnv keeps git from ever waiting for a person: no
+// credential prompt, no editor, no pager.
+var NonInteractiveEnv = []string{"GIT_TERMINAL_PROMPT=0", "GIT_EDITOR=true", "GIT_PAGER=cat"}
+
+// Repo is a git repository, worked on through the directory Dir (the
+// user's checkout or one of the Factory's worktrees).
+type Repo struct {
+	Dir string
+}
+
+// Run runs git in r.Dir and returns its stdout with surrounding white
+// space trimmed. The error carries git's stderr.
+func (r Repo) Run(ctx context.Context, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", args...) //nolint:gosec // git is the tool this package exists to run
+	cmd.Dir = r.Dir
+	cmd.Env = append(os.Environ(), NonInteractiveEnv...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return "", fmt.Errorf("git %s: %s", strings.Join(args, " "), msg)
+	}
+	return strings.TrimSpace(stdout.String()), nil
+}
+
+// TopLevel is the root of the working tree around r.Dir.
+func (r Repo) TopLevel(ctx context.Context) (string, error) {
+	return r.Run(ctx, "rev-parse", "--show-toplevel")
+}
+
+// IsIgnored reports whether git ignores path, relative to r.Dir.
+func (r Repo) IsIgnored(ctx context.Context, path string) (bool, error) {
+	cmd := exec.CommandContext(ctx, "git", "check-ignore", "-q", "--", path) //nolint:gosec // path is a fixed path in the runtime state
+	cmd.Dir = r.Dir
+	cmd.Env = append(os.Environ(), NonInteractiveEnv...)
+	err := cmd.Run()
+	var exit *exec.ExitError
+	switch {
+	case err == nil:
+		return true, nil
+	case errors.As(err, &exit) && exit.ExitCode() == 1:
+		return false, nil
+	}
+	return false, fmt.Errorf("git check-ignore %s: %w", path, err)
+}
+
+// Fetch updates the remote-tracking ref of one branch of remote.
+func (r Repo) Fetch(ctx context.Context, remote, branch string) error {
+	_, err := r.Run(ctx, "fetch", "--quiet", "--no-tags", remote,
+		"+refs/heads/"+branch+":refs/remotes/"+remote+"/"+branch)
+	return err
+}
+
+// LocalBranches lists the local branches whose name starts with prefix.
+func (r Repo) LocalBranches(ctx context.Context, prefix string) ([]string, error) {
+	out, err := r.Run(ctx, "for-each-ref", "--format=%(refname)", "refs/heads/")
+	if err != nil {
+		return nil, err
+	}
+	return withPrefix(strings.Fields(out), "refs/heads/", prefix), nil
+}
+
+// RemoteBranches lists the branches of remote whose name starts with
+// prefix, asking the remote itself.
+func (r Repo) RemoteBranches(ctx context.Context, remote, prefix string) ([]string, error) {
+	out, err := r.Run(ctx, "ls-remote", "--heads", remote)
+	if err != nil {
+		return nil, err
+	}
+	var refs []string
+	for _, line := range strings.Split(out, "\n") {
+		if _, ref, ok := strings.Cut(line, "\t"); ok {
+			refs = append(refs, ref)
+		}
+	}
+	return withPrefix(refs, "refs/heads/", prefix), nil
+}
+
+func withPrefix(refs []string, namespace, prefix string) []string {
+	var out []string
+	for _, ref := range refs {
+		if name, ok := strings.CutPrefix(ref, namespace); ok && strings.HasPrefix(name, prefix) {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// HasBranch reports whether the local branch exists.
+func (r Repo) HasBranch(ctx context.Context, branch string) bool {
+	_, err := r.Run(ctx, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch)
+	return err == nil
+}
+
+// CreateBranch makes branch point at start, without checking it out.
+func (r Repo) CreateBranch(ctx context.Context, branch, start string) error {
+	_, err := r.Run(ctx, "branch", "--no-track", branch, start)
+	return err
+}
+
+// DeleteBranch deletes a local branch, merged or not.
+func (r Repo) DeleteBranch(ctx context.Context, branch string) error {
+	_, err := r.Run(ctx, "branch", "-D", branch)
+	return err
+}
+
+// AddWorktree checks branch out in a new worktree at path.
+func (r Repo) AddWorktree(ctx context.Context, path, branch string) error {
+	_, err := r.Run(ctx, "worktree", "add", "--quiet", path, branch)
+	return err
+}
+
+// RemoveWorktree removes the worktree at path, with whatever it holds.
+func (r Repo) RemoveWorktree(ctx context.Context, path string) error {
+	_, err := r.Run(ctx, "worktree", "remove", "--force", path)
+	return err
+}
+
+// Rev is the SHA a revision names.
+func (r Repo) Rev(ctx context.Context, rev string) (string, error) {
+	return r.Run(ctx, "rev-parse", "--verify", "--quiet", rev+"^{commit}")
+}
+
+// Commit is one commit, for reporting.
+type Commit struct {
+	SHA     string
+	Subject string
+}
+
+// Short is the commit's abbreviated SHA.
+func (c Commit) Short() string { return c.SHA[:min(len(c.SHA), 7)] }
+
+// Log lists the commits reachable from to but not from from, oldest first.
+func (r Repo) Log(ctx context.Context, from, to string) ([]Commit, error) {
+	out, err := r.Run(ctx, "log", "--reverse", "--format=%H %s", from+".."+to)
+	if err != nil {
+		return nil, err
+	}
+	var commits []Commit
+	for _, line := range strings.Split(out, "\n") {
+		if line == "" {
+			continue
+		}
+		sha, subject, _ := strings.Cut(line, " ")
+		commits = append(commits, Commit{SHA: sha, Subject: subject})
+	}
+	return commits, nil
+}
+
+// MergeFastForward moves the branch checked out in r.Dir forward to rev,
+// failing if that isn't a fast-forward.
+func (r Repo) MergeFastForward(ctx context.Context, rev string) error {
+	_, err := r.Run(ctx, "merge", "--quiet", "--ff-only", rev)
+	return err
+}
+
+// Push pushes the local branch to the branch of the same name on remote.
+// It is never forced.
+func (r Repo) Push(ctx context.Context, remote, branch string) error {
+	ref := "refs/heads/" + branch
+	_, err := r.Run(ctx, "push", "--quiet", "--porcelain", remote, ref+":"+ref)
+	return err
+}
+
+// Count is how many commits are reachable from to but not from from.
+func (r Repo) Count(ctx context.Context, from, to string) (int, error) {
+	out, err := r.Run(ctx, "rev-list", "--count", from+".."+to)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.Atoi(out)
+}

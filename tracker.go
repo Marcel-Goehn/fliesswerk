@@ -15,9 +15,18 @@ const (
 	defaultMaxParallel = 1
 )
 
+// testTracker, when set and returning a Tracker, replaces the configured
+// one. Only a test build (the `kwkfake` tag) sets it.
+var testTracker func() (tracker.Tracker, error)
+
 // newTracker builds the Tracker the config names. The config has already
 // been validated, so every value has the right type.
 func newTracker(values map[string]any) (tracker.Tracker, error) {
+	if testTracker != nil {
+		if tr, err := testTracker(); tr != nil || err != nil {
+			return tr, err
+		}
+	}
 	token, err := trackerToken(values)
 	if err != nil {
 		return nil, err
@@ -36,10 +45,7 @@ func readyLabel(values map[string]any) string {
 }
 
 func maxParallel(values map[string]any) int {
-	if v, ok := valueAt(values, "max_parallel").(int64); ok {
-		return int(v)
-	}
-	return defaultMaxParallel
+	return intAt(values, defaultMaxParallel, "max_parallel")
 }
 
 // trackerToken resolves `tracker.token`, empty when it isn't set.
@@ -77,6 +83,20 @@ func valueAt(values map[string]any, path ...string) any {
 func stringAt(values map[string]any, def string, path ...string) string {
 	if s, ok := valueAt(values, path...).(string); ok {
 		return s
+	}
+	return def
+}
+
+func intAt(values map[string]any, def int, path ...string) int {
+	if v, ok := valueAt(values, path...).(int64); ok {
+		return int(v)
+	}
+	return def
+}
+
+func boolAt(values map[string]any, def bool, path ...string) bool {
+	if v, ok := valueAt(values, path...).(bool); ok {
+		return v
 	}
 	return def
 }

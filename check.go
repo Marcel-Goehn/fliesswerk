@@ -60,7 +60,7 @@ func (f *localFlags) overrides(fs *flag.FlagSet) []config.Override {
 // runCheck validates the config and the Tracker's tools, and exits 3 if
 // anything fails.
 func runCheck(args []string, stdout, stderr io.Writer) int {
-	values, code, ok := loadConfig("kraftwerk check", args, stderr, nil)
+	values, _, code, ok := loadConfig("kraftwerk check", args, stderr, nil)
 	if !ok {
 		return code
 	}
@@ -89,8 +89,9 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 
 // loadConfig parses the local flags (and any extra ones register adds),
 // loads the config of the project around the current directory and prints
-// its diagnostics. ok is false when the command must exit with code.
-func loadConfig(cmd string, args []string, stderr io.Writer, register func(*flag.FlagSet)) (values map[string]any, code int, ok bool) {
+// its diagnostics. root is the project root. ok is false when the command
+// must exit with code.
+func loadConfig(cmd string, args []string, stderr io.Writer, register func(*flag.FlagSet)) (values map[string]any, root string, code int, ok bool) {
 	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var lf localFlags
@@ -99,27 +100,28 @@ func loadConfig(cmd string, args []string, stderr io.Writer, register func(*flag
 		register(fs)
 	}
 	if err := fs.Parse(args); err != nil {
-		return nil, exitConfigError, false
+		return nil, "", exitConfigError, false
 	}
 	if fs.NArg() > 0 {
 		_, _ = fmt.Fprintf(stderr, "%s: unexpected argument %q\n", cmd, fs.Arg(0))
-		return nil, exitConfigError, false
+		return nil, "", exitConfigError, false
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%s: can't find the current directory: %v\n", cmd, err)
-		return nil, exitConfigError, false
+		return nil, "", exitConfigError, false
 	}
 
-	r := config.Load(projectRoot(cwd), lf.overrides(fs))
+	root = projectRoot(cwd)
+	r := config.Load(root, lf.overrides(fs))
 	for _, d := range r.Diagnostics {
 		_, _ = fmt.Fprintln(stderr, d.String())
 	}
 	if !r.OK() {
 		_, _ = fmt.Fprintf(stderr, "%s: the config is not valid; fix the errors above\n", cmd)
-		return nil, exitConfigError, false
+		return nil, "", exitConfigError, false
 	}
-	return r.Values, exitOK, true
+	return r.Values, root, exitOK, true
 }
 
 // projectRoot is the nearest directory at or above dir that holds

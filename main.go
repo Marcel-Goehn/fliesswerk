@@ -19,6 +19,7 @@ func main() {
 
 const usage = `Usage:
   kraftwerk check            validate the config and check the Tracker's tools
+  kraftwerk run              implement the ready Tickets, Iteration by Iteration
   kraftwerk run --dry-run    show what Iteration 1 would take, and what is skipped and why
   kraftwerk --version        print the version
 `

@@ -161,13 +161,17 @@ func TestRunDryRun(t *testing.T) {
 	})
 }
 
-func TestRunWithoutDryRunIsNotAvailableYet(t *testing.T) {
+func TestRunWithASandboxIsNotAvailableYet(t *testing.T) {
 	bin := buildKraftwerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": dryRunProject})
+	log := filepath.Join(t.TempDir(), "gh.log")
 
-	_, stderr, code := runEnv(t, bin, root, ghEnv(t, "dryrun"), "run")
+	_, stderr, code := runEnv(t, bin, root, ghEnv(t, "dryrun", "FAKEGH_LOG="+log), "run")
 
-	if code != 3 || !strings.Contains(stderr, "--dry-run") {
-		t.Fatalf("exit code = %d, want 3 pointing at --dry-run; stderr: %s", code, stderr)
+	if code != 3 || !strings.Contains(stderr, "--sandbox none") {
+		t.Fatalf("exit code = %d, want 3 pointing at --sandbox none; stderr: %s", code, stderr)
+	}
+	if _, err := os.Stat(log); err == nil {
+		t.Fatal("gh ran although the Run can't start")
 	}
 }

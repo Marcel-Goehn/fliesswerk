@@ -198,6 +198,17 @@ func (t *Tracker) SetLabels(_ context.Context, ticket tracker.ID, add, remove []
 	return nil
 }
 
+// Issues returns every issue as it is now, by number.
+func (t *Tracker) Issues() []Issue {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	out := make([]Issue, 0, len(t.issues))
+	for _, n := range t.numbers() {
+		out = append(out, *t.issues[n])
+	}
+	return out
+}
+
 // Writes returns every write so far, in order.
 func (t *Tracker) Writes() []Write {
 	t.mu.Lock()
