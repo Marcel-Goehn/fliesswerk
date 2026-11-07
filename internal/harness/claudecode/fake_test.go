@@ -101,7 +101,7 @@ func runFake(t *testing.T, script string, s harness.Step) fakeRun {
 		run.events = append(run.events, claudecode.ClaudeCode{}.Parse(sc.Bytes())...)
 	}
 	run.outcome = harness.Resolve(run.events, exit)
-	if data, err := os.ReadFile(logPath); err == nil {
+	if data, err := os.ReadFile(logPath); err == nil { //nolint:gosec // the test's own temp file
 		if err := json.Unmarshal(data, &run.log); err != nil {
 			t.Fatalf("log: %v", err)
 		}

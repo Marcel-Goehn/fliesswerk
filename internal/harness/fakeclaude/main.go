@@ -119,7 +119,7 @@ func main() {
 
 func pick(prompt string) session {
 	path := os.Getenv("KWK_FAKE_HARNESS_SCRIPT")
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // the test that runs the fake names its script
 	if err != nil {
 		fail("fakeclaude: KWK_FAKE_HARNESS_SCRIPT: %v", err)
 	}
@@ -204,7 +204,7 @@ func (w *writer) act(a action) {
 		}
 		w.toolCall("Write", map[string]any{"file_path": path, "content": a.Content}, result, err != nil)
 	case len(a.Run) > 0:
-		cmd := exec.Command(a.Run[0], a.Run[1:]...) // #nosec G204 -- a test script names the command
+		cmd := exec.Command(a.Run[0], a.Run[1:]...) //nolint:gosec // a test script names the command
 		out, err := cmd.CombinedOutput()
 		w.toolCall("Bash", map[string]any{"command": strings.Join(a.Run, " ")}, string(out), err != nil)
 	}
@@ -275,7 +275,7 @@ func logInvocation(args []string, prompt string) {
 		}
 	}
 	line, _ := json.Marshal(map[string]any{"argv": args, "prompt": prompt, "env": env})
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec // the test that runs the fake names its log
 	if err != nil {
 		fail("fakeclaude: %v", err)
 	}

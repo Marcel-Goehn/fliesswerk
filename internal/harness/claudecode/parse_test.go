@@ -15,11 +15,11 @@ import (
 // parseFile feeds a golden transcript into Parse, line by line.
 func parseFile(t *testing.T, path string) []harness.Event {
 	t.Helper()
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // a golden transcript named by the test
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	var events []harness.Event
 	sc := bufio.NewScanner(f)
 	sc.Buffer(nil, 1<<24)
