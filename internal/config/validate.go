@@ -47,6 +47,23 @@ func validateMerged(values map[string]any) []Diagnostic {
 		c.warnAt("sandbox.network.allow", "`allow = [\"*\"]` lets the Sandbox reach any host")
 	}
 
+	secrets, _ := sandbox["secrets"].(map[string]any)
+	hooks, _ := values["hooks"].(map[string]any)
+	for _, point := range sortedKeys(hooks) {
+		entries, _ := hooks[point].([]any)
+		for i, e := range entries {
+			entry, _ := e.(map[string]any)
+			names, _ := entry["secrets"].([]any)
+			for j, n := range names {
+				name, _ := n.(string)
+				if _, ok := secrets[name]; !ok {
+					c.errorAt(fmt.Sprintf("hooks.%s[%d].secrets[%d]", point, i, j),
+						fmt.Sprintf("%q is not in [sandbox.secrets]%s", name, didYouMean(name, sortedKeys(secrets))))
+				}
+			}
+		}
+	}
+
 	commands, _ := values["commands"].(map[string]any)
 	verify, _ := values["verify"].([]any)
 	for i, v := range verify {

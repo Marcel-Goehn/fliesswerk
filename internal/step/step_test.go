@@ -227,6 +227,37 @@ func TestEveryStepGetsTheNonInteractiveGitEnv(t *testing.T) {
 	}
 }
 
+func TestCredentialsGoIntoTheStepEnvNeverItsArgv(t *testing.T) {
+	withFakeHarness(t, `{"sessions": [{"report": {"outcome": "done", "summary": "ok"}}]}`)
+	logPath := filepath.Join(t.TempDir(), "log.jsonl")
+	t.Setenv("KWK_FAKE_HARNESS_LOG", logPath)
+	t.Setenv("KWK_FAKE_LOG_ENV", "DATABASE_URL")
+	// The user's own key would win over the configured OAuth token.
+	t.Setenv("ANTHROPIC_API_KEY", "the-users-own-key")
+
+	const dbURL = "postgres://u:pw@db/app" //nolint:gosec // a made-up secret
+	r := step.Runner{
+		Harness: claudecode.ClaudeCode{},
+		Env:     map[string]string{"CLAUDE_CODE_OAUTH_TOKEN": "oauth-secret", "DATABASE_URL": dbURL},
+		Unset:   []string{"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"},
+	}
+	out := r.Run(context.Background(), newStep("go"), t.TempDir())
+
+	if out.Kind != harness.Reported {
+		t.Fatalf("outcome = %+v, want a report", out)
+	}
+	log := readInvocation(t, logPath)
+	if log.Env["CLAUDE_CODE_OAUTH_TOKEN"] != "oauth-secret" || log.Env["DATABASE_URL"] != dbURL {
+		t.Errorf("env = %v, want the credential and the project secret", log.Env)
+	}
+	if _, ok := log.Env["ANTHROPIC_API_KEY"]; ok {
+		t.Errorf("env = %v, want the user's own ANTHROPIC_API_KEY left out", log.Env)
+	}
+	if argv := strings.Join(log.Argv, " "); strings.Contains(argv, "oauth-secret") || strings.Contains(argv, "pw@db") {
+		t.Errorf("a secret is in argv: %q", log.Argv)
+	}
+}
+
 // npmShim is the shim npm writes for a package whose bin is an executable.
 const npmShim = "@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n" +
 	"\"%dp0%\\node_modules\\fake\\bin\\claude.exe\"   %*\r\n"

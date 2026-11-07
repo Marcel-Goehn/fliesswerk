@@ -146,7 +146,27 @@ func ghEnv(t *testing.T, fixtures string, extra ...string) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return append(baseEnv(fakeGhBinDir(t)), append([]string{"FAKEGH_DIR=" + abs}, extra...)...)
+	path := fakeGhBinDir(t) + string(os.PathListSeparator) + gitBinDir(t)
+	return append(baseEnv(path), append([]string{"FAKEGH_DIR=" + abs, "XDG_CONFIG_HOME=" + t.TempDir()}, extra...)...)
+}
+
+// gitBinDir is a directory that holds git and nothing else of the
+// user's (gh is often installed next to git). On Windows, it is git's own
+// directory, since git.exe can't be linked elsewhere.
+func gitBinDir(t *testing.T) string {
+	t.Helper()
+	gitBin, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("no git")
+	}
+	if runtime.GOOS == "windows" {
+		return filepath.Dir(gitBin)
+	}
+	dir := t.TempDir()
+	if err := os.Symlink(gitBin, filepath.Join(dir, "git")); err != nil {
+		t.Fatal(err)
+	}
+	return dir
 }
 
 // baseEnv is the test's environment without any gh token, with PATH set to
@@ -164,11 +184,18 @@ func baseEnv(path string) []string {
 	return append(env, "PATH="+path)
 }
 
-// projectDir writes .kraftwerk/<name> for every file and returns the
-// project root.
+// projectDir writes .kraftwerk/<name> for every file into a new git
+// checkout whose .kraftwerk/.gitignore ignores .env (unless files has its
+// own), and returns the project root.
 func projectDir(t *testing.T, files map[string]string) string {
 	t.Helper()
 	root := t.TempDir()
+	if out, err := exec.Command("git", "init", "-q", root).CombinedOutput(); err != nil {
+		t.Skipf("no git: %v\n%s", err, out)
+	}
+	if _, ok := files[".gitignore"]; !ok {
+		files[".gitignore"] = "config.local.toml\n.env\nstate/\nlogs/\n"
+	}
 	if err := os.MkdirAll(filepath.Join(root, ".kraftwerk"), 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +296,7 @@ func TestCheck(t *testing.T) {
 	})
 	t.Run("gh missing exits 3 naming how to install it", func(t *testing.T) {
 		root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
-		_, stderr, code := runEnv(t, bin, root, baseEnv(t.TempDir()), "check")
+		_, stderr, code := runEnv(t, bin, root, baseEnv(t.TempDir()+string(os.PathListSeparator)+gitBinDir(t)), "check")
 		if code != 3 || !strings.Contains(stderr, "gh is not installed") {
 			t.Fatalf("exit code = %d, want 3 saying gh is missing; stderr: %s", code, stderr)
 		}

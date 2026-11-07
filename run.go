@@ -25,7 +25,12 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		return runFactory(values, root, stdout, stderr)
 	}
 
-	tr, err := newTracker(values)
+	s, code, ok := secretsForRun(values, root, stderr)
+	if !ok {
+		return code
+	}
+	stdout, stderr = s.redacted(stdout, stderr)
+	tr, err := newTracker(values, s.trackerToken)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "kraftwerk run: %v\n", err)
 		return exitConfigError

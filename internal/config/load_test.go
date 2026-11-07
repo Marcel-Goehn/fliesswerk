@@ -388,6 +388,7 @@ allow = ["registry.npmjs.org"]
 [sandbox.env]
 [sandbox.secrets]
 TEST_DB_PASSWORD = { env = "TEST_DB_PASSWORD" }
+GH_TOKEN = { stored = "github" }
 
 [network]
 ca_certs = []
@@ -441,4 +442,11 @@ func TestWrongTypeSuggestsASiblingKeyOfThatType(t *testing.T) {
 
 func TestOrdinaryEnvNamesDontLookLikeSecrets(t *testing.T) {
 	wantClean(t, load(t, "version = 1\n[sandbox.env]\nPWD = \"/app\"\nTOKEN_URL = \"https://auth.example/token\"\n", ""))
+}
+
+func TestHostHookSecretsNameProjectSecrets(t *testing.T) {
+	cfg := "version = 1\n[sandbox.secrets]\nGH_TOKEN = { stored = \"github\" }\n" +
+		"[[hooks.spec_finished]]\nrun = \"gh pr create --fill\"\nsecrets = [\"GH_TOKEN\", \"GH_TOKN\"]\n"
+	r := load(t, cfg, "")
+	wantOne(t, r, config.Error, "hooks.spec_finished[0].secrets[1]", `"GH_TOKN" is not in [sandbox.secrets]`, `did you mean "GH_TOKEN"?`)
 }

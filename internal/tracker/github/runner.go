@@ -41,8 +41,8 @@ func (r ExecRunner) Run(ctx context.Context, stdin []byte, args ...string) ([]by
 	return stdout.Bytes(), nil
 }
 
-// tokenVars are the environment variables gh reads a token from.
-var tokenVars = []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"}
+// TokenVars are the environment variables gh reads a token from.
+var TokenVars = []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"}
 
 // Env is the environment gh runs with: base, never prompting, plus token
 // as GH_TOKEN when one is configured (which then replaces any token in
@@ -64,7 +64,7 @@ func Env(base []string, token string) []string {
 }
 
 func isTokenVar(name string) bool {
-	for _, v := range tokenVars {
+	for _, v := range TokenVars {
 		if strings.EqualFold(name, v) {
 			return true
 		}

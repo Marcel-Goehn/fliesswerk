@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-	"os"
 	"runtime"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
@@ -19,17 +17,14 @@ const (
 // one. Only a test build (the `kwkfake` tag) sets it.
 var testTracker func() (tracker.Tracker, error)
 
-// newTracker builds the Tracker the config names. The config has already
-// been validated, so every value has the right type.
-func newTracker(values map[string]any) (tracker.Tracker, error) {
+// newTracker builds the Tracker the config names, with token (empty for
+// the Tracker's own login). The config has already been validated, so
+// every value has the right type.
+func newTracker(values map[string]any, token string) (tracker.Tracker, error) {
 	if testTracker != nil {
 		if tr, err := testTracker(); tr != nil || err != nil {
 			return tr, err
 		}
-	}
-	token, err := trackerToken(values)
-	if err != nil {
-		return nil, err
 	}
 	// "github" is the only kind, and the default.
 	return github.New(github.Options{
@@ -46,25 +41,6 @@ func readyLabel(values map[string]any) string {
 
 func maxParallel(values map[string]any) int {
 	return intAt(values, defaultMaxParallel, "max_parallel")
-}
-
-// trackerToken resolves `tracker.token`, empty when it isn't set.
-func trackerToken(values map[string]any) (string, error) {
-	ref, ok := valueAt(values, "tracker", "token").(map[string]any)
-	if !ok {
-		return "", nil
-	}
-	if name, ok := ref["env"].(string); ok {
-		v := os.Getenv(name)
-		if v == "" {
-			return "", fmt.Errorf("tracker.token: the environment variable %s is not set", name)
-		}
-		return v, nil
-	}
-	for source := range ref {
-		return "", fmt.Errorf("tracker.token: the %q source isn't supported by this kraftwerk yet; use { env = \"NAME\" }, or leave tracker.token out to use your gh login", source)
-	}
-	return "", nil
 }
 
 // valueAt is the value at a key path in decoded TOML, nil if there is none.

@@ -41,23 +41,23 @@ func listModels(base string, header map[string]string) harness.Request {
 var authMethods = []harness.AuthMethod{
 	{
 		Name:      "oauth_token",
-		Fields:    []harness.AuthField{{Key: "token", Secret: true}},
-		Env:       map[string]string{"CLAUDE_CODE_OAUTH_TOKEN": "token"},
+		Fields:    []harness.AuthField{{Key: "secret", Secret: true}},
+		Env:       map[string]string{"CLAUDE_CODE_OAUTH_TOKEN": "secret"},
 		Endpoints: anthropicEndpoints,
 		TestCall: func(f map[string]string) harness.Request {
 			return listModels("https://"+anthropicHost, map[string]string{
-				"Authorization":  "Bearer " + f["token"],
+				"Authorization":  "Bearer " + f["secret"],
 				"anthropic-beta": "oauth-2025-04-20",
 			})
 		},
 	},
 	{
 		Name:      "api_key",
-		Fields:    []harness.AuthField{{Key: "key", Secret: true}},
-		Env:       map[string]string{"ANTHROPIC_API_KEY": "key"},
+		Fields:    []harness.AuthField{{Key: "secret", Secret: true}},
+		Env:       map[string]string{"ANTHROPIC_API_KEY": "secret"},
 		Endpoints: anthropicEndpoints,
 		TestCall: func(f map[string]string) harness.Request {
-			return listModels("https://"+anthropicHost, map[string]string{"x-api-key": f["key"]})
+			return listModels("https://"+anthropicHost, map[string]string{"x-api-key": f["secret"]})
 		},
 	},
 	{
@@ -81,8 +81,8 @@ var authMethods = []harness.AuthMethod{
 	},
 	{
 		Name:   "gateway",
-		Fields: []harness.AuthField{{Key: "base_url"}, {Key: "token", Secret: true}},
-		Env:    map[string]string{"ANTHROPIC_BASE_URL": "base_url", "ANTHROPIC_AUTH_TOKEN": "token"},
+		Fields: []harness.AuthField{{Key: "base_url"}, {Key: "secret", Secret: true}},
+		Env:    map[string]string{"ANTHROPIC_BASE_URL": "base_url", "ANTHROPIC_AUTH_TOKEN": "secret"},
 		Endpoints: func(f map[string]string) []string {
 			u, err := url.Parse(f["base_url"])
 			if err != nil || u.Hostname() == "" {
@@ -91,7 +91,7 @@ var authMethods = []harness.AuthMethod{
 			return []string{u.Hostname()}
 		},
 		TestCall: func(f map[string]string) harness.Request {
-			return listModels(f["base_url"], map[string]string{"Authorization": "Bearer " + f["token"]})
+			return listModels(f["base_url"], map[string]string{"Authorization": "Bearer " + f["secret"]})
 		},
 	},
 }

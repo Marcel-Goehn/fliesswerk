@@ -10,8 +10,8 @@ import (
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness/claudecode"
 	"github.com/Marcel-Goehn/kraftwerk/internal/step"
+	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
 )
 
 // Defaults for the keys of a Run the config may leave out.
@@ -33,13 +33,31 @@ func runFactory(values map[string]any, root string, stdout, stderr io.Writer) in
 			kind)
 		return exitConfigError
 	}
-	tr, err := newTracker(values)
+	ctx := context.Background()
+	s, code, ok := secretsForRun(values, root, stderr)
+	if !ok {
+		return code
+	}
+	stdout, stderr = s.redacted(stdout, stderr)
+	if err := s.testHarnessCredential(ctx); err != nil {
+		_, _ = fmt.Fprintf(stderr, "kraftwerk run: stopped: %v\n", err)
+		return exitStopped
+	}
+	tr, err := newTracker(values, s.trackerToken)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "kraftwerk run: %v\n", err)
 		return exitConfigError
 	}
+	// The Tracker's checks prove its token (or login) works.
+	for _, c := range tr.Describe().Checks {
+		if err := c.Run(ctx); err != nil {
+			_, _ = fmt.Fprintf(stderr, "kraftwerk run: stopped: %s: %v\n", c.Name, err)
+			return exitStopped
+		}
+	}
+	tr = tracker.Redacted(tr, s.redactor.String)
 
-	res := factory.Run(context.Background(), factory.Options{
+	res := factory.Run(ctx, factory.Options{
 		Tracker:        tr,
 		Root:           root,
 		Remote:         remote,
@@ -48,27 +66,43 @@ func runFactory(values map[string]any, root string, stdout, stderr io.Writer) in
 		ReadyLabel:     readyLabel(values),
 		MaxParallel:    maxParallel(values),
 		MaxIterations:  intAt(values, defaultMaxIterations, "max_iterations"),
-		Implement:      implementer(values, stdout),
+		Implement:      implementer(values, s, stdout),
 		Out:            stdout,
 		LinkBlockerFix: tr.Describe().LinkBlockerFix,
 	})
 	return printResult(stdout, stderr, res)
 }
 
-// implementer runs the implement Step with the configured Harness, printing
-// a line per tool call.
-func implementer(values map[string]any, out io.Writer) func(context.Context, factory.Step) harness.Outcome {
+// secretsForRun resolves every secret a Run needs. ok is false when the
+// command must exit with code: 3, since a person must fix the project
+// first. (A credential the provider refuses stops the Run later, with 2.)
+func secretsForRun(values map[string]any, root string, stderr io.Writer) (s *secrets, code int, ok bool) {
+	s, err := resolveSecrets(context.Background(), values, root)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "kraftwerk run: %v\n", err)
+		return nil, exitConfigError, false
+	}
+	return s, exitOK, true
+}
+
+// implementer runs the implement Step with the configured Harness, its
+// credentials in the Step's env, printing a line per tool call.
+func implementer(values map[string]any, sec *secrets, out io.Writer) func(context.Context, factory.Step) harness.Outcome {
+	scrub := boolAt(values, true, "sandbox", "scrub_credentials")
 	s := harness.Step{
 		Model:            stepSetting(values, "implement", "model"),
 		Effort:           stepSetting(values, "implement", "effort"),
 		ReportSchema:     harness.ReportSchema,
-		ScrubCredentials: boolAt(values, true, "sandbox", "scrub_credentials"),
+		ScrubCredentials: scrub,
 	}
+	env, unset := sec.stepEnv(scrub)
 	idleTimeout := durationAt(values, step.DefaultIdleTimeout, "steps", "implement", "idle_timeout")
 	timeout := durationAt(values, step.DefaultTimeout, "steps", "implement", "timeout")
 	return func(ctx context.Context, req factory.Step) harness.Outcome {
 		r := step.Runner{
-			Harness:     claudecode.ClaudeCode{}, // "claude_code" is the only Harness
+			Harness:     theHarness,
+			Env:         env,
+			Unset:       unset,
 			IdleTimeout: idleTimeout,
 			Timeout:     timeout,
 			OnEvent: func(e harness.Event) {

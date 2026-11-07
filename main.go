@@ -18,9 +18,10 @@ func main() {
 }
 
 const usage = `Usage:
-  kraftwerk check            validate the config and check the Tracker's tools
+  kraftwerk check            validate the config, test the credentials and check the Tracker's tools
   kraftwerk run              implement the ready Tickets, Iteration by Iteration
   kraftwerk run --dry-run    show what Iteration 1 would take, and what is skipped and why
+  kraftwerk auth set <key>   store a secret, read from a hidden prompt, in your user-level credentials file
   kraftwerk --version        print the version
 `
 
@@ -44,6 +45,9 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 	}
 	if len(args) > 0 && args[0] == "run" {
 		return runRun(args[1:], stdout, stderr)
+	}
+	if len(args) > 0 && args[0] == "auth" {
+		return runAuth(args[1:], os.Stdin, stdout, stderr)
 	}
 	if len(args) > 0 {
 		_, _ = fmt.Fprintf(stderr, "kraftwerk: unknown argument %q\n", args[0])

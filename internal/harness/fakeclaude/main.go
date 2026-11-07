@@ -22,13 +22,15 @@
 //	  "report":  {"outcome": "done", "summary": "…"},  // left out: no report
 //	  "error":   "auth",         // auth | transient | other: fail instead
 //	  "exit":    0,              // exit code; default 1 after an error, else 0
-//	  "linger":  "1m"            // keep running after the result line
+//	  "linger":  "1m",           // keep running after the result line
+//	  "expand":  true            // fill in $VAR from the env everywhere
 //	}]}
 //
 // The first session whose match is in the prompt runs. Every invocation is
 // appended to $KWK_FAKE_HARNESS_LOG, if set, as a JSON line
-// {"argv": […], "prompt": "…", "env": {…}} with the CLAUDE_CODE_* and
-// GIT_* env.
+// {"argv": […], "prompt": "…", "env": {…}} with the CLAUDE_CODE_*,
+// ANTHROPIC_* and GIT_* env, and the variables named in the
+// comma-separated $KWK_FAKE_LOG_ENV.
 //
 // A `background` grandchild inherits stdout and stderr and appends a byte
 // to the named file, relative to the work dir, every 20ms until it is
@@ -58,6 +60,9 @@ type session struct {
 	Error   string          `json:"error"`
 	Exit    *int            `json:"exit"`
 	Linger  string          `json:"linger"`
+	// Expand fills $VAR in texts, commands, written content and the
+	// report from the env, as an agent that leaks a secret would.
+	Expand bool `json:"expand"`
 }
 
 type action struct {
@@ -107,6 +112,9 @@ func main() {
 		"model": flagValue(args, "--model"), "permissionMode": flagValue(args, "--permission-mode"),
 		"apiKeySource": "none", "claude_code_version": "2.1.319",
 	})
+	if s.Expand {
+		s.expand()
+	}
 	for _, a := range s.Actions {
 		w.act(a)
 	}
@@ -131,6 +139,19 @@ func main() {
 		code = *s.Exit
 	}
 	os.Exit(code)
+}
+
+func (s *session) expand() {
+	for i := range s.Actions {
+		a := &s.Actions[i]
+		a.Text, a.Content = os.ExpandEnv(a.Text), os.ExpandEnv(a.Content)
+		for j := range a.Run {
+			a.Run[j] = os.ExpandEnv(a.Run[j])
+		}
+	}
+	if len(s.Report) > 0 {
+		s.Report = json.RawMessage(os.ExpandEnv(string(s.Report)))
+	}
 }
 
 func pick(prompt string) session {
@@ -306,8 +327,10 @@ func logInvocation(args []string, prompt string) {
 		return
 	}
 	env := map[string]string{}
+	extra := strings.Split(os.Getenv("KWK_FAKE_LOG_ENV"), ",")
 	for _, kv := range os.Environ() {
-		if k, v, _ := strings.Cut(kv, "="); strings.HasPrefix(k, "CLAUDE_CODE_") || strings.HasPrefix(k, "GIT_") {
+		k, v, _ := strings.Cut(kv, "=")
+		if strings.HasPrefix(k, "CLAUDE_CODE_") || strings.HasPrefix(k, "ANTHROPIC_") || strings.HasPrefix(k, "GIT_") || slices.Contains(extra, k) {
 			env[k] = v
 		}
 	}

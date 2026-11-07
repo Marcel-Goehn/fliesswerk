@@ -57,32 +57,48 @@ func (f *localFlags) overrides(fs *flag.FlagSet) []config.Override {
 	return out
 }
 
-// runCheck validates the config and the Tracker's tools, and exits 3 if
-// anything fails.
+// runCheck validates the config, resolves and tests every credential and
+// checks the Tracker's tools, and exits 3 if anything fails.
 func runCheck(args []string, stdout, stderr io.Writer) int {
-	values, _, code, ok := loadConfig("kraftwerk check", args, stderr, nil)
+	values, root, code, ok := loadConfig("kraftwerk check", args, stderr, nil)
 	if !ok {
 		return code
 	}
 	_, _ = fmt.Fprintln(stdout, "kraftwerk check: the config is valid")
-
-	tr, err := newTracker(values)
-	if err != nil {
+	ctx := context.Background()
+	fail := func(err error) int {
 		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
-		return exitConfigError
-	}
-	failed := false
-	for _, c := range tr.Describe().Checks {
-		if err := c.Run(context.Background()); err != nil {
-			_, _ = fmt.Fprintf(stderr, "error: %s: %v\n", c.Name, err)
-			failed = true
-			break // later checks build on earlier ones
-		}
-		_, _ = fmt.Fprintf(stdout, "kraftwerk check: %s ok\n", c.Name)
-	}
-	if failed {
 		_, _ = fmt.Fprintln(stderr, "kraftwerk check: fix the errors above")
 		return exitConfigError
+	}
+
+	s, err := resolveSecrets(ctx, values, root)
+	if err != nil {
+		return fail(err)
+	}
+	stdout, stderr = s.redacted(stdout, stderr)
+	if err := s.testHarnessCredential(ctx); err != nil {
+		return fail(err)
+	}
+	if s.auth != nil {
+		_, _ = fmt.Fprintf(stdout, "kraftwerk check: %s credential (%s) ok\n", s.auth.Harness, s.auth.Method)
+	}
+	if len(s.project) > 0 {
+		_, _ = fmt.Fprintf(stdout, "kraftwerk check: %d project %s resolved\n", len(s.project), pluralize(len(s.project), "secret", "secrets"))
+		if !boolAt(values, true, "sandbox", "scrub_credentials") {
+			_, _ = fmt.Fprintln(stderr, "warning: sandbox.scrub_credentials: with scrubbing off, the agent gets the project secrets ([sandbox.secrets]) and can read them")
+		}
+	}
+
+	tr, err := newTracker(values, s.trackerToken)
+	if err != nil {
+		return fail(err)
+	}
+	for _, c := range tr.Describe().Checks {
+		if err := c.Run(ctx); err != nil {
+			return fail(fmt.Errorf("%s: %w", c.Name, err)) // later checks build on earlier ones
+		}
+		_, _ = fmt.Fprintf(stdout, "kraftwerk check: %s ok\n", c.Name)
 	}
 	return exitOK
 }

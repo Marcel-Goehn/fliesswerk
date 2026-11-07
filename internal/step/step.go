@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -49,18 +50,31 @@ type Runner struct {
 	Grace time.Duration
 	// OnEvent, if set, sees every event as it is parsed.
 	OnEvent func(harness.Event)
+	// Env is added to each Step's env when it starts: the credentials and
+	// project secrets the Step gets. They never go into argv.
+	Env map[string]string
+	// Unset are variables left out of the Factory's own env, so that a
+	// credential of the user's own can't win over the configured one.
+	Unset []string
 }
 
 // Run runs one Step in dir and returns its Outcome. The Step's env is the
-// Factory's own, plus the Harness's flags and the non-interactive git env;
-// its stdin is the prompt, then closed.
+// Factory's own without Unset, plus the non-interactive git env, Env and
+// the Harness's flags; its stdin is the prompt, then closed.
 func (r Runner) Run(ctx context.Context, s harness.Step, dir string) harness.Outcome {
 	inv := r.Harness.Command(s)
 	argv, err := resolve(inv.Argv)
 	if err != nil {
 		return failed(fmt.Sprintf("can't start %s: %v", inv.Argv[0], err))
 	}
-	env := append(os.Environ(), git.NonInteractiveEnv...)
+	env := slices.DeleteFunc(os.Environ(), func(kv string) bool {
+		name, _, _ := strings.Cut(kv, "=")
+		return slices.ContainsFunc(r.Unset, func(u string) bool { return strings.EqualFold(u, name) })
+	})
+	env = append(env, git.NonInteractiveEnv...)
+	for k, v := range r.Env {
+		env = append(env, k+"="+v)
+	}
 	for k, v := range inv.Env {
 		env = append(env, k+"="+v)
 	}
