@@ -1,0 +1,250 @@
+{
+  "body": "## Problem Statement\n\nOur workflow is `grill-with-docs / wayfinder → to-spec → to-tickets → implement → /code-review → /pr`. Once a Spec has been broken into Ready-for-agent Tickets, the implement ste\n\n[body cut for the fixture]",
+  "number": 31,
+  "state": "OPEN",
+  "subIssues": {
+    "nodes": [
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRL-zg",
+        "number": 32,
+        "state": "CLOSED",
+        "title": "Walking skeleton and CI",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/32"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMARw",
+        "number": 33,
+        "state": "CLOSED",
+        "title": "Audit the history and make the repo public",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/33"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMBzA",
+        "number": 34,
+        "state": "CLOSED",
+        "title": "Config loading, layering and strict validation",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/34"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMECg",
+        "number": 35,
+        "state": "OPEN",
+        "title": "Tracker boundary, GitHub adapter and `run --dry-run`",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/35"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMGMQ",
+        "number": 36,
+        "state": "OPEN",
+        "title": "Harness boundary: Claude Code adapter and scripted fake Harness",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/36"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMH5A",
+        "number": 37,
+        "state": "OPEN",
+        "title": "First Run: git, branches and loop, `kind = \"none\"`",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/37"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMJ4A",
+        "number": 38,
+        "state": "OPEN",
+        "title": "Hardened process runner: timeouts, grace and tree-kill per OS",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/38"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMLUg",
+        "number": 39,
+        "state": "OPEN",
+        "title": "Credential sources, per-Step delivery and redaction",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/39"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMM1A",
+        "number": 40,
+        "state": "OPEN",
+        "title": "Review Step and `verify`",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/40"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMOww",
+        "number": 41,
+        "state": "OPEN",
+        "title": "Failure handling and `cannot_do`",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/41"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMQ5A",
+        "number": 42,
+        "state": "OPEN",
+        "title": "Project prompt files and the full prompt contract",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/42"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMSbA",
+        "number": 43,
+        "state": "OPEN",
+        "title": "Spec claims and \"finish what's started\" ordering",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/43"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMT7w",
+        "number": 44,
+        "state": "OPEN",
+        "title": "Hooks",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/44"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMVOQ",
+        "number": 45,
+        "state": "OPEN",
+        "title": "Run logs, terminal view and Run summary",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/45"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMWrg",
+        "number": 46,
+        "state": "OPEN",
+        "title": "Run robustness: lock, crash cleanup, Ctrl-C and replayed writes",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/46"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMYTg",
+        "number": 47,
+        "state": "OPEN",
+        "title": "Parallel Runs and the merge queue, clean merges only",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/47"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMZ4A",
+        "number": 48,
+        "state": "OPEN",
+        "title": "Merge Step for real conflicts",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/48"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMbMw",
+        "number": 49,
+        "state": "OPEN",
+        "title": "Egress proxy",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/49"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMcnQ",
+        "number": 50,
+        "state": "OPEN",
+        "title": "Container Sandbox with the network fully cut",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/50"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMemw",
+        "number": 51,
+        "state": "OPEN",
+        "title": "Proxy sidecar: allowlisted egress for container Sandboxes",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/51"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMgMg",
+        "number": 52,
+        "state": "OPEN",
+        "title": "Native Sandbox on Linux (bwrap)",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/52"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMiKg",
+        "number": 53,
+        "state": "OPEN",
+        "title": "Native Sandbox on macOS (Seatbelt)",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/53"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMkGw",
+        "number": 54,
+        "state": "OPEN",
+        "title": "Own Services per container Sandbox",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/54"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMlgw",
+        "number": 55,
+        "state": "OPEN",
+        "title": "Services in native Sandboxes",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/55"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMngw",
+        "number": 56,
+        "state": "OPEN",
+        "title": "Shared Services and memory admission",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/56"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMpNQ",
+        "number": 57,
+        "state": "OPEN",
+        "title": "Corporate proxy and `ca_certs`",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/57"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMq5w",
+        "number": 58,
+        "state": "OPEN",
+        "title": "Bedrock auth",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/58"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMsZA",
+        "number": 59,
+        "state": "OPEN",
+        "title": "Full `check`: live probe and `--commands` dry run",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/59"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMt0A",
+        "number": 60,
+        "state": "OPEN",
+        "title": "`init`: project setup",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/60"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMwDw",
+        "number": 61,
+        "state": "OPEN",
+        "title": "`init`: personal setup and re-runs",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/61"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMxww",
+        "number": 62,
+        "state": "OPEN",
+        "title": "Releases and install scripts",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/62"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRMzqA",
+        "number": 63,
+        "state": "OPEN",
+        "title": "Updates and config evolution",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/63"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRM1_A",
+        "number": 64,
+        "state": "OPEN",
+        "title": "Nightly jobs",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/64"
+      },
+      {
+        "id": "I_kwDOVgZxAM8AAAABdRM37Q",
+        "number": 65,
+        "state": "OPEN",
+        "title": "Setup and usage guides, config reference and support matrix",
+        "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/65"
+      }
+    ],
+    "totalCount": 34
+  },
+  "title": "Spec: Factory v1 (Kraftwerk)",
+  "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/31"
+}

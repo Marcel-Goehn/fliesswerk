@@ -1,11 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -78,11 +80,18 @@ func TestUnknownArgumentFailsWithUsage(t *testing.T) {
 }
 
 // runIn runs the binary with dir as its working directory (the test's own,
-// if dir is empty).
+// if dir is empty), with a fake gh that is installed and logged in.
 func runIn(t *testing.T, bin, dir string, args ...string) (stdout, stderr string, code int) {
+	t.Helper()
+	return runEnv(t, bin, dir, ghEnv(t, "ok"), args...)
+}
+
+// runEnv runs the binary like runIn, with env as its whole environment.
+func runEnv(t *testing.T, bin, dir string, env []string, args ...string) (stdout, stderr string, code int) {
 	t.Helper()
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = dir
+	cmd.Env = env
 	var out, errOut strings.Builder
 	cmd.Stdout = &out
 	cmd.Stderr = &errOut
@@ -93,6 +102,66 @@ func runIn(t *testing.T, bin, dir string, args ...string) (stdout, stderr string
 		t.Fatalf("run %s: %v", bin, err)
 	}
 	return out.String(), errOut.String(), code
+}
+
+var (
+	fakeGhOnce sync.Once
+	fakeGhPath string
+	fakeGhErr  error
+)
+
+// fakeGhBinDir builds testdata/fakegh as "gh" once per test binary and
+// returns the directory that holds it.
+func fakeGhBinDir(t *testing.T) string {
+	t.Helper()
+	fakeGhOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "fakegh")
+		if err != nil {
+			fakeGhErr = err
+			return
+		}
+		name := "gh"
+		if runtime.GOOS == "windows" {
+			name += ".exe"
+		}
+		cmd := exec.Command("go", "build", "-o", filepath.Join(dir, name), "./testdata/fakegh")
+		cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			fakeGhErr = fmt.Errorf("go build fakegh: %v\n%s", err, out)
+			return
+		}
+		fakeGhPath = dir
+	})
+	if fakeGhErr != nil {
+		t.Fatal(fakeGhErr)
+	}
+	return fakeGhPath
+}
+
+// ghEnv is an environment whose PATH holds only the fake gh, answering
+// from testdata/gh/<fixtures>, with no token of the user's own.
+func ghEnv(t *testing.T, fixtures string, extra ...string) []string {
+	t.Helper()
+	abs, err := filepath.Abs(filepath.Join("testdata", "gh", fixtures))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return append(baseEnv(fakeGhBinDir(t)), append([]string{"FAKEGH_DIR=" + abs}, extra...)...)
+}
+
+// baseEnv is the test's environment without any gh token, with PATH set to
+// path alone.
+func baseEnv(path string) []string {
+	var env []string
+	for _, kv := range os.Environ() {
+		name, _, _ := strings.Cut(kv, "=")
+		switch strings.ToUpper(name) {
+		case "PATH", "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN":
+			continue
+		}
+		env = append(env, kv)
+	}
+	return append(env, "PATH="+path)
 }
 
 // projectDir writes .kraftwerk/<name> for every file and returns the
@@ -196,6 +265,29 @@ func TestCheck(t *testing.T) {
 		_, stderr, code := runIn(t, bin, root, "check", "--frobnicate")
 		if code != 3 || !strings.Contains(stderr, "frobnicate") {
 			t.Fatalf("exit code = %d, want 3 naming the flag; stderr: %s", code, stderr)
+		}
+	})
+	t.Run("gh missing exits 3 naming how to install it", func(t *testing.T) {
+		root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
+		_, stderr, code := runEnv(t, bin, root, baseEnv(t.TempDir()), "check")
+		if code != 3 || !strings.Contains(stderr, "gh is not installed") {
+			t.Fatalf("exit code = %d, want 3 saying gh is missing; stderr: %s", code, stderr)
+		}
+	})
+
+	t.Run("gh too old exits 3 naming the minimum", func(t *testing.T) {
+		root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
+		_, stderr, code := runEnv(t, bin, root, ghEnv(t, "old"), "check")
+		if code != 3 || !strings.Contains(stderr, "gh 2.45.0 is older than 2.94.0") {
+			t.Fatalf("exit code = %d, want 3 naming the versions; stderr: %s", code, stderr)
+		}
+	})
+
+	t.Run("gh logged out exits 3 naming gh auth login", func(t *testing.T) {
+		root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
+		_, stderr, code := runEnv(t, bin, root, ghEnv(t, "loggedout"), "check")
+		if code != 3 || !strings.Contains(stderr, "gh auth login") {
+			t.Fatalf("exit code = %d, want 3 naming gh auth login; stderr: %s", code, stderr)
 		}
 	})
 }

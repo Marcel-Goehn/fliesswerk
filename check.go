@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -56,23 +57,58 @@ func (f *localFlags) overrides(fs *flag.FlagSet) []config.Override {
 	return out
 }
 
-// runCheck validates the config and exits 3 if it isn't valid.
+// runCheck validates the config and the Tracker's tools, and exits 3 if
+// anything fails.
 func runCheck(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("kraftwerk check", flag.ContinueOnError)
+	values, code, ok := loadConfig("kraftwerk check", args, stderr, nil)
+	if !ok {
+		return code
+	}
+	_, _ = fmt.Fprintln(stdout, "kraftwerk check: the config is valid")
+
+	tr, err := newTracker(values)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
+		return exitConfigError
+	}
+	failed := false
+	for _, c := range tr.Describe().Checks {
+		if err := c.Run(context.Background()); err != nil {
+			_, _ = fmt.Fprintf(stderr, "error: %s: %v\n", c.Name, err)
+			failed = true
+			break // later checks build on earlier ones
+		}
+		_, _ = fmt.Fprintf(stdout, "kraftwerk check: %s ok\n", c.Name)
+	}
+	if failed {
+		_, _ = fmt.Fprintln(stderr, "kraftwerk check: fix the errors above")
+		return exitConfigError
+	}
+	return exitOK
+}
+
+// loadConfig parses the local flags (and any extra ones register adds),
+// loads the config of the project around the current directory and prints
+// its diagnostics. ok is false when the command must exit with code.
+func loadConfig(cmd string, args []string, stderr io.Writer, register func(*flag.FlagSet)) (values map[string]any, code int, ok bool) {
+	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var lf localFlags
 	lf.register(fs)
+	if register != nil {
+		register(fs)
+	}
 	if err := fs.Parse(args); err != nil {
-		return exitConfigError
+		return nil, exitConfigError, false
 	}
 	if fs.NArg() > 0 {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk check: unexpected argument %q\n", fs.Arg(0))
-		return exitConfigError
+		_, _ = fmt.Fprintf(stderr, "%s: unexpected argument %q\n", cmd, fs.Arg(0))
+		return nil, exitConfigError, false
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk check: can't find the current directory: %v\n", err)
-		return exitConfigError
+		_, _ = fmt.Fprintf(stderr, "%s: can't find the current directory: %v\n", cmd, err)
+		return nil, exitConfigError, false
 	}
 
 	r := config.Load(projectRoot(cwd), lf.overrides(fs))
@@ -80,11 +116,10 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, d.String())
 	}
 	if !r.OK() {
-		_, _ = fmt.Fprintln(stderr, "kraftwerk check: the config is not valid; fix the errors above")
-		return exitConfigError
+		_, _ = fmt.Fprintf(stderr, "%s: the config is not valid; fix the errors above\n", cmd)
+		return nil, exitConfigError, false
 	}
-	_, _ = fmt.Fprintln(stdout, "kraftwerk check: the config is valid")
-	return exitOK
+	return r.Values, exitOK, true
 }
 
 // projectRoot is the nearest directory at or above dir that holds

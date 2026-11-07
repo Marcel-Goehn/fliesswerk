@@ -1,0 +1,4 @@
+[
+  {"args": "--version", "stdout": "gh version 2.103.0 (2026-10-21)\nhttps://github.com/cli/cli/releases/tag/v2.103.0\n"},
+  {"args": "auth status", "stdout": "github.com\n  ✓ Logged in to github.com account someone (GH_TOKEN)\n"}
+]

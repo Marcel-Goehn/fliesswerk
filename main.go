@@ -18,14 +18,17 @@ func main() {
 }
 
 const usage = `Usage:
-  kraftwerk check       validate .kraftwerk/config.toml and config.local.toml
-  kraftwerk --version   print the version
+  kraftwerk check            validate the config and check the Tracker's tools
+  kraftwerk run --dry-run    show what Iteration 1 would take, and what is skipped and why
+  kraftwerk --version        print the version
 `
 
 // Exit codes, as fixed by the Spec (#31). A usage error counts as a config
 // failure.
 const (
 	exitOK          = 0
+	exitFailures    = 1 // failures, cannot_do or skipped Tickets
+	exitStopped     = 2 // the Run was stopped, e.g. the Snapshot failed
 	exitConfigError = 3
 )
 
@@ -37,6 +40,9 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 	}
 	if len(args) > 0 && args[0] == "check" {
 		return runCheck(args[1:], stdout, stderr)
+	}
+	if len(args) > 0 && args[0] == "run" {
+		return runRun(args[1:], stdout, stderr)
 	}
 	if len(args) > 0 {
 		_, _ = fmt.Fprintf(stderr, "kraftwerk: unknown argument %q\n", args[0])
