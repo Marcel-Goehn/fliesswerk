@@ -1,0 +1,18 @@
+# Each Sandbox gets its own Services, with shared as an opt-out, through a Factory-written compose override
+
+Parallel Tickets that share one Postgres, Redis or Elasticsearch wipe each other's data, see each other's migrations, and lead the agent to "fix" code that isn't broken. So by default the Factory starts every Service once per Sandbox, in its own Compose project, and removes it with `down -v` when the Sandbox is destroyed. A Service marked `shared = true` runs once per Run instead, and the project separates its data using `KRAFTWERK_SANDBOX`. The user's compose file is never edited. The Factory adds its own override file, which publishes every Service on random `127.0.0.1` ports, removes `container_name` (kept as a network alias) and renames every named volume into the Factory's project. Compose runs with `--project-directory` set to a Factory-owned worktree, so relative bind mounts land there. The Factory therefore never touches the user's own running Services or their data. Because own Services multiply memory use, Sandboxes in an Iteration start one after another, and each starts only when the highest memory peak measured so far for one Sandbox is free.
+
+## Considered Options
+
+- **Shared Services plus a per-Sandbox discriminator** (a database or schema name per Ticket, created by Hooks): light on resources, but separation holds only if every project writes its Hooks correctly. An agent with superuser access can still read or drop another Ticket's data, which is the same risk that made ADR 0004 reject one internal network per Run. Kept as the `shared = true` path for heavy Services.
+- **No separation, documenting `max_parallel = 1`**: Sandcastle's behaviour. It's a silent trap for anyone who raises `max_parallel`.
+- **A user-declared memory size per Sandbox**, or a fixed free-memory threshold: the first needs a number few people know, and the second lets Sandboxes in while they are still small at startup, before their test-run peak.
+
+## Consequences
+
+- The project name is `kraftwerk-<repo dir>-<hash>-<sandbox>` for own Services and `kraftwerk-<repo dir>-<hash>-shared` for shared ones. Own Services start with `up --wait` before `sandbox_created`, so migrations and seeding run in that Hook against fresh data, and no `sandbox_destroyed` Hook is needed. Shared Services run from a Factory-owned worktree of `base_branch` for the Run.
+- The override needs `!reset`/`!override`: Docker Compose ≥ 2.24.4 or podman-compose ≥ 1.4.0, which `check` enforces. Published ports are read back per compose provider.
+- The random host ports are invisible in container Sandboxes (the alias, plus a forwarder on `127.0.0.1:<container port>`) and under bwrap. Under Seatbelt the agent sees the real port, so `[services.<name>] env` templates (`{host}`, `{port}`) set addresses such as `DATABASE_URL` per Sandbox. A port hard-coded in the project's code can't work under Seatbelt.
+- `check` and Run start reject what can't be renamed: an `external` volume or a writable absolute bind mount (that would be real data), and `depends_on` between an own Service and a shared one.
+- `max_parallel` becomes an upper limit. Tickets that don't fit wait in the Iteration for a free slot, and at least one always starts. The measured peak lives in the git-ignored runtime state, per checkout and machine. A Sandbox killed for lack of memory raises the estimate and gets the normal single retry. A second kill means `needs-investigation`.
+- This amends [ADR 0004](0004-services-over-factory-owned-internal-network-with-proxy-sidecar.md): the Services connected to a Sandbox's internal network are its own Services plus the shared ones.

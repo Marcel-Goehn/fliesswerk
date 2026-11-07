@@ -61,7 +61,7 @@ A shell command the Factory runs at a named moment of a Run (e.g. when a Sandbox
 _Avoid_: Callback, lifecycle script
 
 **Service**:
-A supporting program the Factory starts for a Run from the project's compose file (e.g. a database). Every Sandbox can reach it, while all other network access stays denied.
+A supporting program the Factory starts from the project's compose file (e.g. a database). Each Sandbox gets its own copy with its own data, unless the project marks the Service as shared, in which case one copy serves the whole Run. A Sandbox can reach its Services, while all other network access stays denied.
 _Avoid_: Container (when the concept is meant), dependency, backing service
 
 **Protected path**:
