@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcel-Goehn/kraftwerk/internal/egress"
 	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
 	"github.com/Marcel-Goehn/kraftwerk/internal/hook"
@@ -137,7 +138,7 @@ func runFactory(values map[string]any, root, only string, view runView, stdout, 
 	} else {
 		opts := factoryOptions(values, root, only, tracker.Redacted(tr, s.redactor.String), s, prompts, log)
 		opts.Drain = drain
-		sandboxes := containerSandboxes(values, root, kind, log)
+		sandboxes := containerSandboxes(values, root, kind, s, log)
 		opts.Preflight = func(ctx context.Context) error {
 			if err := preflight(ctx, tr, s); err != nil {
 				return err
@@ -152,6 +153,9 @@ func runFactory(values map[string]any, root, only string, view runView, stdout, 
 			opts.ClearSandboxes = func(ctx context.Context) error { return setupError(ctx, sandboxes.Connect(ctx)) }
 		}
 		res = factory.Run(ctx, opts)
+		if sandboxes != nil {
+			sandboxes.Close()
+		}
 	}
 	code = exitCode(res)
 	summary := log.Finish(summaryOf(res, log.ID(), started, code))
@@ -173,7 +177,7 @@ func setupError(ctx context.Context, err error) error {
 
 // containerSandboxes is what creates a Run's container Sandboxes, nil for
 // any other kind.
-func containerSandboxes(values map[string]any, root, kind string, log *runlog.Log) *container.Provider {
+func containerSandboxes(values map[string]any, root, kind string, s *secrets, log *runlog.Log) *container.Provider {
 	if kind != "container" {
 		return nil
 	}
@@ -184,8 +188,13 @@ func containerSandboxes(values map[string]any, root, kind string, log *runlog.Lo
 			env[k] = s
 		}
 	}
+	var endpoints []string
+	if s.auth != nil {
+		endpoints = s.auth.Endpoints
+	}
 	return container.New(container.Options{
 		Root: root, StateDir: filepath.Join(root, factory.StateDir), RunID: log.ID(), RunArgs: runArgs(values), Env: env,
+		Egress: egress.OptionsFrom(values, endpoints), Version: versionString(),
 		Log: func(line string) {
 			kind := runlog.Event
 			if strings.HasPrefix(line, "warning:") {

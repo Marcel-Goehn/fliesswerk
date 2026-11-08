@@ -1,0 +1,1 @@
+`go generate ./internal/proxyimage` writes the proxy sidecar's root filesystems here. They are build output and stay out of git; this file only keeps `go:embed` satisfied in a checkout that has none yet.

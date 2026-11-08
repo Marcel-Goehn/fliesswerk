@@ -38,6 +38,8 @@ type Options struct {
 	// NO_PROXY; when empty those decide. Either way, a loopback target is
 	// reached directly.
 	UpstreamProxy string
+	// Listen is the address to listen on; empty is a free port on loopback.
+	Listen string
 	// Log receives one plain-language line per denied connection.
 	Log func(string)
 }
@@ -57,6 +59,21 @@ func OptionsFrom(values map[string]any, endpoints []string) Options {
 	network, _ := values["network"].(map[string]any)
 	upstream, _ := network["upstream_proxy"].(string)
 	return Options{Allow: allow, Endpoints: endpoints, UpstreamProxy: upstream}
+}
+
+// Validate reports an upstream proxy, configured or from the host's
+// variables, that the proxy couldn't use. The error never repeats its URL.
+func (o Options) Validate() error {
+	r, err := newRoute(o.UpstreamProxy)
+	if err != nil {
+		return err
+	}
+	for _, scheme := range []string{"http", "https"} {
+		if _, err := r(&url.URL{Scheme: scheme, Host: "example.com"}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // canonical is the form hosts are compared in: DNS names ignore case, and a
@@ -85,7 +102,7 @@ func Start(ctx context.Context, o Options) (*Proxy, error) {
 	if err != nil {
 		return nil, err
 	}
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	l, err := net.Listen("tcp", cmp.Or(o.Listen, "127.0.0.1:0"))
 	if err != nil {
 		return nil, fmt.Errorf("the egress proxy can't listen: %w", err)
 	}

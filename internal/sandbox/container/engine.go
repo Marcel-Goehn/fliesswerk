@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/Marcel-Goehn/kraftwerk/internal/proxyimage"
 )
 
 // EngineEnv names the engine to use, docker or podman, on a machine that
@@ -102,6 +104,47 @@ func runCLI(ctx context.Context, argv ...string) (string, error) {
 		return stdout.String(), fmt.Errorf("%s: %s", strings.Join(argv[:min(len(argv), 4)], " "), msg)
 	}
 	return stdout.String(), nil
+}
+
+// proxyArch is the architecture of the sidecar's image: the engine's, which
+// in a VM needn't be the host's. An engine that can't run Linux containers
+// is an error that says what to do.
+func proxyArch(ctx context.Context, e Engine) (string, error) {
+	format := "{{.OSType}} {{.Architecture}}"
+	if e.Binary == podman {
+		format = "{{.Host.OS}} {{.Host.Arch}}"
+	}
+	out, err := e.run(ctx, "info", "--format", format)
+	if err != nil {
+		return "", err
+	}
+	osType, arch, _ := strings.Cut(strings.TrimSpace(out), " ")
+	if osType == "windows" {
+		return "", errors.New("the engine is Docker Desktop in Windows-containers mode, which can't run the container Sandbox's proxy sidecar, a Linux container; choose \"Switch to Linux containers\" in Docker Desktop's menu, or pick another Sandbox kind with `sandbox.kind`")
+	}
+	switch arch {
+	case "amd64", "x86_64":
+		return "amd64", nil
+	case "arm64", "aarch64":
+		return "arm64", nil
+	}
+	return "", fmt.Errorf("the container engine runs on %q, and the proxy sidecar exists only for amd64 and arm64; pick another Sandbox kind with `sandbox.kind`", arch)
+}
+
+// CheckEngine reports an engine that can't run the proxy sidecar, and a
+// Factory that has no sidecar to give it. Having no engine at all is left
+// to the Run, which stops with the fix.
+func CheckEngine(ctx context.Context) error {
+	e, err := Resolve(ctx)
+	if err != nil {
+		return nil
+	}
+	arch, err := proxyArch(ctx, e)
+	if err != nil {
+		return err
+	}
+	_, err = proxyimage.Rootfs(arch)
+	return err
 }
 
 // Resolve finds the engine a Run uses. There is no fallback from an engine

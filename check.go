@@ -107,6 +107,9 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		if len(refused) > 0 {
 			return fail(errors.New(strings.Join(refused, "\n")))
 		}
+		if err := container.CheckEngine(ctx); err != nil {
+			return fail(err)
+		}
 	}
 
 	tr, err := newTracker(values, s.trackerToken)

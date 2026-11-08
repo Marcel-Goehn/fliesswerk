@@ -1,7 +1,8 @@
 // Package container is the container Sandbox: an image built from the
 // project's Containerfile, one container per Sandbox on an internal network
-// of its own, and every command run in it through the engine's `exec`, so
-// that secrets are never part of what the container was created with.
+// of its own whose only way out is the Run's proxy sidecar, and every command
+// run in it through the engine's `exec`, so that secrets are never part of
+// what the container was created with.
 package container
 
 import (
@@ -19,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcel-Goehn/kraftwerk/internal/egress"
 	"github.com/Marcel-Goehn/kraftwerk/internal/git"
 	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
 )
@@ -43,6 +45,10 @@ type Options struct {
 	RunArgs []string
 	// Env is `[sandbox.env]`.
 	Env map[string]string
+	// Egress is what the proxy sidecar lets through.
+	Egress egress.Options
+	// Version is the Factory's, which tags the sidecar's image.
+	Version string
 	// Log gets a line about what the Provider does.
 	Log func(string)
 }
@@ -52,6 +58,9 @@ type Provider struct {
 	opts   Options
 	engine Engine
 	image  string
+	// proxyImage is the sidecar's image, and sidecar the name of the Run's
+	// sidecar and of its normal network, "" until it is started.
+	proxyImage, sidecar string
 	// project tells this checkout's containers from those of others on the
 	// same engine.
 	project string
@@ -78,10 +87,19 @@ func (p *Provider) Connect(ctx context.Context) error {
 	return nil
 }
 
-// Prepare makes sure the image is current. The Provider must be connected.
+// Prepare makes sure the image is current and starts the Run's proxy
+// sidecar. The Provider must be connected, and Close ends what this starts.
 func (p *Provider) Prepare(ctx context.Context) error {
 	p.identity = commitIdentity(ctx, p.opts.Root)
-	return p.ensureImage(ctx)
+	if err := p.ensureImage(ctx); err != nil {
+		return err
+	}
+	return p.startSidecar(ctx)
+}
+
+// labels mark something as this Run's.
+func (p *Provider) labels() []string {
+	return []string{"--label", labelRun + "=" + p.opts.RunID, "--label", labelProject + "=" + p.project}
 }
 
 func (p *Provider) log(format string, a ...any) {
@@ -165,11 +183,11 @@ func (p *Provider) ensureImage(ctx context.Context) error {
 var unsafeName = regexp.MustCompile(`[^a-zA-Z0-9_.-]`)
 
 // Create creates and starts a Sandbox holding the worktree, on a new
-// internal network that nothing else is on.
+// internal network that only the proxy sidecar is on as well.
 func (p *Provider) Create(ctx context.Context, req sandbox.Request) (sandbox.Sandbox, error) {
 	name := unsafeName.ReplaceAllString("kraftwerk-"+p.opts.RunID+"-"+req.Name, "-")
 	b := &box{
-		engine: p.engine, name: name, state: filepath.Join(p.opts.StateDir, "sandboxes", name),
+		engine: p.engine, name: name, sidecar: p.sidecar, state: filepath.Join(p.opts.StateDir, "sandboxes", name),
 		workdir: path.Join(workspaceDir, filepath.ToSlash(req.Rel)),
 		env:     p.baseEnv(),
 	}
@@ -177,12 +195,20 @@ func (p *Provider) Create(ctx context.Context, req sandbox.Request) (sandbox.San
 	if err != nil {
 		return nil, err
 	}
-	labels := []string{"--label", labelRun + "=" + p.opts.RunID, "--label", labelProject + "=" + p.project}
+	labels := p.labels()
 	create := append([]string{"network", "create", "--internal"}, labels...)
 	if _, err := p.engine.run(ctx, append(append(create, networkHardening(p.engine)...), name)...); err != nil {
 		return nil, fmt.Errorf("creating the Sandbox's network: %w", err)
 	}
-	if err := b.start(ctx, p.createArgs(name, b.workdir, labels, mounts)); err != nil {
+	start := func() error {
+		ip, err := p.attachSidecar(ctx, name)
+		if err != nil {
+			return err
+		}
+		b.env = append(b.env, proxyEnv(ip)...)
+		return b.start(ctx, p.createArgs(name, b.workdir, labels, mounts))
+	}
+	if err := start(); err != nil {
 		// A kill of the Run mustn't leave half a Sandbox behind.
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), killTimeout)
 		defer cancel()
@@ -212,6 +238,7 @@ func (p *Provider) createArgs(name, workdir string, labels []string, mounts []mo
 		args = append(args, "--mount", m.flag())
 	}
 	args = append(args, userArgs(p.engine, os.Getuid(), os.Getgid())...)
+	args = append(args, noHostProxy(p.engine)...)
 	args = append(args, p.opts.RunArgs...)
 	return append(args, p.image, "infinity")
 }
@@ -309,7 +336,9 @@ func (p *Provider) baseEnv() []string {
 	}
 	env = append(env, p.identity...)
 	for k, v := range p.opts.Env {
-		env = append(env, k+"="+v)
+		if !slices.Contains(proxyVars, k) { // these always name the sidecar
+			env = append(env, k+"="+v)
+		}
 	}
 	slices.Sort(env)
 	return env
@@ -317,8 +346,9 @@ func (p *Provider) baseEnv() []string {
 
 // box is one running container Sandbox.
 type box struct {
-	engine        Engine
-	name, workdir string
+	engine Engine
+	// sidecar is the Run's proxy sidecar, on this Sandbox's network.
+	name, workdir, sidecar string
 	// state is the Sandbox's directory in the runtime state.
 	state string
 	env   []string
@@ -347,7 +377,9 @@ func (b *box) Exec(argv, env []string) (hostArgv, hostEnv []string) {
 	given := map[string]string{}
 	for _, kv := range env {
 		name, value, _ := strings.Cut(kv, "=")
-		given[name] = value
+		if !slices.Contains(proxyVars, name) { // these always name the sidecar
+			given[name] = value
+		}
 	}
 	args := []string{"exec", "-i", "--workdir", b.workdir}
 	for _, kv := range b.env {
@@ -377,6 +409,8 @@ func (b *box) KillAll(ctx context.Context) error {
 // Destroy implements sandbox.Sandbox.
 func (b *box) Destroy(ctx context.Context) error {
 	rmErr := b.engine.remove(ctx, b.name)
+	// A network with the sidecar on it can't go; if this fails, so does that.
+	_, _ = b.engine.run(ctx, "network", "disconnect", "--force", b.name, b.sidecar)
 	_, netErr := b.engine.run(ctx, "network", "rm", b.name)
 	return errors.Join(rmErr, netErr, os.RemoveAll(b.state))
 }

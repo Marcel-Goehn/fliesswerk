@@ -18,7 +18,7 @@ import (
 // file and commit it. The engine's binaries and socket must be out of
 // reach; 1.1.1.1 is an address that answers from anywhere with a network.
 const probeScript = `{"sessions": [` + approves + `, {"actions": [
-	{"run": ["sh", "-c", "if wget -q -T 3 -O /dev/null http://1.1.1.1/; then echo reached; else echo cut; fi > net.txt"]},
+	{"run": ["sh", "-c", "if env -u http_proxy -u https_proxy wget -q -T 3 -O /dev/null http://1.1.1.1/; then echo reached; else echo cut; fi > net.txt"]},
 	{"run": ["sh", "-c", "if test -e /var/run/docker.sock || command -v docker; then echo engine; else echo no-engine; fi > engine.txt"]},
 	{"run": ["sh", "-c", "if test -f /.dockerenv || test -f /run/.containerenv; then echo container; else echo host; fi > where.txt"]},
 	{"run": ["git", "add", "net.txt", "engine.txt", "where.txt"]},

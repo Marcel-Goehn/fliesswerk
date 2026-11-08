@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -67,11 +68,13 @@ func newProject(t *testing.T, runArgs ...string) *project {
 
 func (pr *project) provider(t *testing.T, runArgs ...string) *Provider {
 	t.Helper()
-	return New(Options{
+	p := New(Options{
 		Root: pr.root, StateDir: filepath.Join(pr.root, ".kraftwerk", "state"),
 		RunID: "test-" + strconv.FormatInt(time.Now().UnixNano(), 36), RunArgs: runArgs,
 		Log: func(line string) { pr.logged = append(pr.logged, line) },
 	})
+	t.Cleanup(p.Close)
+	return p
 }
 
 func writeFile(t *testing.T, path, content string) {
@@ -186,18 +189,21 @@ func TestEachSandboxHasItsOwnInternalLabelledNetworkRemovedWithIt(t *testing.T) 
 		t.Errorf("Internal = %q, want true", got)
 	}
 	label := "label=" + labelRun + "=" + pr.p.opts.RunID
-	if got := strings.TrimSpace(pr.engine(t, "network", "ls", "--filter", label, "--format", "{{.Name}}")); got != name {
-		t.Errorf("networks of the Run = %q, want %q", got, name)
+	sidecar := pr.p.sidecar
+	got := strings.Fields(pr.engine(t, "network", "ls", "--filter", label, "--format", "{{.Name}}"))
+	if want := []string{name, sidecar}; !slices.Equal(slices.Sorted(slices.Values(got)), slices.Sorted(slices.Values(want))) {
+		t.Errorf("networks of the Run = %q, want %q", got, want)
 	}
 
 	if err := sb.Destroy(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.TrimSpace(pr.engine(t, "network", "ls", "--filter", label, "--format", "{{.Name}}")); got != "" {
-		t.Errorf("networks left: %q", got)
+	// What is left is the Run's, not the Sandbox's.
+	if got := strings.TrimSpace(pr.engine(t, "network", "ls", "--filter", label, "--format", "{{.Name}}")); got != sidecar {
+		t.Errorf("networks left: %q, want only %q", got, sidecar)
 	}
-	if got := strings.TrimSpace(pr.engine(t, "ps", "-a", "--filter", label, "--format", "{{.Names}}")); got != "" {
-		t.Errorf("containers left: %q", got)
+	if got := strings.TrimSpace(pr.engine(t, "ps", "-a", "--filter", label, "--format", "{{.Names}}")); got != sidecar {
+		t.Errorf("containers left: %q, want only %q", got, sidecar)
 	}
 }
 
@@ -224,7 +230,7 @@ func TestTheSandboxCanReachNothing(t *testing.T) {
 		targets = append(targets, gateway+":"+port)
 	}
 	for _, target := range targets {
-		if out, ok := sh(sb, "wget -q -T 3 -O - http://"+target+"/"); ok {
+		if out, ok := sh(sb, directWget+"http://"+target+"/"); ok {
 			t.Errorf("the Sandbox reached %s: %s", target, out)
 		}
 	}
