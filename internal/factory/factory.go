@@ -81,6 +81,8 @@ type Options struct {
 	// Only, if set, limits the Run to the one Spec or standalone Ticket it
 	// names, as a person typed it.
 	Only string
+	// Hooks are the project's Hooks; none means nothing runs.
+	Hooks Hooks
 }
 
 // Names of the Steps.
@@ -170,6 +172,7 @@ func Run(ctx context.Context, opts Options) Result {
 		specDirs:  map[string]string{}, done: map[string]bool{}, stoppedSpecs: map[string]bool{},
 		logs: map[string]*lastLines{}, claimed: map[string]bool{},
 	}
+	defer r.runEnd(ctx)
 	if err := r.prepare(ctx); err != nil {
 		r.res.Stopped = err
 		return r.res
@@ -181,6 +184,10 @@ func Run(ctx context.Context, opts Options) Result {
 	}
 	r.user = user
 	defer r.removeSpecWorktrees()
+	if err := r.runStart(ctx); err != nil {
+		r.res.Stopped = err
+		return r.res
+	}
 
 	for i := 1; i <= opts.MaxIterations; i++ {
 		snap, err := opts.Tracker.Snapshot(ctx)
@@ -342,7 +349,10 @@ func (r *run) work(ctx context.Context, tk tracker.Ticket, snap tracker.Snapshot
 	r.res.Closed = append(r.res.Closed, tk)
 	r.tlogf(tk, "closed")
 	r.discard(ctx, b)
-	r.releaseIfFinished(ctx, tk, spec)
+	if r.wasLast(tk, spec) {
+		r.release(ctx, tk.SpecID())
+		r.specFinished(ctx, tk.SpecID(), specBranch, specDir)
+	}
 	return nil
 }
 
@@ -362,20 +372,23 @@ func (r *run) claim(ctx context.Context, tk tracker.Ticket, snap tracker.Snapsho
 	return nil
 }
 
-// releaseIfFinished releases the Claim on the Ticket's Spec once its last
-// Ticket closed; a standalone Ticket's closing is its last. The Ticket is
-// closed already, so a failed release only warns.
-func (r *run) releaseIfFinished(ctx context.Context, tk tracker.Ticket, spec *tracker.Spec) {
-	if spec != nil {
-		for _, st := range spec.Tickets {
-			if st.State == tracker.Open && !r.closed(st.ID) {
-				return
-			}
-		}
-	} else if tk.Parent != nil {
-		return // without the Spec's Ticket list, it can't be known
+// wasLast reports whether the Ticket that just closed was its Spec's last;
+// a standalone Ticket's closing is its last.
+func (r *run) wasLast(tk tracker.Ticket, spec *tracker.Spec) bool {
+	if spec == nil {
+		return tk.Parent == nil // without the Spec's Ticket list, it can't be known
 	}
-	id := tk.SpecID()
+	for _, st := range spec.Tickets {
+		if st.State == tracker.Open && !r.closed(st.ID) {
+			return false
+		}
+	}
+	return true
+}
+
+// release releases the Claim on a finished Spec. Its last Ticket is closed
+// already, so a failed release only warns.
+func (r *run) release(ctx context.Context, id tracker.ID) {
 	if err := r.opts.Tracker.Release(ctx, id, r.user); err != nil {
 		r.logf("%s: warning: its last Ticket closed, but releasing its claim failed: %v", id, err)
 		return
@@ -415,6 +428,9 @@ const verifyAttempts = 2
 // the summary for the close comment, or why the Ticket failed, or an
 // error that stops the Run.
 func (r *run) build(ctx context.Context, b build) (summary string, failed *failure, stop error) {
+	if failed := r.sandboxCreated(ctx, b); failed != nil {
+		return "", failed, nil
+	}
 	var verifyFailed *verify.Failure
 	for attempt := 1; ; attempt++ {
 		summary, failed, stop = r.implementAndReview(ctx, b, verifyFailed)
@@ -526,7 +542,8 @@ func DefaultBackoff(retry int) time.Duration {
 }
 
 // freshRetries is how often a Step that failed (an error of class other,
-// no report, a timeout) is run again in a fresh session.
+// no report, a timeout) is run again in a fresh session, and failed
+// sandbox_created Hooks are run again.
 const freshRetries = 1
 
 // runStep runs one Step until it ends with a report, or why the Ticket

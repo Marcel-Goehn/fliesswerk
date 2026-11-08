@@ -98,7 +98,7 @@ func hookPoint(doc string, where ...string) *node {
 	entry := table("", map[string]*node{
 		"run":      str("A shell command."),
 		"parallel": strList("Shell commands run at once; on the first failure the others are stopped."),
-		"where":    enum("Where the Hook runs.", where...),
+		"where":    enum("Where the Hook runs. Default \""+where[0]+"\".", where...),
 		"timeout":  duration("Stop the Hook after this long. Default 5m."),
 		"secrets":  strList("Project secrets a host Hook gets (Sandbox Hooks get them all)."),
 	})
@@ -192,7 +192,7 @@ var schema = table("Kraftwerk configuration.", map[string]*node{
 	"hooks": table("Hooks, by the moment they run at.", map[string]*node{
 		"run_start":       hookPoint("Runs on the host when a Run starts.", "host"),
 		"sandbox_created": hookPoint("Runs when a Sandbox has been created.", "sandbox", "host"),
-		"spec_finished":   hookPoint("Runs on the host when a Spec's last Ticket closes.", "host"),
+		"spec_finished":   hookPoint("Runs on the host when a Spec's last Ticket, or a standalone Ticket, closes.", "host"),
 		"run_end":         hookPoint("Runs on the host when a Run ends.", "host"),
 	}),
 

@@ -11,6 +11,7 @@ import (
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
+	"github.com/Marcel-Goehn/kraftwerk/internal/hook"
 	"github.com/Marcel-Goehn/kraftwerk/internal/step"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
 	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
@@ -101,6 +102,12 @@ func runFactory(values map[string]any, root, only string, stdout, stderr io.Writ
 		Redactor:       s.redactor,
 		RunID:          time.Now().Format(runIDFormat),
 		Only:           only,
+		Hooks: factory.Hooks{
+			RunStart:       hookEntries(values, "run_start", s),
+			SandboxCreated: hookEntries(values, "sandbox_created", s),
+			SpecFinished:   hookEntries(values, "spec_finished", s),
+			RunEnd:         hookEntries(values, "run_end", s),
+		},
 	})
 	return printResult(stdout, stderr, res)
 }
@@ -189,13 +196,7 @@ func protectedPaths(values map[string]any) []string {
 	if standards := stringAt(values, "", "standards"); standards != "" {
 		paths = append(paths, standards)
 	}
-	extra, _ := valueAt(values, "protected_paths").([]any)
-	for _, p := range extra {
-		if s, ok := p.(string); ok {
-			paths = append(paths, s)
-		}
-	}
-	return paths
+	return append(paths, stringsOf(valueAt(values, "protected_paths"))...)
 }
 
 // verifyCommands are the Feedback commands `verify` names, in its order.
@@ -221,6 +222,51 @@ func feedbackCommands(values map[string]any) []verify.Command {
 	}
 	slices.SortFunc(cmds, func(a, b verify.Command) int { return strings.Compare(a.Name, b.Name) })
 	return cmds
+}
+
+// hookEntries are the entries of a hook point, in declared order. A
+// sandbox_created Hook runs in the Sandbox unless it says otherwise; every
+// other point has only the host. The config has already checked each
+// entry's shape.
+func hookEntries(values map[string]any, point string, s *secrets) []hook.Entry {
+	list, _ := valueAt(values, "hooks", point).([]any)
+	entries := make([]hook.Entry, 0, len(list))
+	for _, v := range list {
+		table, _ := v.(map[string]any)
+		where := hook.Host
+		if point == "sandbox_created" {
+			where = hook.Sandbox
+		}
+		where = stringAt(table, where, "where")
+		entries = append(entries, hook.Entry{
+			Commands: hookCommands(table),
+			Where:    where,
+			Timeout:  durationAt(table, 0, "timeout"),
+			Env:      s.hookEnv(where, stringsOf(table["secrets"])),
+		})
+	}
+	return entries
+}
+
+// hookCommands are the command lines of a Hook entry: its `run`, or its
+// `parallel` group.
+func hookCommands(table map[string]any) []string {
+	if line, ok := table["run"].(string); ok {
+		return []string{line}
+	}
+	return stringsOf(table["parallel"])
+}
+
+// stringsOf is v as a list of strings, none if it isn't one.
+func stringsOf(v any) []string {
+	list, _ := v.([]any)
+	out := make([]string, 0, len(list))
+	for _, e := range list {
+		if s, ok := e.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // durationAt is the duration at a key path, def if there is none. The

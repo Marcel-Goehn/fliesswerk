@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/Marcel-Goehn/kraftwerk/internal/shell"
 )
 
 // Command is one Feedback command from `[commands]`.
@@ -57,7 +59,7 @@ func Run(ctx context.Context, dir string, env []string, timeout time.Duration, c
 func run(ctx context.Context, dir string, env []string, timeout time.Duration, c Command) *Failure {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	sh := shell(ctx, c.Line)
+	sh := shell.Command(ctx, c.Line)
 	sh.Dir, sh.Env, sh.WaitDelay = dir, env, waitDelay
 	var out bytes.Buffer
 	sh.Stdout, sh.Stderr = &out, &out

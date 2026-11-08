@@ -193,6 +193,17 @@ func (s *secrets) commandEnv(scrub bool) []string {
 	return env
 }
 
+// hookEnv is the env of a Hook: a Hook gets no credential of the Factory's
+// own and no project secret beyond those ForHook gives it, all of them in
+// the Sandbox and only the ones it names on the host.
+func (s *secrets) hookEnv(where string, names []string) []string {
+	env := s.commandEnv(true)
+	for k, v := range credentials.ForHook(s.project, where, names) {
+		env = append(env, k+"="+v)
+	}
+	return env
+}
+
 // redacted are stdout and stderr behind the redactor.
 func (s *secrets) redacted(stdout, stderr io.Writer) (io.Writer, io.Writer) {
 	return s.redactor.Writer(stdout), s.redactor.Writer(stderr)

@@ -201,7 +201,7 @@
                 "type": "string"
               },
               "where": {
-                "description": "Where the Hook runs.",
+                "description": "Where the Hook runs. Default \"host\".",
                 "enum": [
                   "host"
                 ],
@@ -253,7 +253,7 @@
                 "type": "string"
               },
               "where": {
-                "description": "Where the Hook runs.",
+                "description": "Where the Hook runs. Default \"host\".",
                 "enum": [
                   "host"
                 ],
@@ -305,7 +305,7 @@
                 "type": "string"
               },
               "where": {
-                "description": "Where the Hook runs.",
+                "description": "Where the Hook runs. Default \"sandbox\".",
                 "enum": [
                   "sandbox",
                   "host"
@@ -318,7 +318,7 @@
           "type": "array"
         },
         "spec_finished": {
-          "description": "Runs on the host when a Spec's last Ticket closes.",
+          "description": "Runs on the host when a Spec's last Ticket, or a standalone Ticket, closes.",
           "items": {
             "additionalProperties": false,
             "oneOf": [
@@ -358,7 +358,7 @@
                 "type": "string"
               },
               "where": {
-                "description": "Where the Hook runs.",
+                "description": "Where the Hook runs. Default \"host\".",
                 "enum": [
                   "host"
                 ],
