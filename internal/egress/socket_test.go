@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -38,7 +39,13 @@ func connectOverSocket(t *testing.T, socket, target string) int {
 func TestTheAllowlistHoldsOverAUnixSocket(t *testing.T) {
 	clearProxyEnv(t)
 	srv := tlsTarget(t)
-	socket := filepath.Join(t.TempDir(), "egress.sock")
+	// Not t.TempDir(): macOS's are too long for a Unix socket's path.
+	dir, err := os.MkdirTemp("/tmp", "kwk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	socket := filepath.Join(dir, "egress.sock")
 	var log logged
 	p, err := egress.Start(context.Background(), egress.Options{Socket: socket, Allow: []string{"127.0.0.1"}, Log: log.log})
 	if err != nil {
