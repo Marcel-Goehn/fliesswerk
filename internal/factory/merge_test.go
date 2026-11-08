@@ -265,14 +265,17 @@ func TestAMergeStepThatChangesAProtectedPathHandsTheTicketBackWithoutARetry(t *t
 
 func TestSandboxCreatedRunsInTheMergeStepsWorktreeBeforeTheStep(t *testing.T) {
 	var ranBefore bool
-	marks := filepath.Join(t.TempDir(), "marks")
 	resolve := resolves(t, "from both\n")
 	c := newConflict(t, func(ctx context.Context, s factory.Step) harness.Outcome {
-		data, err := os.ReadFile(marks)
-		ranBefore = err == nil && strings.Contains(string(data), "merge-3")
+		_, err := os.Stat(filepath.Join(s.Dir, "hook-ran"))
+		ranBefore = err == nil
 		return resolve(ctx, s)
 	})
-	c.opts.Hooks.SandboxCreated = []hook.Entry{{Where: hook.Sandbox, Commands: []string{`git rev-parse --show-toplevel >> "` + marks + `"`}}}
+	// Each worktree gets its own marker: Hooks of Tickets running at once
+	// can't share a file, since cmd.exe's >> holds it open exclusively. It is
+	// ignored, so that it doesn't count against the merge's clean tree.
+	write(t, filepath.Join(c.f.work, ".git", "info", "exclude"), "hook-ran\n")
+	c.opts.Hooks.SandboxCreated = []hook.Entry{{Where: hook.Sandbox, Commands: []string{"git rev-parse --show-toplevel > hook-ran"}}}
 
 	res := factory.Run(context.Background(), c.opts)
 
