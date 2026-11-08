@@ -336,6 +336,9 @@ func TestRunStopsASilentStepAtItsConfiguredIdleTimeout(t *testing.T) {
 	if elapsed := time.Since(start); elapsed > 30*time.Second {
 		t.Errorf("the Run took %s; the configured idle timeout didn't apply", elapsed)
 	}
+	if !strings.Contains(p.stdout, "warning: no output for 500ms") {
+		t.Errorf("stdout lacks the warning at half the idle timeout:\n%s", p.stdout)
+	}
 	if !strings.Contains(p.stdout, "no output for 1s (idle timeout); retrying in a fresh session") {
 		t.Errorf("stdout lacks the idle timeout and its retry:\n%s", p.stdout)
 	}
@@ -371,7 +374,7 @@ func TestReviewApprovesInAFreshSession(t *testing.T) {
 	if n := len(harnessCalls(t, logPath)); n != 2 {
 		t.Errorf("the Harness ran %d times, want two sessions: implement and review", n)
 	}
-	if !strings.Contains(p.stdout, "#2 review: approved") {
+	if !strings.Contains(p.stdout, "#2  review  approved") {
 		t.Errorf("stdout lacks the approval:\n%s", p.stdout)
 	}
 	if got := p.specLog(t); got != "Add the cart package" {
@@ -396,7 +399,7 @@ func TestReviewFixesWhatItFinds(t *testing.T) {
 	if got := p.specLog(t); got != "Test the cart\nAdd the cart package" {
 		t.Errorf("Spec branch commits = %q, want implement's and review's", got)
 	}
-	if !strings.Contains(p.stdout, "#2 review: fixed it in 1 commit") {
+	if !strings.Contains(p.stdout, "#2  review  fixed it in 1 commit") {
 		t.Errorf("stdout lacks the fix:\n%s", p.stdout)
 	}
 }
@@ -418,7 +421,7 @@ func TestVerifyFailsThenPassesAfterImplementRetriesWithItsOutput(t *testing.T) {
 	if n := len(harnessCalls(t, logPath)); n != 4 {
 		t.Errorf("the Harness ran %d times, want implement and review twice", n)
 	}
-	for _, want := range []string{"#2 verify: `test`", "implement retries with its output", "#2 verify: passed"} {
+	for _, want := range []string{"#2  verify: `test`", "implement retries with its output", "#2  verify: passed"} {
 		if !strings.Contains(p.stdout, want) {
 			t.Errorf("stdout lacks %q:\n%s", want, p.stdout)
 		}

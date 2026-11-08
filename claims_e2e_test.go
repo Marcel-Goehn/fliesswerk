@@ -57,7 +57,7 @@ func TestRunSummaryListsSpecsClaimedByOthers(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
 	}
-	if want := "Claimed by others, skipped:\n  " + aliceClaim + "\n"; !strings.Contains(p.stdout, want) {
+	if want := "Skipped:\n  " + aliceClaim + "\n"; !strings.Contains(p.stdout, want) {
 		t.Errorf("stdout lacks %q:\n%s", want, p.stdout)
 	}
 	if issues := p.issues(t); issues[2].Closed || !issues[5].Closed {

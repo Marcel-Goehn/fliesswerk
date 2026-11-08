@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"slices"
 	"strings"
 	"time"
@@ -12,9 +13,12 @@ import (
 	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
 	"github.com/Marcel-Goehn/kraftwerk/internal/hook"
+	"github.com/Marcel-Goehn/kraftwerk/internal/prompt"
+	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
 	"github.com/Marcel-Goehn/kraftwerk/internal/step"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
 	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
+	"golang.org/x/term"
 )
 
 // Defaults for the keys of a Run the config may leave out.
@@ -29,9 +33,6 @@ const (
 	defaultComposeFile = "compose.yaml"
 )
 
-// runIDFormat makes a Run's id from its start time.
-const runIDFormat = "2006-01-02T15-04-05"
-
 // transientBackoff is the wait before a Step's retry after a transient
 // error; tests shorten it.
 var transientBackoff = factory.DefaultBackoff
@@ -39,10 +40,21 @@ var transientBackoff = factory.DefaultBackoff
 // remote is the git remote branches are cut from and pushed to.
 const remote = "origin"
 
+// runView is how a Run shows itself.
+type runView struct {
+	// json prints the summary to stdout and the live lines to stderr.
+	json bool
+	// verbose shows the agent's text too.
+	verbose bool
+}
+
+// defaultKeepDays is how long a Run's logs are kept without [logs] keep_days.
+const defaultKeepDays = 30
+
 // runFactory runs the Factory over the ready Tickets (of only the Spec or
-// standalone Ticket only names, if set) and prints how the Run ended. Only
-// `kind = "none"` exists so far.
-func runFactory(values map[string]any, root, only string, stdout, stderr io.Writer) int {
+// standalone Ticket only names, if set), recording the Run in its log
+// directory, and prints how it ended. Only `kind = "none"` exists so far.
+func runFactory(values map[string]any, root, only string, view runView, stdout, stderr io.Writer) int {
 	if kind := stringAt(values, defaultSandbox, "sandbox", "kind"); kind != "none" {
 		_, _ = fmt.Fprintf(stderr, "kraftwerk run: the %s Sandbox isn't available in this kraftwerk yet; run with `--sandbox none --i-accept-unsandboxed-risk` (or set them in .kraftwerk/config.local.toml)\n",
 			kind)
@@ -53,31 +65,102 @@ func runFactory(values map[string]any, root, only string, stdout, stderr io.Writ
 		_, _ = fmt.Fprintln(stderr, "kraftwerk run: the prompt files are not valid; fix the errors above")
 		return exitConfigError
 	}
-	ctx := context.Background()
 	s, code, ok := secretsForRun(values, root, stderr)
 	if !ok {
 		return code
 	}
+	live := stdout
+	if view.json {
+		live = stderr
+	}
+	colour := runlog.UseColour(isTerminal(live), os.Getenv("NO_COLOR"))
+	live = s.redactor.Writer(live)
 	stdout, stderr = s.redacted(stdout, stderr)
+
+	started := time.Now()
+	log, err := runlog.Open(runlog.Options{Root: root, Start: started, Terminal: live, Verbose: view.verbose, Colour: colour, Redactor: s.redactor})
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "kraftwerk run: can't create the Run's log directory: %v\n", err)
+		return exitConfigError
+	}
+	if err := runlog.Prune(root, keepDays(values), started); err != nil {
+		log.Write(runlog.Line{Kind: runlog.Warning, Text: fmt.Sprintf("warning: pruning old logs: %v", err)})
+	}
+	writeBanner(log, values, s)
+
+	ctx := context.Background()
+	var res factory.Result
+	if tr, err := preflight(ctx, values, s); err != nil {
+		res.Stopped = err
+	} else {
+		res = factory.Run(ctx, factoryOptions(values, root, only, tr, s, prompts, log))
+	}
+	code = exitCode(res)
+	summary := log.Finish(summaryOf(res, log.ID(), started, code))
+	if view.json {
+		_, _ = stdout.Write(summary)
+	}
+	printStop(stderr, res)
+	return code
+}
+
+// isTerminal reports whether w is a terminal.
+func isTerminal(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	return ok && term.IsTerminal(int(f.Fd())) //nolint:gosec // a file descriptor fits an int
+}
+
+// keepDays is `[logs] keep_days`, runlog.Forever for "forever".
+func keepDays(values map[string]any) int {
+	if stringAt(values, "", "logs", "keep_days") == "forever" {
+		return runlog.Forever
+	}
+	return intAt(values, defaultKeepDays, "logs", "keep_days")
+}
+
+// writeBanner opens a Run's log with what the Run is and where it records
+// itself.
+func writeBanner(log *runlog.Log, values map[string]any, s *secrets) {
+	auth := "its own login"
+	if s.auth != nil {
+		auth = string(s.auth.Method)
+	}
+	limits := settingsOf(values, factory.Implement)
+	for _, text := range []string{
+		"kraftwerk " + versionString(),
+		fmt.Sprintf("Run %s, logs in %s", log.ID(), runlog.RelDir(log.ID())),
+		fmt.Sprintf("Harness %s, auth %s", theHarness.Describe().Name, auth),
+		"Sandbox " + stringAt(values, defaultSandbox, "sandbox", "kind"),
+		fmt.Sprintf("Limits: max_iterations %d, max_parallel %d, idle %s, Step %s",
+			intAt(values, defaultMaxIterations, "max_iterations"), maxParallel(values), limits.idleTimeout, limits.timeout),
+	} {
+		log.Write(runlog.Line{Text: text})
+	}
+}
+
+// preflight proves the Harness's credential and the Tracker work before
+// any Iteration starts, and returns the redacted Tracker. A Tracker that
+// can't be set up is a *factory.SetupError.
+func preflight(ctx context.Context, values map[string]any, s *secrets) (tracker.Tracker, error) {
 	if err := s.testHarnessCredential(ctx); err != nil {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk run: stopped: %v\n", err)
-		return exitStopped
+		return nil, err
 	}
 	tr, err := newTracker(values, s.trackerToken)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk run: %v\n", err)
-		return exitConfigError
+		return nil, &factory.SetupError{Msg: err.Error()}
 	}
 	// The Tracker's checks prove its token (or login) works.
 	for _, c := range tr.Describe().Checks {
 		if err := c.Run(ctx); err != nil {
-			_, _ = fmt.Fprintf(stderr, "kraftwerk run: stopped: %s: %v\n", c.Name, err)
-			return exitStopped
+			return nil, fmt.Errorf("%s: %w", c.Name, err)
 		}
 	}
-	tr = tracker.Redacted(tr, s.redactor.String)
+	return tracker.Redacted(tr, s.redactor.String), nil
+}
 
-	res := factory.Run(ctx, factory.Options{
+// factoryOptions are the Options of a Run with this config.
+func factoryOptions(values map[string]any, root, only string, tr tracker.Tracker, s *secrets, prompts map[string]prompt.Part, log *runlog.Log) factory.Options {
+	return factory.Options{
 		Tracker:        tr,
 		Root:           root,
 		Remote:         remote,
@@ -87,12 +170,12 @@ func runFactory(values map[string]any, root, only string, stdout, stderr io.Writ
 		CannotDoLabel:  stringAt(values, defaultCannotDoLabel, "tracker", "cannot_do_label"),
 		MaxParallel:    maxParallel(values),
 		MaxIterations:  intAt(values, defaultMaxIterations, "max_iterations"),
-		RunStep:        stepRunner(values, s),
+		RunStep:        stepRunner(values, s, log),
 		Review:         boolAt(values, true, "steps", "review", "enabled"),
 		Verify:         verifyCommands(values),
 		VerifyEnv:      s.commandEnv(boolAt(values, true, "sandbox", "scrub_credentials")),
 		VerifyTimeout:  step.DefaultTimeout,
-		Out:            stdout,
+		Log:            log.Write,
 		LinkBlockerFix: tr.Describe().LinkBlockerFix,
 		ProtectedPaths: protectedPaths(values),
 		Prompts:        prompts,
@@ -100,7 +183,7 @@ func runFactory(values map[string]any, root, only string, stdout, stderr io.Writ
 		Standards:      stringAt(values, "", "standards"),
 		Backoff:        transientBackoff,
 		Redactor:       s.redactor,
-		RunID:          time.Now().Format(runIDFormat),
+		RunID:          log.ID(),
 		Only:           only,
 		Hooks: factory.Hooks{
 			RunStart:       hookEntries(values, "run_start", s),
@@ -108,8 +191,7 @@ func runFactory(values map[string]any, root, only string, stdout, stderr io.Writ
 			SpecFinished:   hookEntries(values, "spec_finished", s),
 			RunEnd:         hookEntries(values, "run_end", s),
 		},
-	})
-	return printResult(stdout, stderr, res)
+	}
 }
 
 // secretsForRun resolves every secret a Run needs. ok is false when the
@@ -125,35 +207,45 @@ func secretsForRun(values map[string]any, root string, stderr io.Writer) (s *sec
 }
 
 // stepRunner runs each Step with its own settings and the Harness's
-// credentials in its env, rendering a line per tool call and the agent's
-// text as verbose lines.
-func stepRunner(values map[string]any, sec *secrets) func(context.Context, factory.Step) harness.Outcome {
+// credentials in its env. It logs a line per tool call, the agent's text,
+// a warning at half the idle timeout and the Step's end line, and records
+// the attempt's prompt and raw output.
+func stepRunner(values map[string]any, sec *secrets, log *runlog.Log) func(context.Context, factory.Step) harness.Outcome {
 	scrub := boolAt(values, true, "sandbox", "scrub_credentials")
 	env, unset := sec.stepEnv(scrub)
 	return func(ctx context.Context, req factory.Step) harness.Outcome {
 		settings := settingsOf(values, req.Name)
+		attempt := log.Attempt(req.Ticket.ID.Branch, req.Name, req.Prompt)
+		defer attempt.Close()
 		r := step.Runner{
 			Harness:     settings.harness,
 			Env:         env,
 			Unset:       unset,
 			IdleTimeout: settings.idleTimeout,
 			Timeout:     settings.timeout,
+			OnRaw:       attempt.Raw,
+			OnIdleWarning: func(silent time.Duration) {
+				req.Log(runlog.Warning, fmt.Sprintf("warning: no output for %s; the Step is stopped at %s (idle timeout)", silent, settings.idleTimeout))
+			},
 			OnEvent: func(e harness.Event) {
 				switch e.Kind {
 				case harness.ToolCall:
-					req.Log(strings.TrimSpace(e.Tool+" "+e.Summary), false)
+					req.Log(runlog.Tool, strings.TrimSpace(e.Tool+" "+e.Summary))
 				case harness.Text:
-					req.Log(e.Text, true)
+					req.Log(runlog.AgentText, e.Text)
 				}
 			},
 		}
-		return r.Run(ctx, harness.Step{
+		begin := time.Now()
+		out := r.Run(ctx, harness.Step{
 			Prompt:           req.Prompt,
 			Model:            settings.model,
 			Effort:           settings.effort,
 			ReportSchema:     harness.ReportSchema,
 			ScrubCredentials: scrub,
 		}, req.Dir)
+		req.Log(runlog.Event, runlog.StepEnd(time.Since(begin), out.Usage, out.ContextWindow))
+		return out
 	}
 }
 
@@ -278,29 +370,29 @@ func durationAt(values map[string]any, def time.Duration, path ...string) time.D
 	return def
 }
 
-// printResult prints how the Run ended and returns its exit code.
-func printResult(stdout, stderr io.Writer, res factory.Result) int {
-	_, _ = fmt.Fprintf(stdout, "\nRun finished after %d %s: %d closed, %d failed.\n",
-		res.Iterations, pluralize(res.Iterations, "Iteration", "Iterations"), len(res.Closed), len(res.Failed))
-	for _, tk := range res.Closed {
-		_, _ = fmt.Fprintf(stdout, "  closed  %s  %s\n", tk.ID, tk.Title)
-	}
-	for _, f := range res.Failed {
-		_, _ = fmt.Fprintf(stdout, "  failed  %s  %s: %s\n", f.Ticket.ID, f.Ticket.Title, f.Reason)
-	}
-	printClaimedByOthers(stdout, res.ClaimedByOthers)
+// exitCode is the exit code of a Run that ended with res.
+func exitCode(res factory.Result) int {
 	var setup *factory.SetupError
 	switch {
 	case errors.As(res.Stopped, &setup):
-		_, _ = fmt.Fprintf(stderr, "kraftwerk run: %v\n", res.Stopped)
 		return exitConfigError
 	case res.Stopped != nil:
-		_, _ = fmt.Fprintf(stderr, "kraftwerk run: stopped: %v\n", res.Stopped)
 		return exitStopped
 	case len(res.Failed) > 0 || res.NeedsFix:
 		return exitFailures
 	}
 	return exitOK
+}
+
+// printStop says on stderr why the Run stopped, if it did.
+func printStop(stderr io.Writer, res factory.Result) {
+	var setup *factory.SetupError
+	switch {
+	case errors.As(res.Stopped, &setup):
+		_, _ = fmt.Fprintf(stderr, "kraftwerk run: %v\n", res.Stopped)
+	case res.Stopped != nil:
+		_, _ = fmt.Fprintf(stderr, "kraftwerk run: stopped: %v\n", res.Stopped)
+	}
 }
 
 // pluralize is one if n is 1, else many.

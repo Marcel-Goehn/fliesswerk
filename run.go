@@ -5,8 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/frontier"
+	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
 )
 
@@ -16,8 +18,11 @@ import (
 // starting nothing.
 func runRun(args []string, stdout, stderr io.Writer) int {
 	var dryRun bool
+	var view runView
 	values, root, rest, code, ok := loadConfig("kraftwerk run", args, 1, stderr, func(fs *flag.FlagSet) {
 		fs.BoolVar(&dryRun, "dry-run", false, "show Iteration 1 and every skipped Ticket, writing nothing")
+		fs.BoolVar(&view.json, "json", false, "print the Run's summary as JSON to stdout, and the live lines to stderr")
+		fs.BoolVar(&view.verbose, "verbose", false, "show the agent's text too")
 	})
 	if !ok {
 		return code
@@ -27,7 +32,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		only = rest[0]
 	}
 	if !dryRun {
-		return runFactory(values, root, only, stdout, stderr)
+		return runFactory(values, root, only, view, stdout, stderr)
 	}
 
 	s, code, ok := secretsForRun(values, root, stderr)
@@ -99,6 +104,27 @@ func printPlan(stdout, stderr io.Writer, p frontier.Plan, limit int) {
 		_, _ = fmt.Fprintf(stderr, "warning: %s\n", w)
 	}
 	_, _ = fmt.Fprintln(stdout, "\nDry run: nothing was written and nothing was started.")
+}
+
+// runLogs prints the directory of the latest Run. It doesn't need a valid
+// config: the logs matter most when something is broken.
+func runLogs(args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 {
+		_, _ = fmt.Fprintf(stderr, "kraftwerk logs: unexpected argument %q\n", args[0])
+		return exitConfigError
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "kraftwerk logs: can't find the current directory: %v\n", err)
+		return exitConfigError
+	}
+	dir, ok := runlog.Latest(projectRoot(cwd))
+	if !ok {
+		_, _ = fmt.Fprintln(stderr, "kraftwerk logs: no Run has left logs here yet")
+		return exitFailures
+	}
+	_, _ = fmt.Fprintln(stdout, dir)
+	return exitOK
 }
 
 // where names a Ticket's Spec, or says it stands alone.

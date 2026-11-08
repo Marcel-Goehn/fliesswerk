@@ -54,7 +54,7 @@ func (r *run) runStart(ctx context.Context) error {
 func (r *run) runEnd(ctx context.Context) {
 	ctx = context.WithoutCancel(ctx)
 	if f := r.runHooks(ctx, "run_end", hook.Setting{HostDir: r.opts.Root}, r.opts.Hooks.RunEnd, r.logLine); f != nil {
-		r.logf("warning: the run_end Hook failed: %v", f)
+		r.warnf("warning: the run_end Hook failed: %v", f)
 	}
 }
 
@@ -70,7 +70,7 @@ func (r *run) sandboxCreated(ctx context.Context, b build) *failure {
 			return nil
 		}
 		if fresh == freshRetries {
-			return &failure{handBack: true, reason: "sandbox_created: " + f.Error() + ", again after a retry"}
+			return &failure{handBack: true, kind: KindHook, reason: "sandbox_created: " + f.Error() + ", again after a retry"}
 		}
 		r.tlogf(b.tk, "sandbox_created: retrying after: %v", f)
 	}
@@ -85,6 +85,6 @@ func (r *run) specFinished(ctx context.Context, id tracker.ID, branch, specDir s
 		Env:     []string{"KRAFTWERK_SPEC=" + id.Display, "KRAFTWERK_BRANCH=" + branch},
 	}
 	if f := r.runHooks(ctx, "spec_finished", m, r.opts.Hooks.SpecFinished, r.logLine); f != nil {
-		r.logf("%s: warning: the spec_finished Hook failed: %v", id, f)
+		r.warnf("%s: warning: the spec_finished Hook failed: %v", id, f)
 	}
 }

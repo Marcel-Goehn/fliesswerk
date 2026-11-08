@@ -89,7 +89,7 @@ func TestParseGoldenTranscripts(t *testing.T) {
 				tool("StructuredOutput", ""), call("msg_01C", 4, 40, 16420, 210),
 				total(usd(13, 256, 43540, 5630, 0.0912345)), final(&doneReport),
 			},
-			outcome: reported(doneReport, usd(13, 256, 43540, 5630, 0.0912345)),
+			outcome: withContext(reported(doneReport, usd(13, 256, 43540, 5630, 0.0912345)), 16634),
 		},
 		{
 			file: "cannot_do.jsonl",
@@ -97,7 +97,7 @@ func TestParseGoldenTranscripts(t *testing.T) {
 				text("The Ticket asks for a payment provider\nthat the repo doesn't have."), call("msg_02A", 10, 30, 2000, 0),
 				total(usd(10, 30, 2000, 0, 0.004)), final(&cannotDo),
 			},
-			outcome: reported(cannotDo, usd(10, 30, 2000, 0, 0.004)),
+			outcome: withContext(reported(cannotDo, usd(10, 30, 2000, 0, 0.004)), 2010),
 		},
 		{
 			file: "no_report.jsonl",
@@ -105,7 +105,7 @@ func TestParseGoldenTranscripts(t *testing.T) {
 				text("All done!"), call("msg_03A", 5, 4, 0, 100),
 				total(usd(5, 4, 0, 100, 0.001)), final(nil),
 			},
-			outcome: harness.Outcome{Kind: harness.NoReport, Usage: usd(5, 4, 0, 100, 0.001)},
+			outcome: harness.Outcome{Kind: harness.NoReport, Usage: usd(5, 4, 0, 100, 0.001), ContextWindow: 105},
 		},
 		{
 			// A report that doesn't match the schema is no report.
@@ -168,7 +168,7 @@ func TestParseGoldenTranscripts(t *testing.T) {
 			},
 			outcome: harness.Outcome{
 				Kind: harness.Failed, Class: harness.Other, Message: "exited with code -1 before the end of the session",
-				Usage: harness.Usage{Input: 9, Output: 41, CacheRead: 1860, CacheWrite: 40},
+				Usage: harness.Usage{Input: 9, Output: 41, CacheRead: 1860, CacheWrite: 40}, ContextWindow: 962,
 			},
 		},
 	}
@@ -183,6 +183,13 @@ func TestParseGoldenTranscripts(t *testing.T) {
 			}
 		})
 	}
+}
+
+// withContext is out with the context window worked out from its fixture's
+// last assistant line.
+func withContext(out harness.Outcome, window int64) harness.Outcome {
+	out.ContextWindow = window
+	return out
 }
 
 func TestParseIgnoresLinesItDoesNotKnow(t *testing.T) {

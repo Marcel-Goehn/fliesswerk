@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,6 +19,7 @@ import (
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
 	"github.com/Marcel-Goehn/kraftwerk/internal/prompt"
 	"github.com/Marcel-Goehn/kraftwerk/internal/redact"
+	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
 	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
 )
@@ -52,8 +52,8 @@ type Options struct {
 	VerifyEnv []string
 	// VerifyTimeout stops a Feedback command that runs longer.
 	VerifyTimeout time.Duration
-	// Out gets a line for everything the Run does.
-	Out io.Writer
+	// Log gets a line for everything the Run does; nil drops them.
+	Log func(runlog.Line)
 	// LinkBlockerFix comes from the Tracker's Description.
 	LinkBlockerFix func(ticket, blocker tracker.ID) string
 	// ProtectedPaths are the Protected paths besides .kraftwerk/, which
@@ -100,16 +100,54 @@ type Step struct {
 	// worktree.
 	Dir    string
 	Prompt string
-	// Log renders a line of the Step's output, such as a tool call, to
-	// the Run's output and the Ticket's log. A verbose line (the agent's
-	// text) goes only to the Ticket's log.
-	Log func(line string, verbose bool)
+	// Log logs a line of the Step's output, such as a tool call, under
+	// the Ticket and the Step.
+	Log func(kind runlog.Kind, text string)
 }
 
-// Failure is a Ticket that didn't make it, and why.
+// Failure is a Ticket that didn't make it, why, and the Kind* it was.
 type Failure struct {
 	Ticket tracker.Ticket
 	Reason string
+	Kind   string
+}
+
+// The kinds of Failure.
+const (
+	KindCannotDo      = "cannot_do"
+	KindNoChanges     = "no_changes"
+	KindNoReport      = "no_report"
+	KindHarnessError  = "harness_error"
+	KindVerify        = "verify"
+	KindProtectedPath = "protected_path"
+	KindHook          = "sandbox_created"
+	KindPushRejected  = "push_rejected"
+	KindFactory       = "factory"
+)
+
+// TicketStats are what a Ticket's Steps used, over all their attempts.
+type TicketStats struct {
+	Ticket tracker.Ticket
+	// Commits is how many commits it landed, if it was pushed.
+	Commits int
+	Usage   harness.Totals
+	// LargestContextWindow is the largest of its Steps' context windows.
+	LargestContextWindow int64
+}
+
+// StoppedSpec is a Spec a rejected push halted for this Run.
+type StoppedSpec struct {
+	ID     tracker.ID
+	Branch string
+	// Fix says what a person does about it.
+	Fix string
+}
+
+// FinishedSpec is a Spec (or standalone Ticket) whose last Ticket closed.
+type FinishedSpec struct {
+	ID     tracker.ID
+	Title  string
+	Branch string
 }
 
 // Result is how a Run ended.
@@ -129,6 +167,22 @@ type Result struct {
 	// ClaimedByOthers are the Specs with ready Tickets the Run skipped
 	// because someone else claimed them, as the last Iteration saw them.
 	ClaimedByOthers []tracker.Claimed
+	// Skipped are the Tickets a person must fix before they can be taken,
+	// and Warnings what else they should know, as the Run's last look at
+	// the Tracker saw them.
+	Skipped  []frontier.Skip
+	Warnings []string
+	// Stats are the Tickets that ran a Step, in the order they did.
+	Stats []*TicketStats
+	// Usage is what all Steps of the Run used.
+	Usage harness.Totals
+	// StillReady is how many Tickets were ready when the Run reached
+	// max_iterations.
+	StillReady int
+	// StoppedSpecs are the Specs a rejected push halted.
+	StoppedSpecs []StoppedSpec
+	// SpecsFinished are the Specs whose last Ticket this Run closed.
+	SpecsFinished []FinishedSpec
 }
 
 // SetupError is a problem with the project that a person must fix before
@@ -195,14 +249,7 @@ func Run(ctx context.Context, opts Options) Result {
 			r.res.Stopped = err
 			return r.res
 		}
-		plan := frontier.Compute(r.workable(snap), frontier.Options{
-			ReadyLabel: opts.ReadyLabel, MaxParallel: opts.MaxParallel, LinkBlockerFix: opts.LinkBlockerFix,
-			User: r.user, Only: opts.Only,
-		})
-		r.res.ClaimedByOthers = plan.ClaimedByOthers
-		for _, s := range plan.Skipped {
-			r.res.NeedsFix = r.res.NeedsFix || s.NeedsFix
-		}
+		plan := r.plan(snap)
 		if len(plan.Take) == 0 {
 			r.logf("The frontier is empty.")
 			return r.res
@@ -222,7 +269,37 @@ func Run(ctx context.Context, opts Options) Result {
 	}
 	r.res.LimitReached = true
 	r.logf("max_iterations (%d) reached.", opts.MaxIterations)
+	r.countStillReady(ctx)
 	return r.res
+}
+
+// plan computes an Iteration over snap and notes what the Run's summary
+// reports about it.
+func (r *run) plan(snap tracker.Snapshot) frontier.Plan {
+	plan := frontier.Compute(r.workable(snap), frontier.Options{
+		ReadyLabel: r.opts.ReadyLabel, MaxParallel: r.opts.MaxParallel, LinkBlockerFix: r.opts.LinkBlockerFix,
+		User: r.user, Only: r.opts.Only,
+	})
+	r.res.ClaimedByOthers, r.res.Warnings, r.res.Skipped = plan.ClaimedByOthers, plan.Warnings, nil
+	for _, s := range plan.Skipped {
+		if s.NeedsFix {
+			r.res.NeedsFix = true
+			r.res.Skipped = append(r.res.Skipped, s)
+		}
+	}
+	return plan
+}
+
+// countStillReady counts the Tickets the Run left ready at its limit. The
+// count is only reported, so a failure to get it just warns.
+func (r *run) countStillReady(ctx context.Context) {
+	snap, err := r.opts.Tracker.Snapshot(ctx)
+	if err != nil {
+		r.warnf("warning: can't count the Tickets still ready: %v", err)
+		return
+	}
+	plan := r.plan(snap)
+	r.res.StillReady = len(plan.Take) + len(plan.Later)
 }
 
 // prepare checks that the runtime state is git-ignored and fetches the
@@ -279,40 +356,40 @@ func (r *run) work(ctx context.Context, tk tracker.Ticket, snap tracker.Snapshot
 		}
 	}
 	if err := r.claim(ctx, tk, snap); err != nil {
-		r.fail(tk, err.Error())
+		r.fail(tk, KindFactory, err.Error())
 		return nil
 	}
 	specBranch, err := r.specBranch(ctx, tk, spec)
 	if err != nil {
-		r.fail(tk, err.Error())
+		r.fail(tk, KindFactory, err.Error())
 		return nil
 	}
 	specDir, err := r.specWorktree(ctx, specBranch)
 	if err != nil {
-		r.fail(tk, err.Error())
+		r.fail(tk, KindFactory, err.Error())
 		return nil
 	}
 	specTip, err := r.repo.Rev(ctx, specBranch)
 	if err != nil {
-		r.fail(tk, err.Error())
+		r.fail(tk, KindFactory, err.Error())
 		return nil
 	}
 
 	ticketBranch := r.opts.Prefix + "/ticket-" + tk.ID.Branch
 	ticketDir := filepath.Join(r.worktrees, "ticket-"+tk.ID.Branch)
 	if err := r.freshTicketBranch(ctx, ticketBranch, ticketDir, specTip); err != nil {
-		r.fail(tk, err.Error())
+		r.fail(tk, KindFactory, err.Error())
 		return nil
 	}
 
 	pc, err := r.promptContext(ctx, tk, spec, ticketBranch)
 	if err != nil {
-		r.fail(tk, err.Error())
+		r.fail(tk, KindFactory, err.Error())
 		return nil
 	}
 	recent, err := r.recentCommits(ctx, specTip)
 	if err != nil {
-		r.fail(tk, err.Error())
+		r.fail(tk, KindFactory, err.Error())
 		return nil
 	}
 	b := build{tk: tk, prompt: pc, recent: recent, branch: ticketBranch, worktree: ticketDir, dir: filepath.Join(ticketDir, r.rel), base: specTip}
@@ -326,34 +403,49 @@ func (r *run) work(ctx context.Context, tk tracker.Ticket, snap tracker.Snapshot
 	}
 	commits, err := r.repo.Log(ctx, specTip, ticketBranch)
 	if err != nil {
-		r.fail(tk, err.Error())
+		r.fail(tk, KindFactory, err.Error())
 		return nil
 	}
+	r.statsOf(tk).Commits = len(commits)
 	// The Ticket's tip goes to the remote Spec branch first, so a rejected
 	// push leaves the local Spec branch where it was. Then the local one
 	// fast-forwards to it.
 	if err := r.repo.Push(ctx, r.opts.Remote, ticketBranch, specBranch); err != nil {
 		r.stoppedSpecs[tk.SpecID().Key] = true
-		r.fail(tk, fmt.Sprintf("the push of %s was rejected, so %s stops for this Run: %v", specBranch, tk.SpecID(), err))
+		r.res.StoppedSpecs = append(r.res.StoppedSpecs, StoppedSpec{
+			ID: tk.SpecID(), Branch: specBranch,
+			Fix: fmt.Sprintf("bring your local branch up to date with `git fetch %s %s:%s`, then start a new Run", r.opts.Remote, specBranch, specBranch),
+		})
+		r.fail(tk, KindPushRejected, fmt.Sprintf("the push of %s was rejected, so %s stops for this Run: %v", specBranch, tk.SpecID(), err))
 		return nil
 	}
 	r.tlogf(tk, "pushed %s", specBranch)
 	if err := (git.Repo{Dir: specDir}).MergeFastForward(ctx, ticketBranch); err != nil {
-		r.fail(tk, fmt.Sprintf("%s was pushed, but the local branch can't be fast-forwarded to %s: %v", specBranch, ticketBranch, err))
+		r.fail(tk, KindFactory, fmt.Sprintf("%s was pushed, but the local branch can't be fast-forwarded to %s: %v", specBranch, ticketBranch, err))
 		return nil
 	}
 	if err := r.opts.Tracker.Close(ctx, tk.ID, closeComment(summary, commits, specBranch)); err != nil {
-		r.fail(tk, fmt.Sprintf("its commits are on %s, but closing it failed: %v", specBranch, err))
+		r.fail(tk, KindFactory, fmt.Sprintf("its commits are on %s, but closing it failed: %v", specBranch, err))
 		return nil
 	}
 	r.res.Closed = append(r.res.Closed, tk)
-	r.tlogf(tk, "closed")
+	r.line(tk, runlog.Line{Kind: runlog.Success, Text: "closed"})
 	r.discard(ctx, b)
 	if r.wasLast(tk, spec) {
+		r.finishSpec(tk, spec, specBranch)
 		r.release(ctx, tk.SpecID())
 		r.specFinished(ctx, tk.SpecID(), specBranch, specDir)
 	}
 	return nil
+}
+
+// finishSpec notes that the Ticket's Spec is finished.
+func (r *run) finishSpec(tk tracker.Ticket, spec *tracker.Spec, branch string) {
+	title := tk.Title
+	if spec != nil {
+		title = spec.Title
+	}
+	r.res.SpecsFinished = append(r.res.SpecsFinished, FinishedSpec{ID: tk.SpecID(), Title: title, Branch: branch})
 }
 
 // claim claims the Ticket's Spec (or the Ticket, if it stands alone) the
@@ -390,7 +482,7 @@ func (r *run) wasLast(tk tracker.Ticket, spec *tracker.Spec) bool {
 // already, so a failed release only warns.
 func (r *run) release(ctx context.Context, id tracker.ID) {
 	if err := r.opts.Tracker.Release(ctx, id, r.user); err != nil {
-		r.logf("%s: warning: its last Ticket closed, but releasing its claim failed: %v", id, err)
+		r.warnf("%s: warning: its last Ticket closed, but releasing its claim failed: %v", id, err)
 		return
 	}
 	r.logf("%s: released (its last Ticket closed)", id)
@@ -441,7 +533,7 @@ func (r *run) build(ctx context.Context, b build) (summary string, failed *failu
 			return summary, nil, nil
 		}
 		if attempt == verifyAttempts {
-			return "", &failure{handBack: true, reason: "verify: " + verifyFailed.Error() + ", again after a retry", verify: verifyFailed}, nil
+			return "", &failure{handBack: true, kind: KindVerify, reason: "verify: " + verifyFailed.Error() + ", again after a retry", verify: verifyFailed}, nil
 		}
 		r.tlogf(b.tk, "verify: %v; implement retries with its output", verifyFailed)
 	}
@@ -477,19 +569,19 @@ func (r *run) implementAndReview(ctx context.Context, b build, verifyFailed *ver
 	if err != nil {
 		return "", factoryFailure(err), nil
 	}
-	r.tlogf(tk, "implement: started on %s", b.branch)
+	r.line(tk, runlog.Line{Step: Implement, Text: "started on " + b.branch})
 	out, failed, stop := r.runStep(ctx, Step{Name: Implement, Ticket: tk, Dir: b.dir, Prompt: prompt.Implement(r.part(Implement), b.prompt, b.recent, verifyFailed), Log: r.stepLog(tk, Implement)})
 	if failed != nil || stop != nil {
 		return "", failed, stop
 	}
 	if out.Report.Outcome == harness.CannotDo {
-		return "", &failure{handBack: true, cannotDo: true, reason: out.Report.Reason}, nil
+		return "", &failure{handBack: true, cannotDo: true, kind: KindCannotDo, reason: out.Report.Reason}, nil
 	}
 	summary = out.Report.Summary
 	if n, err := r.countCommits(ctx, b.base, b.branch); err != nil {
 		return "", factoryFailure(err), nil
 	} else if n == 0 {
-		return "", &failure{handBack: true, reason: "implement reported done without changes"}, nil
+		return "", &failure{handBack: true, kind: KindNoChanges, reason: "implement reported done without changes"}, nil
 	}
 	implemented, err := r.countCommits(ctx, start, b.branch)
 	if err != nil {
@@ -506,14 +598,15 @@ func (r *run) implementAndReview(ctx context.Context, b build, verifyFailed *ver
 	if err != nil {
 		return "", factoryFailure(err), nil
 	}
-	r.tlogf(tk, "review: started")
+	r.line(tk, runlog.Line{Step: Review, Text: "started"})
 	out, failed, stop = r.runStep(ctx, Step{Name: Review, Ticket: tk, Dir: b.dir, Prompt: prompt.Review(r.part(Review), b.prompt, b.base), Log: r.stepLog(tk, Review)})
 	if failed != nil || stop != nil {
 		return "", failed, stop
 	}
 	if out.Report.Outcome == harness.CannotDo {
-		r.tlogf(tk, "review: warning: reported cannot_do (%s); review can only approve or fix, so it counts as done",
-			firstNonEmpty(out.Report.Reason, out.Report.Summary))
+		r.line(tk, runlog.Line{Step: Review, Kind: runlog.Warning, Text: fmt.Sprintf(
+			"warning: reported cannot_do (%s); review can only approve or fix, so it counts as done",
+			firstNonEmpty(out.Report.Reason, out.Report.Summary))})
 	}
 	fixes, err := r.countCommits(ctx, before, b.branch)
 	if err != nil {
@@ -523,10 +616,10 @@ func (r *run) implementAndReview(ctx context.Context, b build, verifyFailed *ver
 		return "", failed, nil
 	}
 	if fixes == 0 {
-		r.tlogf(tk, "review: approved")
+		r.line(tk, runlog.Line{Step: Review, Kind: runlog.Success, Text: "approved"})
 		return summary, nil, nil
 	}
-	r.tlogf(tk, "review: fixed it in %d %s", fixes, plural(fixes, "commit", "commits"))
+	r.line(tk, runlog.Line{Step: Review, Text: fmt.Sprintf("fixed it in %d %s", fixes, plural(fixes, "commit", "commits"))})
 	return summary + "\n\nReview: " + strings.TrimSpace(out.Report.Summary), nil, nil
 }
 
@@ -554,7 +647,8 @@ func (r *run) runStep(ctx context.Context, s Step) (out harness.Outcome, failed 
 	fresh, transient := 0, 0
 	for {
 		out = r.opts.RunStep(ctx, s)
-		var why string
+		r.countUsage(s.Ticket, out)
+		var why, kind string
 		switch {
 		case out.Kind == harness.Failed && out.Class == harness.Auth:
 			return out, nil, fmt.Errorf("%s %s: the Harness reported an auth error: %s", s.Ticket.ID, s.Name, out.Message)
@@ -565,23 +659,23 @@ func (r *run) runStep(ctx context.Context, s Step) (out harness.Outcome, failed 
 			}
 			transient++
 			wait := r.backoff(transient)
-			r.tlogf(s.Ticket, "%s: transient error (%s); retry %d of %d in %s", s.Name, out.Message, transient, transientRetries, wait)
+			r.line(s.Ticket, runlog.Line{Step: s.Name, Kind: runlog.Warning, Text: fmt.Sprintf("transient error (%s); retry %d of %d in %s", out.Message, transient, transientRetries, wait)})
 			if err := sleep(ctx, wait); err != nil {
 				return out, nil, fmt.Errorf("%s %s: stopped while waiting to retry: %w", s.Ticket.ID, s.Name, err)
 			}
 			continue
 		case out.Kind == harness.Failed:
-			why = "the Harness failed: " + out.Message
+			why, kind = "the Harness failed: "+out.Message, KindHarnessError
 		case out.Kind == harness.NoReport:
-			why = "the agent ended without a report"
+			why, kind = "the agent ended without a report", KindNoReport
 		default:
 			return out, nil, nil
 		}
 		if fresh == freshRetries {
-			return out, &failure{handBack: true, reason: s.Name + ": " + why + ", again after a retry"}, nil
+			return out, &failure{handBack: true, kind: kind, reason: s.Name + ": " + why + ", again after a retry"}, nil
 		}
 		fresh++
-		r.tlogf(s.Ticket, "%s: %s; retrying in a fresh session", s.Name, why)
+		r.line(s.Ticket, runlog.Line{Step: s.Name, Kind: runlog.Warning, Text: why + "; retrying in a fresh session"})
 	}
 }
 
@@ -611,9 +705,29 @@ func (r *run) countCommits(ctx context.Context, from, branch string) (int, error
 	return len(commits), err
 }
 
-func (r *run) fail(tk tracker.Ticket, reason string) {
-	r.res.Failed = append(r.res.Failed, Failure{Ticket: tk, Reason: reason})
-	r.tlogf(tk, "failed: %s", reason)
+func (r *run) fail(tk tracker.Ticket, kind, reason string) {
+	r.res.Failed = append(r.res.Failed, Failure{Ticket: tk, Reason: reason, Kind: kind})
+	r.line(tk, runlog.Line{Kind: runlog.Failure, Text: "failed: " + reason})
+}
+
+// countUsage adds what one Step attempt used to its Ticket and the Run.
+func (r *run) countUsage(tk tracker.Ticket, out harness.Outcome) {
+	r.res.Usage.Add(out.Usage)
+	s := r.statsOf(tk)
+	s.Usage.Add(out.Usage)
+	s.LargestContextWindow = max(s.LargestContextWindow, out.ContextWindow)
+}
+
+// statsOf is the Ticket's stats, started at its first use.
+func (r *run) statsOf(tk tracker.Ticket) *TicketStats {
+	for _, s := range r.res.Stats {
+		if s.Ticket.ID.Key == tk.ID.Key {
+			return s
+		}
+	}
+	s := &TicketStats{Ticket: tk}
+	r.res.Stats = append(r.res.Stats, s)
+	return s
 }
 
 // specBranch finds the branch of the Ticket's Spec by number, locally and
@@ -718,17 +832,25 @@ func (r *run) clearWorktree(ctx context.Context, dir string) error {
 func (r *run) removeSpecWorktrees() {
 	for _, dir := range r.specDirs {
 		if err := r.repo.RemoveWorktree(context.Background(), dir); err != nil {
-			r.logf("warning: %v", err)
+			r.warnf("warning: %v", err)
 		}
 	}
 }
 
-// tlogf logs a line about a Ticket, after its ID, which also goes to
-// the Ticket's log.
+// tlogf logs a line about a Ticket.
 func (r *run) tlogf(tk tracker.Ticket, format string, a ...any) {
-	line := tk.ID.String() + " " + fmt.Sprintf(format, a...)
-	r.logf("%s", line)
-	r.ticketLog(tk).add(line)
+	r.line(tk, runlog.Line{Text: fmt.Sprintf(format, a...)})
+}
+
+// line logs a line about a Ticket, which also goes to the Ticket's log.
+func (r *run) line(tk tracker.Ticket, l runlog.Line) {
+	r.lineTo(r.ticketLog(tk), tk, l)
+}
+
+func (r *run) lineTo(log *lastLines, tk tracker.Ticket, l runlog.Line) {
+	l.Ticket = tk.ID.String()
+	r.emit(l)
+	log.add(l.String())
 }
 
 // ticketLog is the Ticket's log of its last rendered lines.
@@ -741,24 +863,32 @@ func (r *run) ticketLog(tk tracker.Ticket) *lastLines {
 	return l
 }
 
-// stepLog is a Step's Log: each line, prefixed with the Ticket and the
-// Step, goes to the Ticket's log and, unless verbose, the Run's output.
-func (r *run) stepLog(tk tracker.Ticket, step string) func(string, bool) {
-	l := r.ticketLog(tk)
-	return func(text string, verbose bool) {
+// stepLog is a Step's Log: each line of text is logged under the Ticket
+// and the Step. It is called from the Step's reading goroutines, so the
+// Ticket's log is looked up here, once.
+func (r *run) stepLog(tk tracker.Ticket, step string) func(runlog.Kind, string) {
+	log := r.ticketLog(tk)
+	return func(kind runlog.Kind, text string) {
 		for line := range strings.Lines(text) {
-			line = fmt.Sprintf("%s %s: %s", tk.ID, step, strings.TrimRight(line, "\r\n"))
-			if !verbose {
-				r.logf("%s", line)
-			}
-			l.add(line)
+			r.lineTo(log, tk, runlog.Line{Step: step, Kind: kind, Text: strings.TrimRight(line, "\r\n")})
 		}
 	}
 }
 
-// logf logs a line to the Run's output.
+// logf logs a line about the Run as a whole.
 func (r *run) logf(format string, a ...any) {
-	_, _ = fmt.Fprintf(r.opts.Out, format+"\n", a...)
+	r.emit(runlog.Line{Text: fmt.Sprintf(format, a...)})
+}
+
+// warnf logs a warning about the Run as a whole.
+func (r *run) warnf(format string, a ...any) {
+	r.emit(runlog.Line{Kind: runlog.Warning, Text: fmt.Sprintf(format, a...)})
+}
+
+func (r *run) emit(l runlog.Line) {
+	if r.opts.Log != nil {
+		r.opts.Log(l)
+	}
 }
 
 // firstNonEmpty is a, or b when a is empty.

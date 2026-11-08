@@ -1,7 +1,8 @@
 // Package redact is the one redactor that sits in front of every output
 // the Factory writes: the terminal, log files, saved prompts, the summary
 // and Tracker comments. It replaces every known secret, in the forms it
-// most often travels in (raw, base64 and URL-encoded), with ***.
+// most often travels in (raw, base64, URL-encoded and JSON-escaped), with
+// ***.
 //
 // It can't see a secret that was encoded together with other text, e.g.
 // the base64 of "user:secret" in a Basic auth header. Transcripts the
@@ -11,6 +12,7 @@ package redact
 import (
 	"cmp"
 	"encoding/base64"
+	"encoding/json"
 	"io"
 	"net/url"
 	"slices"
@@ -73,7 +75,20 @@ func forms(secret string) []string {
 		base64.RawURLEncoding.EncodeToString(b),
 		url.QueryEscape(secret),
 		url.PathEscape(secret),
+		jsonEscape(secret),
 	}
+}
+
+// jsonEscape is secret as it appears inside a JSON string, the form it
+// has in a Harness's raw output.
+func jsonEscape(secret string) string {
+	var b strings.Builder
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if enc.Encode(secret) != nil {
+		return secret
+	}
+	return strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(b.String()), `"`), `"`)
 }
 
 // String is s with every known secret replaced by Mask.

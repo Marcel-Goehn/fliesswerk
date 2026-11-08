@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -343,5 +344,55 @@ func TestAMissingHarnessFailsTheStep(t *testing.T) {
 
 	if out.Kind != harness.Failed || !strings.Contains(out.Message, "claude") {
 		t.Fatalf("outcome = %+v, want a failure naming the binary", out)
+	}
+}
+
+func TestEveryRawLineOfTheHarnessIsHandedOver(t *testing.T) {
+	withFakeHarness(t, `{"sessions": [{"actions": [{"text": "working"}], "report": {"outcome": "done", "summary": "ok"}}]}`)
+	var mu sync.Mutex
+	var raw []string
+	r := step.Runner{Harness: claudecode.ClaudeCode{}, OnRaw: func(line []byte) {
+		mu.Lock()
+		defer mu.Unlock()
+		raw = append(raw, string(line))
+	}}
+
+	r.Run(context.Background(), newStep("go"), t.TempDir())
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(raw) < 3 || !strings.Contains(raw[0], `"subtype":"init"`) || !strings.Contains(raw[len(raw)-1], `"type":"result"`) {
+		t.Errorf("raw lines = %q, want the session from its init line to its result line", raw)
+	}
+}
+
+func TestASilentStepIsWarnedAboutAtHalfTheIdleTimeout(t *testing.T) {
+	withFakeHarness(t, `{"sessions": [{"actions": [{"sleep": "1m"}], "report": {"outcome": "done", "summary": "ok"}}]}`)
+	var warnings atomic.Int32
+	var after time.Duration
+	r := step.Runner{Harness: claudecode.ClaudeCode{}, IdleTimeout: time.Second, OnIdleWarning: func(silent time.Duration) {
+		after = silent
+		warnings.Add(1)
+	}}
+
+	r.Run(context.Background(), newStep("go"), t.TempDir())
+
+	if n := warnings.Load(); n != 1 {
+		t.Fatalf("got %d idle warnings, want one", n)
+	}
+	if after != 500*time.Millisecond {
+		t.Errorf("warned after %s of silence, want half the idle timeout", after)
+	}
+}
+
+func TestAStepThatKeepsTalkingGetsNoIdleWarning(t *testing.T) {
+	withFakeHarness(t, `{"sessions": [{"actions": [{"chatter": "1s"}], "report": {"outcome": "done", "summary": "ok"}}]}`)
+	var warnings atomic.Int32
+	r := step.Runner{Harness: claudecode.ClaudeCode{}, IdleTimeout: 2 * time.Second, OnIdleWarning: func(time.Duration) { warnings.Add(1) }}
+
+	r.Run(context.Background(), newStep("go"), t.TempDir())
+
+	if n := warnings.Load(); n != 0 {
+		t.Errorf("got %d idle warnings, want none", n)
 	}
 }

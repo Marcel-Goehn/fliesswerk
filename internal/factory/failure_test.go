@@ -13,6 +13,7 @@ import (
 	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
 	"github.com/Marcel-Goehn/kraftwerk/internal/redact"
+	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
 	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
 )
@@ -340,7 +341,11 @@ func TestFilesOutsideTheProtectedPathsPass(t *testing.T) {
 func chatty(n int, outcome harness.Outcome) func(context.Context, factory.Step) harness.Outcome {
 	return func(_ context.Context, s factory.Step) harness.Outcome {
 		for i := 1; i <= n; i++ {
-			s.Log(fmt.Sprintf("line %02d", i), i%2 == 0)
+			kind := runlog.Tool
+			if i%2 == 0 {
+				kind = runlog.AgentText
+			}
+			s.Log(kind, fmt.Sprintf("line %02d", i))
 		}
 		return outcome
 	}
@@ -363,12 +368,16 @@ func TestAFailureCommentHasTheLast30RenderedLinesButNeverThePrompt(t *testing.T)
 	var prompt string
 	implement := func(ctx context.Context, s factory.Step) harness.Outcome {
 		prompt = s.Prompt
-		s.Log("tool "+strings.Repeat("x", 300), false)
+		s.Log(runlog.Tool, "tool "+strings.Repeat("x", 300))
 		return chatty(40, cannotDo)(ctx, s)
 	}
 	var out strings.Builder
 	opts := failOptions(f, tr, implement)
-	opts.Out = &out
+	opts.Log = func(l runlog.Line) {
+		if l.Kind != runlog.AgentText {
+			fmt.Fprintln(&out, l)
+		}
+	}
 
 	factory.Run(context.Background(), opts)
 
@@ -403,7 +412,7 @@ func TestAFailureCommentCutsEachLineTo200Characters(t *testing.T) {
 	tr := fake.New(ready, cartSpec()...)
 	long := strings.Repeat("ä", 250)
 	implement := func(_ context.Context, s factory.Step) harness.Outcome {
-		s.Log(long, false)
+		s.Log(runlog.Tool, long)
 		return harness.Outcome{Kind: harness.Reported, Report: harness.Report{Outcome: harness.CannotDo, Reason: "No.", Summary: "No."}}
 	}
 
@@ -465,7 +474,7 @@ func TestAFailureCommentRedactsSecretsInTheExcerpt(t *testing.T) {
 	f := newFixture(t)
 	tr := fake.New(ready, cartSpec()...)
 	implement := func(_ context.Context, s factory.Step) harness.Outcome {
-		s.Log("a token: hunter2", false)
+		s.Log(runlog.Tool, "a token: hunter2")
 		return harness.Outcome{Kind: harness.Reported, Report: harness.Report{Outcome: harness.CannotDo, Reason: "No.", Summary: "No."}}
 	}
 	opts := failOptions(f, tr, implement)

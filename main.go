@@ -21,6 +21,9 @@ const usage = `Usage:
   kraftwerk check                 validate the config, test the credentials and check the Tracker's tools
   kraftwerk run [<N>]             implement the ready Tickets, Iteration by Iteration (of only Spec or standalone Ticket N)
   kraftwerk run --dry-run [<N>]   show what Iteration 1 would take, and what is skipped and why
+  kraftwerk run --verbose [<N>]   show the agent's text as well
+  kraftwerk run --json [<N>]      print the Run's summary as JSON to stdout, and the live lines to stderr
+  kraftwerk logs                  print the latest Run's log directory
   kraftwerk release <N>           drop the claim on Spec or standalone Ticket N, so someone else's Run may take it
   kraftwerk prompts diff <step>   show how the built-in prompt of a Step changed since your file's version
   kraftwerk auth set <key>        store a secret, read from a hidden prompt, in your user-level credentials file
@@ -47,6 +50,9 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 	}
 	if len(args) > 0 && args[0] == "run" {
 		return runRun(args[1:], stdout, stderr)
+	}
+	if len(args) > 0 && args[0] == "logs" {
+		return runLogs(args[1:], stdout, stderr)
 	}
 	if len(args) > 0 && args[0] == "release" {
 		return runRelease(args[1:], stdout, stderr)

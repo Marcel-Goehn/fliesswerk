@@ -50,6 +50,11 @@ type Runner struct {
 	Grace time.Duration
 	// OnEvent, if set, sees every event as it is parsed.
 	OnEvent func(harness.Event)
+	// OnRaw, if set, sees every line of the Harness's stdout, as written.
+	OnRaw func(line []byte)
+	// OnIdleWarning, if set, is called when a Step has been silent for half
+	// its idle timeout, with how long that is.
+	OnIdleWarning func(silent time.Duration)
 	// Env is added to each Step's env when it starts: the credentials and
 	// project secrets the Step gets. They never go into argv.
 	Env map[string]string
@@ -93,7 +98,7 @@ func (r Runner) Run(ctx context.Context, s harness.Step, dir string) harness.Out
 		_ = p.stdin.Close()
 	}()
 
-	o := &output{harness: r.Harness, onEvent: r.OnEvent, activity: make(chan struct{}, 1), terminal: make(chan struct{})}
+	o := &output{harness: r.Harness, onEvent: r.OnEvent, onRaw: r.OnRaw, activity: make(chan struct{}, 1), terminal: make(chan struct{})}
 	outDone, errDone := make(chan struct{}), make(chan struct{})
 	go o.readStdout(p.stdout, outDone)
 	go o.readStderr(p.stderr, errDone)
@@ -126,7 +131,7 @@ func (r Runner) Run(ctx context.Context, s harness.Step, dir string) harness.Out
 	}
 	out := harness.Resolve(events, exit)
 	if reason != "" && !terminal {
-		out = harness.Outcome{Kind: harness.Failed, Class: harness.Other, Message: reason, Usage: out.Usage}
+		out = harness.Outcome{Kind: harness.Failed, Class: harness.Other, Message: reason, Usage: out.Usage, ContextWindow: out.ContextWindow}
 	}
 	if out.Kind == harness.Failed && out.Message != "" && stderr != "" {
 		out.Message += ": " + lastLine(stderr)
@@ -139,10 +144,11 @@ func (r Runner) Run(ctx context.Context, s harness.Step, dir string) harness.Out
 // terminal event), and the Harness's exit if it exited.
 func (r Runner) watch(ctx context.Context, o *output, exited <-chan error) (reason string, waitErr error, hasExited bool) {
 	idleTimeout, timeout, grace := orDefault(r.IdleTimeout, DefaultIdleTimeout), orDefault(r.Timeout, DefaultTimeout), orDefault(r.Grace, DefaultGrace)
-	idle, step := time.NewTimer(idleTimeout), time.NewTimer(timeout)
+	idle, warn, step := time.NewTimer(idleTimeout), time.NewTimer(idleTimeout/2), time.NewTimer(timeout)
 	defer idle.Stop()
+	defer warn.Stop()
 	defer step.Stop()
-	idleC, terminal := idle.C, o.terminal
+	idleC, warnC, terminal := idle.C, warn.C, o.terminal
 	var graceC <-chan time.Time
 	for {
 		select {
@@ -150,11 +156,17 @@ func (r Runner) watch(ctx context.Context, o *output, exited <-chan error) (reas
 			return "", waitErr, true
 		case <-o.activity:
 			idle.Reset(idleTimeout)
+			warn.Reset(idleTimeout / 2)
+		case <-warnC:
+			if r.OnIdleWarning != nil {
+				r.OnIdleWarning(idleTimeout / 2)
+			}
 		case <-terminal:
 			// Silence after the end of the session is expected; only the
 			// grace counts now.
 			idle.Stop()
-			idleC, terminal = nil, nil
+			warn.Stop()
+			idleC, warnC, terminal = nil, nil, nil
 			graceC = time.After(grace)
 		case <-graceC:
 			return "", nil, false
@@ -227,6 +239,7 @@ const stderrTail = 64 << 10
 type output struct {
 	harness harness.Harness
 	onEvent func(harness.Event)
+	onRaw   func([]byte)
 	// activity gets a value whenever output arrives; terminal is closed
 	// at the first terminal event.
 	activity chan struct{}
@@ -249,6 +262,9 @@ func (o *output) readStdout(f *os.File, done chan<- struct{}) {
 	defer close(done)
 	defer func() { _ = f.Close() }()
 	lw := lineWriter{onLine: func(line []byte) {
+		if o.onRaw != nil {
+			o.onRaw(line)
+		}
 		for _, e := range o.harness.Parse(line) {
 			o.mu.Lock()
 			o.events = append(o.events, e)

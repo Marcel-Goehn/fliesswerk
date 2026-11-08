@@ -33,7 +33,7 @@ func (r *run) checkProtected(ctx context.Context, b build, step, from string) *f
 	if len(hit) == 0 {
 		return nil
 	}
-	return &failure{handBack: true, protected: hit,
+	return &failure{handBack: true, kind: KindProtectedPath, protected: hit,
 		reason: fmt.Sprintf("%s committed changes to %d Protected %s, which only a person may change", step, len(hit), plural(len(hit), "path", "paths"))}
 }
 

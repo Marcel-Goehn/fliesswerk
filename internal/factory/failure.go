@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/prompt"
+	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
 	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
 )
@@ -16,6 +17,8 @@ import (
 // failure is why a Ticket didn't make it.
 type failure struct {
 	reason string
+	// kind is the Kind* of the Failure it becomes.
+	kind string
 	// handBack means the Ticket goes back to a person: the ready label
 	// gives way to the cannot_do label, a comment says why, and the work
 	// is discarded. Otherwise the Factory itself failed, and the Ticket is
@@ -32,25 +35,25 @@ type failure struct {
 
 // factoryFailure is a failure of the Factory's own, not the Ticket's.
 func factoryFailure(err error) *failure {
-	return &failure{reason: err.Error()}
+	return &failure{reason: err.Error(), kind: KindFactory}
 }
 
 // failBuild ends a Ticket whose build failed.
 func (r *run) failBuild(ctx context.Context, b build, f *failure) {
 	if !f.handBack {
-		r.fail(b.tk, f.reason)
+		r.fail(b.tk, f.kind, f.reason)
 		return
 	}
 	tk := b.tk
 	// The comment is made first, so its excerpt doesn't end in the reason
 	// it already gives.
 	comment := r.failureComment(tk, f)
-	r.fail(tk, f.reason)
+	r.fail(tk, f.kind, f.reason)
 	if err := r.opts.Tracker.Comment(ctx, tk.ID, comment); err != nil {
-		r.tlogf(tk, "warning: commenting failed: %v", err)
+		r.line(tk, runlog.Line{Kind: runlog.Warning, Text: fmt.Sprintf("warning: commenting failed: %v", err)})
 	}
 	if err := r.opts.Tracker.SetLabels(ctx, tk.ID, []string{r.opts.CannotDoLabel}, []string{r.opts.ReadyLabel}); err != nil {
-		r.tlogf(tk, "warning: swapping %s for %s failed: %v", r.opts.ReadyLabel, r.opts.CannotDoLabel, err)
+		r.line(tk, runlog.Line{Kind: runlog.Warning, Text: fmt.Sprintf("warning: swapping %s for %s failed: %v", r.opts.ReadyLabel, r.opts.CannotDoLabel, err)})
 	} else {
 		r.tlogf(tk, "handed back with %s", r.opts.CannotDoLabel)
 	}
@@ -60,16 +63,16 @@ func (r *run) failBuild(ctx context.Context, b build, f *failure) {
 // LogDir is where a Run's logs go, relative to the project root, with
 // forward slashes.
 func LogDir(runID string) string {
-	return factoryDir + "logs/" + runID
+	return runlog.RelDir(runID)
 }
 
 // discard removes the Ticket's worktree and branch.
 func (r *run) discard(ctx context.Context, b build) {
 	if err := r.repo.RemoveWorktree(ctx, b.worktree); err != nil {
-		r.logf("warning: %v", err)
+		r.warnf("warning: %v", err)
 	}
 	if err := r.repo.DeleteBranch(ctx, b.branch); err != nil {
-		r.logf("warning: %v", err)
+		r.warnf("warning: %v", err)
 	}
 }
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
+	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
 	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
@@ -131,8 +131,12 @@ func options(f fixture, tr tracker.Tracker, runStep func(context.Context, factor
 		MaxIterations: 10,
 		RunStep:       runStep,
 		VerifyTimeout: time.Minute,
-		Out:           io.Discard,
 	}
+}
+
+// logTo writes each line of a Run to out.
+func logTo(out *strings.Builder) func(runlog.Line) {
+	return func(l runlog.Line) { fmt.Fprintln(out, l) }
 }
 
 func cartSpec() []fake.Issue {
@@ -478,7 +482,7 @@ func TestReviewThatCommitsFixesTheChangeAndItsFixesArePushed(t *testing.T) {
 		factory.Review:    commits(map[string]string{"cart_test.go": "package cart\n"}, "Added the missing test."),
 	}}
 	opts := options(f, tr, steps.run)
-	opts.Review, opts.Out = true, &out
+	opts.Review, opts.Log = true, logTo(&out)
 
 	res := factory.Run(context.Background(), opts)
 
@@ -488,7 +492,7 @@ func TestReviewThatCommitsFixesTheChangeAndItsFixesArePushed(t *testing.T) {
 	if got := git(t, f.remote, "log", "--format=%s", "main..kraftwerk/spec-1-spec-shopping-cart"); got != "Add cart_test.go\nAdd cart.go" {
 		t.Errorf("Spec branch commits = %q, want implement's and review's", got)
 	}
-	if !strings.Contains(out.String(), "#2 review: fixed it in 1 commit") {
+	if !strings.Contains(out.String(), "#2  review  fixed it in 1 commit") {
 		t.Errorf("the log doesn't say review fixed it:\n%s", out.String())
 	}
 	if c := ticketWrites(tr)[0].Text; !strings.Contains(c, "Added the cart.") || !strings.Contains(c, "Added the missing test.") {
@@ -505,17 +509,17 @@ func TestAReviewCannotDoCountsAsDoneWithAWarning(t *testing.T) {
 		factory.Review:    reports(harness.CannotDo, "I'd rather not."),
 	}}
 	opts := options(f, tr, steps.run)
-	opts.Review, opts.Out = true, &out
+	opts.Review, opts.Log = true, logTo(&out)
 
 	res := factory.Run(context.Background(), opts)
 
 	if len(res.Closed) != 1 || len(res.Failed) != 0 {
 		t.Fatalf("result = %+v, want #2 closed", res)
 	}
-	if !strings.Contains(out.String(), "#2 review: warning: reported cannot_do (I'd rather not.)") {
+	if !strings.Contains(out.String(), "#2  review  warning: reported cannot_do (I'd rather not.)") {
 		t.Errorf("the log lacks the warning:\n%s", out.String())
 	}
-	if !strings.Contains(out.String(), "#2 review: approved") {
+	if !strings.Contains(out.String(), "#2  review  approved") {
 		t.Errorf("a review without commits isn't logged as approved:\n%s", out.String())
 	}
 }

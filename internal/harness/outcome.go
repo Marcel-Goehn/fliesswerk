@@ -38,6 +38,8 @@ type Outcome struct {
 	Class   ErrorClass
 	Message string
 	Usage   Usage
+	// ContextWindow is the input tokens of the Step's last model call.
+	ContextWindow int64
 }
 
 // Resolve decides a Step's Outcome from all its events and its exit code.
@@ -48,7 +50,13 @@ type Outcome struct {
 // event. Without a terminal event, a non-zero exit is an error and a zero
 // one is no report.
 func Resolve(events []Event, exitCode int) Outcome {
-	out := Outcome{Kind: NoReport, Usage: stepUsage(events)}
+	out := resolve(events, exitCode)
+	out.Usage, out.ContextWindow = stepUsage(events), contextWindow(events)
+	return out
+}
+
+func resolve(events []Event, exitCode int) Outcome {
+	out := Outcome{Kind: NoReport}
 	var failure *Event
 	terminal := false
 	for i, e := range events {
@@ -66,11 +74,11 @@ func Resolve(events []Event, exitCode int) Outcome {
 	}
 	switch {
 	case failure != nil:
-		return Outcome{Kind: Failed, Class: failure.Class, Message: failure.Text, Usage: out.Usage}
+		return Outcome{Kind: Failed, Class: failure.Class, Message: failure.Text}
 	case out.Kind == Reported:
 		return out
 	case !terminal && exitCode != 0:
-		return Outcome{Kind: Failed, Class: Other, Message: fmt.Sprintf("exited with code %d before the end of the session", exitCode), Usage: out.Usage}
+		return Outcome{Kind: Failed, Class: Other, Message: fmt.Sprintf("exited with code %d before the end of the session", exitCode)}
 	}
 	return out
 }

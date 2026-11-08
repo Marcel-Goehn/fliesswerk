@@ -77,3 +77,11 @@ func TestLeaks(t *testing.T) {
 		t.Error("Leaks found a secret in redacted text")
 	}
 }
+
+func TestAJSONEscapedSecretIsRedactedToo(t *testing.T) {
+	r := redact.New(`pa"ss\word<1>`)
+	line := `{"command":"login pa\"ss\\word<1>"}`
+	if got, want := r.String(line), `{"command":"login ***"}`; got != want {
+		t.Errorf("String(%q) = %q, want %q", line, got, want)
+	}
+}
