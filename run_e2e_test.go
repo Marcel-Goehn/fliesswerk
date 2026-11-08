@@ -167,6 +167,15 @@ func (p *runProject) run(t *testing.T, args ...string) int {
 // Tracker, the fake Harness and git.
 func (p *runProject) kwk(t *testing.T, args ...string) int {
 	t.Helper()
+	var code int
+	p.stdout, p.stderr, code = runEnv(t, p.bin, p.work, p.env(t), args...)
+	return code
+}
+
+// env is what kraftwerk runs with: the fake Tracker, the fake Harness and
+// git.
+func (p *runProject) env(t *testing.T) []string {
+	t.Helper()
 	gitBin, err := exec.LookPath("git")
 	if err != nil {
 		t.Skip("no git")
@@ -174,10 +183,7 @@ func (p *runProject) kwk(t *testing.T, args ...string) int {
 	path := fakeClaudeBinDir(t) + string(os.PathListSeparator) + filepath.Dir(gitBin)
 	env := append(baseEnv(path), gitIdentity()...)
 	env = append(env, "KWK_FAKE_TRACKER="+p.trackerPath, "KWK_FAKE_HARNESS_SCRIPT="+p.scriptPath)
-	env = append(env, p.extraEnv...)
-	var code int
-	p.stdout, p.stderr, code = runEnv(t, p.bin, p.work, env, args...)
-	return code
+	return append(env, p.extraEnv...)
 }
 
 // writes reads the fake Tracker's writes back, in order.

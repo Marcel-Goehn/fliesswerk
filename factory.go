@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
 	"github.com/Marcel-Goehn/kraftwerk/internal/hook"
 	"github.com/Marcel-Goehn/kraftwerk/internal/prompt"
+	"github.com/Marcel-Goehn/kraftwerk/internal/runlock"
 	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
 	"github.com/Marcel-Goehn/kraftwerk/internal/step"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
@@ -36,6 +38,10 @@ const (
 // transientBackoff is the wait before a Step's retry after a transient
 // error; tests shorten it.
 var transientBackoff = factory.DefaultBackoff
+
+// writeBackoff is the wait before a failed Tracker write's retry; tests
+// shorten it.
+var writeBackoff = factory.DefaultWriteBackoff
 
 // remote is the git remote branches are cut from and pushed to.
 const remote = "origin"
@@ -69,6 +75,22 @@ func runFactory(values map[string]any, root, only string, view runView, stdout, 
 	if !ok {
 		return code
 	}
+	lock, err := runlock.Acquire(filepath.Join(root, factory.StateDir, "lock"))
+	var held *runlock.HeldError
+	if errors.As(err, &held) {
+		_, _ = fmt.Fprintf(stderr, "kraftwerk run: %v\n", err)
+		return exitStopped
+	}
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "kraftwerk run: can't take the Run's lock: %v\n", err)
+		return exitConfigError
+	}
+	defer func() {
+		if err := lock.Release(); err != nil {
+			_, _ = fmt.Fprintf(stderr, "kraftwerk run: warning: releasing the Run's lock: %v\n", err)
+		}
+	}()
+
 	live := stdout
 	if view.json {
 		live = stderr
@@ -87,13 +109,20 @@ func runFactory(values map[string]any, root, only string, view runView, stdout, 
 		log.Write(runlog.Line{Kind: runlog.Warning, Text: fmt.Sprintf("warning: pruning old logs: %v", err)})
 	}
 	writeBanner(log, values, s)
+	if lock.StalePID != 0 {
+		log.Write(runlog.Line{Kind: runlog.Warning, Text: fmt.Sprintf("took over the lock of PID %d, which is no longer running", lock.StalePID)})
+	}
 
-	ctx := context.Background()
+	ctx, drain, stopWatching := watchCtrlC(log)
+	defer stopWatching()
 	var res factory.Result
-	if tr, err := preflight(ctx, values, s); err != nil {
-		res.Stopped = err
+	if tr, err := newTracker(values, s.trackerToken); err != nil {
+		res.Stopped = &factory.SetupError{Msg: err.Error()}
 	} else {
-		res = factory.Run(ctx, factoryOptions(values, root, only, tr, s, prompts, log))
+		opts := factoryOptions(values, root, only, tracker.Redacted(tr, s.redactor.String), s, prompts, log)
+		opts.Drain = drain
+		opts.Preflight = func(ctx context.Context) error { return preflight(ctx, tr, s) }
+		res = factory.Run(ctx, opts)
 	}
 	code = exitCode(res)
 	summary := log.Finish(summaryOf(res, log.ID(), started, code))
@@ -139,23 +168,18 @@ func writeBanner(log *runlog.Log, values map[string]any, s *secrets) {
 }
 
 // preflight proves the Harness's credential and the Tracker work before
-// any Iteration starts, and returns the redacted Tracker. A Tracker that
-// can't be set up is a *factory.SetupError.
-func preflight(ctx context.Context, values map[string]any, s *secrets) (tracker.Tracker, error) {
+// any Iteration starts.
+func preflight(ctx context.Context, tr tracker.Tracker, s *secrets) error {
 	if err := s.testHarnessCredential(ctx); err != nil {
-		return nil, err
-	}
-	tr, err := newTracker(values, s.trackerToken)
-	if err != nil {
-		return nil, &factory.SetupError{Msg: err.Error()}
+		return err
 	}
 	// The Tracker's checks prove its token (or login) works.
 	for _, c := range tr.Describe().Checks {
 		if err := c.Run(ctx); err != nil {
-			return nil, fmt.Errorf("%s: %w", c.Name, err)
+			return fmt.Errorf("%s: %w", c.Name, err)
 		}
 	}
-	return tracker.Redacted(tr, s.redactor.String), nil
+	return nil
 }
 
 // factoryOptions are the Options of a Run with this config.
@@ -182,6 +206,7 @@ func factoryOptions(values map[string]any, root, only string, tr tracker.Tracker
 		Commands:       feedbackCommands(values),
 		Standards:      stringAt(values, "", "standards"),
 		Backoff:        transientBackoff,
+		WriteBackoff:   writeBackoff,
 		Redactor:       s.redactor,
 		RunID:          log.ID(),
 		Only:           only,

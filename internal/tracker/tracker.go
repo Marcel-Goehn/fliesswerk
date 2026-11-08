@@ -170,6 +170,17 @@ type Tracker interface {
 	Describe() Description
 }
 
+// RateLimitError is a write the Tracker refused because of a rate limit.
+type RateLimitError struct {
+	// Wait is how long the Tracker asks to be left alone.
+	Wait time.Duration
+	Err  error
+}
+
+func (e *RateLimitError) Error() string { return e.Err.Error() }
+
+func (e *RateLimitError) Unwrap() error { return e.Err }
+
 // Description is what a Tracker declares about itself.
 type Description struct {
 	// Kind is the value of `[tracker] kind` that selects it.

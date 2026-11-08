@@ -72,6 +72,9 @@ type Options struct {
 	// Backoff is how long to wait before a Step's nth retry after a
 	// transient error; nil is DefaultBackoff.
 	Backoff func(retry int) time.Duration
+	// WriteBackoff is how long to wait before a failed Tracker write's
+	// nth retry; nil is DefaultWriteBackoff.
+	WriteBackoff func(retry int) time.Duration
 	// Redactor knows the secrets a failure comment's excerpt is scanned
 	// for; nil knows none.
 	Redactor *redact.Redactor
@@ -83,6 +86,14 @@ type Options struct {
 	Only string
 	// Hooks are the project's Hooks; none means nothing runs.
 	Hooks Hooks
+	// Drain, once closed, stops new work: the Tickets in flight finish and
+	// nothing else starts. Ending the context of Run instead kills every
+	// Step and discards the work in flight. Either way the Run stops.
+	Drain <-chan struct{}
+	// Preflight, if set, proves the credentials work. It runs once the
+	// Run has cleaned up and replayed its writes, before any Iteration;
+	// its error stops the Run.
+	Preflight func(ctx context.Context) error
 }
 
 // Names of the Steps.
@@ -183,6 +194,8 @@ type Result struct {
 	StoppedSpecs []StoppedSpec
 	// SpecsFinished are the Specs whose last Ticket this Run closed.
 	SpecsFinished []FinishedSpec
+	// QueuedWrites are the Tracker writes left for the next Run to replay.
+	QueuedWrites []string
 }
 
 // SetupError is a problem with the project that a person must fix before
@@ -199,6 +212,8 @@ type run struct {
 	opts Options
 	res  Result
 	repo git.Repo
+	// writes is opts.Tracker, whose writes survive failure.
+	writes *durableTracker
 	// rel is the project root relative to the top of the checkout, so a
 	// Step runs in the same place inside its worktree.
 	rel       string
@@ -221,38 +236,73 @@ type run struct {
 // reached.
 func Run(ctx context.Context, opts Options) Result {
 	r := &run{
-		opts: opts, repo: git.Repo{Dir: opts.Root},
+		repo:      git.Repo{Dir: opts.Root},
 		worktrees: filepath.Join(opts.Root, StateDir, "worktrees"),
 		specDirs:  map[string]string{}, done: map[string]bool{}, stoppedSpecs: map[string]bool{},
 		logs: map[string]*lastLines{}, claimed: map[string]bool{},
 	}
-	defer r.runEnd(ctx)
-	if err := r.prepare(ctx); err != nil {
-		r.res.Stopped = err
-		return r.res
+	r.writes = &durableTracker{
+		Tracker: opts.Tracker, path: filepath.Join(opts.Root, StateDir, "replay.json"),
+		backoff: writeBackoffOf(opts), redact: r.redact, warnf: r.warnf, logf: r.logf,
 	}
-	user, err := opts.Tracker.User(ctx)
+	opts.Tracker = r.writes
+	r.opts = opts
+	r.res.Stopped = r.run(ctx)
+	for _, w := range r.writes.pending() {
+		r.res.QueuedWrites = append(r.res.QueuedWrites, w.String())
+	}
+	return r.res
+}
+
+// writeBackoffOf is the Options' WriteBackoff, or the default.
+func writeBackoffOf(opts Options) func(int) time.Duration {
+	if opts.WriteBackoff != nil {
+		return opts.WriteBackoff
+	}
+	return DefaultWriteBackoff
+}
+
+// run is the Run from its first check to its last Hook. It returns why
+// the Run stopped before its end, if it did.
+func (r *run) run(ctx context.Context) error {
+	defer r.runEnd(ctx)
+	if err := r.checkCheckout(ctx); err != nil {
+		return err
+	}
+	defer r.removeSpecWorktrees()
+	r.cleanUp(ctx)
+	if err := r.replay(ctx); err != nil {
+		return err
+	}
+	if r.opts.Preflight != nil {
+		if err := r.opts.Preflight(ctx); err != nil {
+			return err
+		}
+	}
+	if err := r.fetchBase(ctx); err != nil {
+		return err
+	}
+	user, err := r.opts.Tracker.User(ctx)
 	if err != nil {
-		r.res.Stopped = fmt.Errorf("finding out whose claims are yours: %w", err)
-		return r.res
+		return fmt.Errorf("finding out whose claims are yours: %w", err)
 	}
 	r.user = user
-	defer r.removeSpecWorktrees()
 	if err := r.runStart(ctx); err != nil {
-		r.res.Stopped = err
-		return r.res
+		return err
 	}
 
-	for i := 1; i <= opts.MaxIterations; i++ {
-		snap, err := opts.Tracker.Snapshot(ctx)
+	for i := 1; i <= r.opts.MaxIterations; i++ {
+		if err := r.interrupted(ctx); err != nil {
+			return err
+		}
+		snap, err := r.opts.Tracker.Snapshot(ctx)
 		if err != nil {
-			r.res.Stopped = err
-			return r.res
+			return err
 		}
 		plan := r.plan(snap)
 		if len(plan.Take) == 0 {
 			r.logf("The frontier is empty.")
-			return r.res
+			return nil
 		}
 		r.res.Iterations = i
 		noun := "Tickets"
@@ -261,16 +311,54 @@ func Run(ctx context.Context, opts Options) Result {
 		}
 		r.logf("Iteration %d: taking %d %s", i, len(plan.Take), noun)
 		for _, tk := range plan.Take {
+			if err := r.interrupted(ctx); err != nil {
+				return err
+			}
 			if err := r.work(ctx, tk, snap); err != nil {
-				r.res.Stopped = err
-				return r.res
+				return err
 			}
 		}
 	}
+	if err := r.interrupted(ctx); err != nil {
+		return err
+	}
 	r.res.LimitReached = true
-	r.logf("max_iterations (%d) reached.", opts.MaxIterations)
+	r.logf("max_iterations (%d) reached.", r.opts.MaxIterations)
 	r.countStillReady(ctx)
-	return r.res
+	return nil
+}
+
+// Why an interrupted Run stopped.
+var (
+	errDrained = errors.New("stopped by Ctrl-C: the Tickets in flight finished, and nothing new was started")
+	errKilled  = errors.New("killed by a second Ctrl-C: the work in flight was discarded, and its Tickets are left as they were")
+)
+
+// interrupted is why the Run must not start anything new, nil if it may.
+func (r *run) interrupted(ctx context.Context) error {
+	if ctx.Err() != nil {
+		return errKilled
+	}
+	select {
+	case <-r.opts.Drain:
+		return errDrained
+	default:
+		return nil
+	}
+}
+
+// replay sends the writes earlier Runs queued. A Ticket whose outcome is
+// still queued is done for this Run: it must not be worked twice.
+func (r *run) replay(ctx context.Context) error {
+	if err := r.writes.replay(ctx); err != nil {
+		return err
+	}
+	for _, w := range r.writes.pending() {
+		if w.holdsTicket() {
+			r.done[w.ID.Key] = true
+		}
+	}
+	return nil
 }
 
 // plan computes an Iteration over snap and notes what the Run's summary
@@ -302,9 +390,9 @@ func (r *run) countStillReady(ctx context.Context) {
 	r.res.StillReady = len(plan.Take) + len(plan.Later)
 }
 
-// prepare checks that the runtime state is git-ignored and fetches the
-// base branch.
-func (r *run) prepare(ctx context.Context) error {
+// checkCheckout checks that the Run is in a git checkout whose runtime
+// state is git-ignored.
+func (r *run) checkCheckout(ctx context.Context) error {
 	rel, err := r.repo.Prefix(ctx)
 	if err != nil {
 		return &SetupError{Msg: fmt.Sprintf("%s is not in a git checkout: %v", r.opts.Root, err)}
@@ -319,6 +407,38 @@ func (r *run) prepare(ctx context.Context) error {
 		return &SetupError{Msg: fmt.Sprintf("%s/ is not git-ignored, and the Factory keeps its worktrees there; add `state/` to .kraftwerk/.gitignore",
 			filepath.ToSlash(StateDir))}
 	}
+	return nil
+}
+
+// cleanUp removes what an earlier Run left behind: every Factory worktree
+// and Ticket branch. The Run holds the lock, so none of it is in use. Spec
+// branches are never touched. What can't be removed only warns.
+func (r *run) cleanUp(ctx context.Context) {
+	entries, err := os.ReadDir(r.worktrees)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		r.warnf("warning: cleaning up: %v", err)
+	}
+	for _, e := range entries {
+		if err := r.clearWorktree(ctx, filepath.Join(r.worktrees, e.Name())); err != nil {
+			r.warnf("warning: cleaning up %s: %v", e.Name(), err)
+		}
+	}
+	branches, err := r.repo.TicketBranches(ctx, r.opts.Prefix+"/ticket-")
+	if err != nil {
+		r.warnf("warning: cleaning up: %v", err)
+	}
+	for _, b := range branches {
+		if err := r.repo.DeleteBranch(ctx, b); err != nil {
+			r.warnf("warning: cleaning up %s: %v", b, err)
+		}
+	}
+	if n := len(entries) + len(branches); n > 0 {
+		r.logf("Cleaned up %d %s of an earlier Run.", n, plural(n, "leftover", "leftovers"))
+	}
+}
+
+// fetchBase fetches the base branch.
+func (r *run) fetchBase(ctx context.Context) error {
 	if err := r.repo.Fetch(ctx, r.opts.Remote, r.opts.BaseBranch); err != nil {
 		return fmt.Errorf("fetching the base branch %s from %s: %w", r.opts.BaseBranch, r.opts.Remote, err)
 	}
@@ -355,45 +475,52 @@ func (r *run) work(ctx context.Context, tk tracker.Ticket, snap tracker.Snapshot
 			spec = &s
 		}
 	}
-	if err := r.claim(ctx, tk, snap); err != nil {
+	// giveUp ends the Ticket over a failure of the Factory's own, which a
+	// kill of the Run can also cause: then nothing is held against it.
+	giveUp := func(err error) error {
+		if ctx.Err() != nil {
+			return errKilled
+		}
 		r.fail(tk, KindFactory, err.Error())
 		return nil
+	}
+	if err := r.claim(ctx, tk, snap); err != nil {
+		return giveUp(err)
 	}
 	specBranch, err := r.specBranch(ctx, tk, spec)
 	if err != nil {
-		r.fail(tk, KindFactory, err.Error())
-		return nil
+		return giveUp(err)
 	}
 	specDir, err := r.specWorktree(ctx, specBranch)
 	if err != nil {
-		r.fail(tk, KindFactory, err.Error())
-		return nil
+		return giveUp(err)
 	}
 	specTip, err := r.repo.Rev(ctx, specBranch)
 	if err != nil {
-		r.fail(tk, KindFactory, err.Error())
-		return nil
+		return giveUp(err)
 	}
 
 	ticketBranch := r.opts.Prefix + "/ticket-" + tk.ID.Branch
 	ticketDir := filepath.Join(r.worktrees, "ticket-"+tk.ID.Branch)
 	if err := r.freshTicketBranch(ctx, ticketBranch, ticketDir, specTip); err != nil {
-		r.fail(tk, KindFactory, err.Error())
-		return nil
+		return giveUp(err)
 	}
 
 	pc, err := r.promptContext(ctx, tk, spec, ticketBranch)
 	if err != nil {
-		r.fail(tk, KindFactory, err.Error())
-		return nil
+		return giveUp(err)
 	}
 	recent, err := r.recentCommits(ctx, specTip)
 	if err != nil {
-		r.fail(tk, KindFactory, err.Error())
-		return nil
+		return giveUp(err)
 	}
 	b := build{tk: tk, prompt: pc, recent: recent, branch: ticketBranch, worktree: ticketDir, dir: filepath.Join(ticketDir, r.rel), base: specTip}
 	summary, failed, stop := r.build(ctx, b)
+	if ctx.Err() != nil {
+		r.tlogf(tk, "killed; its work is discarded, and it is left as it was")
+		r.discard(context.WithoutCancel(ctx), b)
+		return errKilled
+	}
 	if stop != nil {
 		return stop
 	}
@@ -403,14 +530,21 @@ func (r *run) work(ctx context.Context, tk tracker.Ticket, snap tracker.Snapshot
 	}
 	commits, err := r.repo.Log(ctx, specTip, ticketBranch)
 	if err != nil {
-		r.fail(tk, KindFactory, err.Error())
-		return nil
+		return giveUp(err)
 	}
 	r.statsOf(tk).Commits = len(commits)
+	// From the push on, the Ticket's work lands whole: a kill can't leave
+	// commits on the remote with the Ticket still open. Tracker writes
+	// keep ctx, since a kill must end their waits; they survive it anyway.
+	landing := context.WithoutCancel(ctx)
 	// The Ticket's tip goes to the remote Spec branch first, so a rejected
 	// push leaves the local Spec branch where it was. Then the local one
 	// fast-forwards to it.
-	if err := r.repo.Push(ctx, r.opts.Remote, ticketBranch, specBranch); err != nil {
+	if err := r.repo.Push(landing, r.opts.Remote, ticketBranch, specBranch); err != nil {
+		if !errors.Is(err, git.ErrPushRejected) {
+			r.fail(tk, KindFactory, fmt.Sprintf("pushing %s failed: %v", specBranch, err))
+			return nil
+		}
 		r.stoppedSpecs[tk.SpecID().Key] = true
 		r.res.StoppedSpecs = append(r.res.StoppedSpecs, StoppedSpec{
 			ID: tk.SpecID(), Branch: specBranch,
@@ -420,7 +554,7 @@ func (r *run) work(ctx context.Context, tk tracker.Ticket, snap tracker.Snapshot
 		return nil
 	}
 	r.tlogf(tk, "pushed %s", specBranch)
-	if err := (git.Repo{Dir: specDir}).MergeFastForward(ctx, ticketBranch); err != nil {
+	if err := (git.Repo{Dir: specDir}).MergeFastForward(landing, ticketBranch); err != nil {
 		r.fail(tk, KindFactory, fmt.Sprintf("%s was pushed, but the local branch can't be fast-forwarded to %s: %v", specBranch, ticketBranch, err))
 		return nil
 	}
@@ -430,7 +564,7 @@ func (r *run) work(ctx context.Context, tk tracker.Ticket, snap tracker.Snapshot
 	}
 	r.res.Closed = append(r.res.Closed, tk)
 	r.line(tk, runlog.Line{Kind: runlog.Success, Text: "closed"})
-	r.discard(ctx, b)
+	r.discard(landing, b)
 	if r.wasLast(tk, spec) {
 		r.finishSpec(tk, spec, specBranch)
 		r.release(ctx, tk.SpecID())
@@ -648,6 +782,9 @@ func (r *run) runStep(ctx context.Context, s Step) (out harness.Outcome, failed 
 	for {
 		out = r.opts.RunStep(ctx, s)
 		r.countUsage(s.Ticket, out)
+		if ctx.Err() != nil {
+			return out, nil, errKilled
+		}
 		var why, kind string
 		switch {
 		case out.Kind == harness.Failed && out.Class == harness.Auth:
@@ -809,6 +946,9 @@ func (r *run) freshTicketBranch(ctx context.Context, branch, dir, tip string) er
 		}
 	}
 	if err := r.repo.CreateBranch(ctx, branch, tip); err != nil {
+		return err
+	}
+	if err := r.repo.MarkTicketBranch(ctx, branch); err != nil {
 		return err
 	}
 	return r.repo.AddWorktree(ctx, dir, branch)

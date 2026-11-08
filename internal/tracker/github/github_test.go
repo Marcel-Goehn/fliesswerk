@@ -217,14 +217,14 @@ func TestWritesGoThroughGh(t *testing.T) {
 		}
 	})
 
-	t.Run("close comments, then closes as completed", func(t *testing.T) {
+	t.Run("close closes as completed, then comments", func(t *testing.T) {
 		r := &fixtureRunner{t: t}
 		if err := newTracker(r).Close(ctx, id, "done"); err != nil {
 			t.Fatal(err)
 		}
 		want := []call{
-			{args: "issue comment 35 --repo " + repo + " --body-file -", stdin: "done"},
 			{args: "issue close 35 --repo " + repo + " --reason completed"},
+			{args: "issue comment 35 --repo " + repo + " --body-file -", stdin: "done"},
 		}
 		if !slices.Equal(r.calls, want) {
 			t.Fatalf("calls = %q, want %q", r.calls, want)
@@ -435,5 +435,89 @@ func TestClaimAndReleaseGoThroughGh(t *testing.T) {
 	}
 	if !slices.Equal(r.calls, want) {
 		t.Fatalf("calls = %q\nwant    %q", r.calls, want)
+	}
+}
+
+// limitedRunner refuses a write with a rate limit, and answers the probe
+// that follows with headers.
+type limitedRunner struct {
+	fixtureRunner
+	write   string
+	headers string
+}
+
+func (r *limitedRunner) Run(ctx context.Context, stdin []byte, args ...string) ([]byte, error) {
+	key := strings.Join(args, " ")
+	if strings.HasPrefix(key, "api --include") {
+		r.calls = append(r.calls, call{args: key})
+		return []byte(r.headers), errors.New("gh: HTTP 403")
+	}
+	if key == r.write {
+		return nil, errors.New("gh issue: HTTP 403: You have exceeded a secondary rate limit")
+	}
+	return r.fixtureRunner.Run(ctx, stdin, args...)
+}
+
+func TestARateLimitedWriteSaysHowLongToWait(t *testing.T) {
+	id := tracker.ID{Key: "35", Display: "#35", Branch: "35"}
+	write := "issue comment 35 --repo " + repo + " --body-file -"
+	for name, tt := range map[string]struct {
+		headers string
+		atLeast time.Duration
+		atMost  time.Duration
+	}{
+		"Retry-After": {"HTTP/2.0 403 Forbidden\r\nRetry-After: 90\r\n\r\n{}", 90 * time.Second, 90 * time.Second},
+		"primary limit": {
+			fmt.Sprintf("HTTP/2.0 403 Forbidden\r\nX-RateLimit-Remaining: 0\r\nX-RateLimit-Reset: %d\r\n\r\n{}", time.Now().Add(10*time.Minute).Unix()),
+			9 * time.Minute, 11 * time.Minute,
+		},
+		"neither header: a minute, as GitHub says": {"HTTP/2.0 403 Forbidden\r\nX-RateLimit-Remaining: 12\r\n\r\n{}", time.Minute, time.Minute},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := &limitedRunner{fixtureRunner: fixtureRunner{t: t}, write: write, headers: tt.headers}
+
+			err := github.New(github.Options{Repo: repo, Runner: r, GOOS: "linux"}).Comment(context.Background(), id, "hi")
+
+			var limited *tracker.RateLimitError
+			if !errors.As(err, &limited) {
+				t.Fatalf("err = %v, want a RateLimitError", err)
+			}
+			if limited.Wait < tt.atLeast || limited.Wait > tt.atMost {
+				t.Errorf("wait = %s, want between %s and %s", limited.Wait, tt.atLeast, tt.atMost)
+			}
+		})
+	}
+}
+
+func TestAnOrdinaryFailedWriteIsNotARateLimit(t *testing.T) {
+	id := tracker.ID{Key: "35", Display: "#35", Branch: "35"}
+	r := &fixtureRunner{t: t, errs: map[string]error{"issue comment 35 --repo " + repo + " --body-file -": errors.New("gh issue: HTTP 502")}}
+
+	err := newTracker(r).Comment(context.Background(), id, "hi")
+
+	var limited *tracker.RateLimitError
+	if err == nil || errors.As(err, &limited) {
+		t.Fatalf("err = %v, want a plain error", err)
+	}
+	if len(r.calls) != 1 {
+		t.Errorf("calls = %q, want no probe", r.calls)
+	}
+}
+
+// A Close retried after its comment landed must not comment twice, so the
+// comment, which isn't idempotent, goes last.
+func TestACloseThatFailsHasNotCommentedYet(t *testing.T) {
+	id := tracker.ID{Key: "35", Display: "#35", Branch: "35"}
+	closeArgs := "issue close 35 --repo " + repo + " --reason completed"
+	r := &fixtureRunner{t: t, errs: map[string]error{closeArgs: errors.New("gh issue: HTTP 502")}}
+	tr := newTracker(r)
+
+	if err := tr.Close(context.Background(), id, "done"); err == nil {
+		t.Fatal("want the failed close reported")
+	}
+	for _, c := range r.calls {
+		if strings.HasPrefix(c.args, "issue comment") {
+			t.Fatalf("calls = %q: the comment was posted though the close failed, so a retry would post it again", r.calls)
+		}
 	}
 }

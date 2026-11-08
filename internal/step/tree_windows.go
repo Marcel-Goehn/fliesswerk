@@ -14,7 +14,8 @@ import (
 type tree struct{ job windows.Handle }
 
 // startTree starts the Harness suspended, puts it in a new job object and
-// only then lets it run, so nothing it starts can be outside the job.
+// only then lets it run, so nothing it starts can be outside the job. A
+// new process group keeps a terminal's Ctrl-C away from it.
 func startTree(spawn func(*syscall.SysProcAttr) (*process, error)) (*process, *tree, error) {
 	job, err := windows.CreateJobObject(nil, nil)
 	if err != nil {
@@ -28,7 +29,7 @@ func startTree(spawn func(*syscall.SysProcAttr) (*process, error)) (*process, *t
 		_ = windows.CloseHandle(job)
 		return nil, nil, fmt.Errorf("set up job object: %w", err)
 	}
-	p, err := spawn(&syscall.SysProcAttr{CreationFlags: windows.CREATE_SUSPENDED})
+	p, err := spawn(&syscall.SysProcAttr{CreationFlags: windows.CREATE_SUSPENDED | windows.CREATE_NEW_PROCESS_GROUP})
 	if err != nil {
 		_ = windows.CloseHandle(job)
 		return nil, nil, err

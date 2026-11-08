@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/Marcel-Goehn/kraftwerk/internal/shell"
 )
 
 // NonInteractiveEnv keeps git from ever waiting for a person: no
@@ -29,7 +31,17 @@ type Repo struct {
 // Run runs git in r.Dir and returns its stdout with surrounding white
 // space trimmed. The error carries git's stderr.
 func (r Repo) Run(ctx context.Context, args ...string) (string, error) {
+	out, err := r.output(ctx, args...)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
+// output runs git in r.Dir and returns its stdout, also when it fails.
+func (r Repo) output(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...) //nolint:gosec // git is the tool this package exists to run
+	shell.Isolate(cmd)
 	cmd.Dir = r.Dir
 	cmd.Env = append(os.Environ(), NonInteractiveEnv...)
 	var stdout, stderr bytes.Buffer
@@ -39,9 +51,9 @@ func (r Repo) Run(ctx context.Context, args ...string) (string, error) {
 		if msg == "" {
 			msg = err.Error()
 		}
-		return "", fmt.Errorf("git %s: %s", strings.Join(args, " "), msg)
+		return stdout.String(), fmt.Errorf("git %s: %s", strings.Join(args, " "), msg)
 	}
-	return strings.TrimSpace(stdout.String()), nil
+	return stdout.String(), nil
 }
 
 // Prefix is r.Dir relative to the root of its working tree, "" at the
@@ -58,6 +70,7 @@ func (r Repo) Prefix(ctx context.Context) (string, error) {
 // IsIgnored reports whether git ignores path, relative to r.Dir.
 func (r Repo) IsIgnored(ctx context.Context, path string) (bool, error) {
 	cmd := exec.CommandContext(ctx, "git", "check-ignore", "-q", "--", path) //nolint:gosec // path is a fixed path in the runtime state
+	shell.Isolate(cmd)
 	cmd.Dir = r.Dir
 	cmd.Env = append(os.Environ(), NonInteractiveEnv...)
 	err := cmd.Run()
@@ -131,6 +144,37 @@ func (r Repo) DeleteBranch(ctx context.Context, branch string) error {
 	return err
 }
 
+// ticketBranchKey is the git config variable that marks a branch as a
+// Ticket branch. The name can't: a standalone Ticket's branch, which is
+// kept, begins with a Ticket branch's whole name.
+const ticketBranchKey = "kraftwerkticket"
+
+// MarkTicketBranch marks branch as a Ticket branch. Deleting the branch
+// deletes the mark.
+func (r Repo) MarkTicketBranch(ctx context.Context, branch string) error {
+	_, err := r.Run(ctx, "config", "branch."+branch+"."+ticketBranchKey, "true")
+	return err
+}
+
+// TicketBranches lists the marked branches whose name starts with prefix.
+func (r Repo) TicketBranches(ctx context.Context, prefix string) ([]string, error) {
+	branches, err := r.LocalBranches(ctx, prefix)
+	if err != nil {
+		return nil, err
+	}
+	var marked []string
+	for _, b := range branches {
+		v, err := r.Run(ctx, "config", "--type=bool", "--default=false", "--get", "branch."+b+"."+ticketBranchKey)
+		if err != nil {
+			return nil, err
+		}
+		if v == "true" {
+			marked = append(marked, b)
+		}
+	}
+	return marked, nil
+}
+
 // AddWorktree checks branch out in a new worktree at path.
 func (r Repo) AddWorktree(ctx context.Context, path, branch string) error {
 	_, err := r.Run(ctx, "worktree", "add", "--quiet", path, branch)
@@ -202,11 +246,30 @@ func (r Repo) MergeFastForward(ctx context.Context, rev string) error {
 	return err
 }
 
+// ErrPushRejected says the remote refused a push, as opposed to it never
+// getting there.
+var ErrPushRejected = errors.New("the push was rejected")
+
 // Push moves the branch dst on remote to the local branch src. It is
-// never forced, so the remote refuses it unless it is a fast-forward.
+// never forced, so the remote refuses it unless it is a fast-forward: the
+// error is then an ErrPushRejected.
 func (r Repo) Push(ctx context.Context, remote, src, dst string) error {
-	_, err := r.Run(ctx, "push", "--quiet", "--porcelain", remote, "refs/heads/"+src+":refs/heads/"+dst)
+	out, err := r.output(ctx, "push", "--quiet", "--porcelain", remote, "refs/heads/"+src+":refs/heads/"+dst)
+	if err != nil && pushRefused(out) {
+		return fmt.Errorf("%w: %w", ErrPushRejected, err)
+	}
 	return err
+}
+
+// pushRefused reports whether `git push --porcelain` flagged a ref with
+// "!". Its stderr can't tell: it is in the user's language.
+func pushRefused(porcelain string) bool {
+	for line := range strings.Lines(porcelain) {
+		if strings.HasPrefix(line, "!") {
+			return true
+		}
+	}
+	return false
 }
 
 // PruneWorktrees forgets worktrees whose directory is gone.

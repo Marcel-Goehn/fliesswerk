@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/Marcel-Goehn/kraftwerk/internal/shell"
 )
 
 // ExecRunner runs the real gh found on PATH.
@@ -24,6 +26,7 @@ func (r ExecRunner) Run(ctx context.Context, stdin []byte, args ...string) ([]by
 		return nil, ErrNotInstalled
 	}
 	cmd := exec.CommandContext(ctx, path, args...) //nolint:gosec // gh is the tool this adapter exists to run
+	shell.Isolate(cmd)
 	cmd.Env = Env(os.Environ(), r.Token)
 	cmd.Stdin = bytes.NewReader(stdin)
 	var stdout, stderr bytes.Buffer
@@ -34,9 +37,9 @@ func (r ExecRunner) Run(ctx context.Context, stdin []byte, args ...string) ([]by
 			return nil, ErrNotInstalled
 		}
 		if msg := strings.TrimSpace(stderr.String()); msg != "" {
-			return nil, fmt.Errorf("gh %s: %s", strings.Join(args[:min(2, len(args))], " "), msg)
+			return stdout.Bytes(), fmt.Errorf("gh %s: %s", strings.Join(args[:min(2, len(args))], " "), msg)
 		}
-		return nil, fmt.Errorf("gh %s: %w", strings.Join(args[:min(2, len(args))], " "), err)
+		return stdout.Bytes(), fmt.Errorf("gh %s: %w", strings.Join(args[:min(2, len(args))], " "), err)
 	}
 	return stdout.Bytes(), nil
 }

@@ -67,6 +67,7 @@ func summaryOf(res factory.Result, id string, started time.Time, code int) runlo
 	for _, f := range res.SpecsFinished {
 		s.SpecsFinished = append(s.SpecsFinished, runlog.FinishedSpec{ID: f.ID.String(), Title: f.Title, Branch: f.Branch})
 	}
+	s.QueuedWrites = res.QueuedWrites
 	return s
 }
 

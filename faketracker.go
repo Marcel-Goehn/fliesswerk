@@ -6,6 +6,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
@@ -20,7 +21,9 @@ import (
 //
 // in_progress_label and user may be left out for the fake's defaults.
 //
-// Every write is applied to the file, and recorded in "writes".
+// Every write is applied to the file, and recorded in "writes". The next
+// "fail_writes" writes fail instead, and with "fail_snapshot" so does
+// every Snapshot.
 func init() {
 	testTracker = func() (tracker.Tracker, error) {
 		path := os.Getenv("KWK_FAKE_TRACKER")
@@ -48,6 +51,8 @@ type fakeState struct {
 	User            string       `json:"user,omitempty"`
 	Issues          []fake.Issue `json:"issues"`
 	Writes          []fake.Write `json:"writes"`
+	FailWrites      int          `json:"fail_writes,omitempty"`
+	FailSnapshot    bool         `json:"fail_snapshot,omitempty"`
 }
 
 // fileTracker is a fake Tracker that saves itself after every write.
@@ -70,22 +75,38 @@ func (f *fileTracker) save(err error) error {
 	return os.WriteFile(f.path, data, 0o600)
 }
 
+// write applies a write, unless it is one of those meant to fail.
+func (f *fileTracker) write(apply func() error) error {
+	if f.state.FailWrites > 0 {
+		f.state.FailWrites--
+		return errors.Join(errors.New("fake tracker: the write failed"), f.save(nil))
+	}
+	return f.save(apply())
+}
+
+func (f *fileTracker) Snapshot(ctx context.Context) (tracker.Snapshot, error) {
+	if f.state.FailSnapshot {
+		return tracker.Snapshot{}, errors.New("fake tracker: the Snapshot failed")
+	}
+	return f.Tracker.Snapshot(ctx)
+}
+
 func (f *fileTracker) Comment(ctx context.Context, ticket tracker.ID, text string) error {
-	return f.save(f.Tracker.Comment(ctx, ticket, text))
+	return f.write(func() error { return f.Tracker.Comment(ctx, ticket, text) })
 }
 
 func (f *fileTracker) Close(ctx context.Context, ticket tracker.ID, text string) error {
-	return f.save(f.Tracker.Close(ctx, ticket, text))
+	return f.write(func() error { return f.Tracker.Close(ctx, ticket, text) })
 }
 
 func (f *fileTracker) SetLabels(ctx context.Context, ticket tracker.ID, add, remove []string) error {
-	return f.save(f.Tracker.SetLabels(ctx, ticket, add, remove))
+	return f.write(func() error { return f.Tracker.SetLabels(ctx, ticket, add, remove) })
 }
 
 func (f *fileTracker) Claim(ctx context.Context, id tracker.ID) error {
-	return f.save(f.Tracker.Claim(ctx, id))
+	return f.write(func() error { return f.Tracker.Claim(ctx, id) })
 }
 
 func (f *fileTracker) Release(ctx context.Context, id tracker.ID, by string) error {
-	return f.save(f.Tracker.Release(ctx, id, by))
+	return f.write(func() error { return f.Tracker.Release(ctx, id, by) })
 }

@@ -25,8 +25,8 @@ const Kind = "github"
 // blockedBy.
 var MinVersion = [3]int{2, 94, 0}
 
-// Runner runs gh with args, feeding it stdin, and returns its stdout. An
-// error carries what gh printed on stderr.
+// Runner runs gh with args, feeding it stdin, and returns its stdout,
+// also when it fails. An error carries what gh printed on stderr.
 type Runner interface {
 	Run(ctx context.Context, stdin []byte, args ...string) ([]byte, error)
 }
@@ -211,23 +211,22 @@ func (t *Tracker) Comments(ctx context.Context, ticket tracker.ID) ([]tracker.Co
 // ever too long for a command line.
 func (t *Tracker) Comment(ctx context.Context, ticket tracker.ID, text string) error {
 	args := append(t.args("issue", "comment", ticket.Key), "--body-file", "-")
-	if _, err := t.opts.Runner.Run(ctx, []byte(text), args...); err != nil {
+	if err := t.write(ctx, ticket, []byte(text), args...); err != nil {
 		return fmt.Errorf("commenting on %s: %w", ticket.Display, err)
 	}
 	return nil
 }
 
-// Close comments, then closes the Ticket as completed. gh can only take a
-// closing comment on its command line, so the two are separate calls.
+// Close closes the Ticket as completed, then comments. gh can only take a
+// closing comment on its command line, so the two are separate calls. The
+// comment goes last because closing twice is harmless and commenting
+// twice isn't, and a failed Close is retried whole.
 func (t *Tracker) Close(ctx context.Context, ticket tracker.ID, text string) error {
-	if err := t.Comment(ctx, ticket, text); err != nil {
-		return err
-	}
 	args := append(t.args("issue", "close", ticket.Key), "--reason", "completed")
-	if _, err := t.opts.Runner.Run(ctx, nil, args...); err != nil {
+	if err := t.write(ctx, ticket, nil, args...); err != nil {
 		return fmt.Errorf("closing %s: %w", ticket.Display, err)
 	}
-	return nil
+	return t.Comment(ctx, ticket, text)
 }
 
 // SetLabels adds and removes labels.
@@ -239,7 +238,7 @@ func (t *Tracker) SetLabels(ctx context.Context, ticket tracker.ID, add, remove 
 	for _, l := range remove {
 		args = append(args, "--remove-label", l)
 	}
-	if _, err := t.opts.Runner.Run(ctx, nil, args...); err != nil {
+	if err := t.write(ctx, ticket, nil, args...); err != nil {
 		return fmt.Errorf("setting the labels of %s: %w", ticket.Display, err)
 	}
 	return nil
@@ -356,7 +355,7 @@ func (t *Tracker) apiPath(key string) string {
 // Claim adds the in-progress label and gh's own login as assignee.
 func (t *Tracker) Claim(ctx context.Context, id tracker.ID) error {
 	args := append(t.args("issue", "edit", id.Key), "--add-label", t.opts.InProgressLabel, "--add-assignee", "@me")
-	if _, err := t.opts.Runner.Run(ctx, nil, args...); err != nil {
+	if err := t.write(ctx, id, nil, args...); err != nil {
 		return fmt.Errorf("claiming %s: %w", id.Display, err)
 	}
 	return nil
@@ -368,7 +367,7 @@ func (t *Tracker) Release(ctx context.Context, id tracker.ID, by string) error {
 	if by != "" {
 		args = append(args, "--remove-assignee", by)
 	}
-	if _, err := t.opts.Runner.Run(ctx, nil, args...); err != nil {
+	if err := t.write(ctx, id, nil, args...); err != nil {
 		return fmt.Errorf("releasing %s: %w", id.Display, err)
 	}
 	return nil
