@@ -12,6 +12,10 @@ _Avoid_: Kraftwerk (when the concept is meant; Kraftwerk is the product name), R
 The isolated environment in which a Step runs, walling the agent off from everything it doesn't need. It comes in two kinds: a **container Sandbox** (the Step runs in a container) and a **native Sandbox** (the Step runs directly on the user's machine, fenced in by the operating system).
 _Avoid_: Host mode (implies no isolation), container (when the concept is meant), VM
 
+**Egress proxy**:
+The Factory's built-in forward proxy, and a Sandbox's only way out to the network. It lets a connection through only to hosts on the allowlist (`[sandbox.network] allow` plus the Harness auth method's endpoints), logs every denied host, and chains through the host's corporate proxy.
+_Avoid_: Firewall, sidecar (the sidecar is the container that runs the Egress proxy for container Sandboxes)
+
 **Ready for agent**:
 The state of a ticket that may be picked up by the Factory, expressed by the `ready-for-agent` label in whichever issue tracker is used.
 _Avoid_: Sandcastle label, AFK-ready

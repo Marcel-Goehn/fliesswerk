@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Marcel-Goehn/kraftwerk/internal/config"
 )
 
 // ghCall is one call the fake gh logged.
@@ -162,6 +164,28 @@ func TestRunDryRun(t *testing.T) {
 		_, stderr, code := runEnv(t, bin, root, ghEnv(t, "dryrun"), "run", "--dry-run")
 		if code != 2 || !strings.Contains(stderr, "no fixture") {
 			t.Fatalf("exit code = %d, want 2 carrying gh's error; stderr: %s", code, stderr)
+		}
+	})
+
+	t.Run("an open network warns on the Run, and only a local layer may open it", func(t *testing.T) {
+		const open = "[sandbox.network]\nallow = [\"*\"]\n"
+		for name, tt := range map[string]struct {
+			files map[string]string
+			args  []string
+		}{
+			"config.local.toml": {map[string]string{"config.toml": dryRunProject, "config.local.toml": open}, []string{"run", "--dry-run"}},
+			"a CLI flag":        {map[string]string{"config.toml": dryRunProject}, []string{"run", "--dry-run", "--allow", "*"}},
+		} {
+			_, stderr, code := runEnv(t, bin, projectDir(t, tt.files), ghEnv(t, "dryrun"), tt.args...)
+			if code == 3 || !strings.Contains(stderr, "warning: sandbox.network.allow: `allow = [\"*\"]` lets the Sandbox reach any host") {
+				t.Fatalf("%s: exit code = %d, want the Run to go on with a warning; stderr: %s", name, code, stderr)
+			}
+		}
+
+		root := projectDir(t, map[string]string{"config.toml": dryRunProject + open})
+		_, stderr, code := runEnv(t, bin, root, ghEnv(t, "dryrun"), "run", "--dry-run")
+		if code != 3 || !strings.Contains(stderr, config.LocalFile) {
+			t.Fatalf("exit code = %d, want 3 naming %s; stderr: %s", code, config.LocalFile, stderr)
 		}
 	})
 
