@@ -3,7 +3,9 @@ package factory
 import (
 	"context"
 	"fmt"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/git"
@@ -20,11 +22,33 @@ func (r *run) protectedPaths() []string {
 // checkProtected fails the Ticket if a commit the Step made since from
 // touched a Protected path.
 func (r *run) checkProtected(ctx context.Context, b build, step, from string) *failure {
+	if failed := r.rejectPlantedGit(b.worktree); failed != nil {
+		return failed
+	}
 	files, err := git.Repo{Dir: b.dir}.Touched(ctx, from, b.branch)
 	if err != nil {
 		return factoryFailure(err)
 	}
 	return r.rejectProtected(step, files)
+}
+
+// rejectPlantedGit fails the Ticket if a `.git` appeared between the top of
+// the worktree and the project root. The Factory's own git runs in the
+// project root, and would take it for the repository and do what its config
+// says, on the host.
+func (r *run) rejectPlantedGit(worktree string) *failure {
+	dir, rel := worktree, ""
+	for _, part := range strings.Split(filepath.ToSlash(r.rel), "/") {
+		if part == "" {
+			continue
+		}
+		dir, rel = filepath.Join(dir, part), path.Join(rel, part)
+		if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil {
+			planted := path.Join(rel, ".git")
+			return &failure{handBack: true, kind: KindProtectedPath, reason: "created " + planted + ", which the Factory's own git would obey", protected: []string{planted}}
+		}
+	}
+	return nil
 }
 
 // rejectProtected fails the Ticket if the Step changed a Protected path

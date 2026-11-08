@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/shell"
+	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
 )
 
 // Where a Hook runs.
@@ -43,6 +43,9 @@ type Setting struct {
 	HostDir, SandboxDir string
 	// Env is added to every entry's env.
 	Env []string
+	// Sandbox, if set, is where a Sandbox entry runs, in the Sandbox's own
+	// project directory instead of SandboxDir.
+	Sandbox sandbox.Sandbox
 }
 
 // Output is how one command ended and what it printed.
@@ -109,6 +112,10 @@ func runEntry(ctx context.Context, m Setting, e Entry, report func(Output)) *Fai
 		})
 	}
 	wg.Wait()
+	if first >= 0 && e.Where == Sandbox && m.Sandbox != nil {
+		// Ending the engine's clients left the commands running inside.
+		_ = m.Sandbox.KillAll(context.WithoutCancel(ctx))
+	}
 	for i, o := range outputs {
 		o.Stopped = o.Err != nil && i != first && !errors.Is(group.Err(), context.DeadlineExceeded)
 		report(o)
@@ -125,11 +132,14 @@ func runEntry(ctx context.Context, m Setting, e Entry, report func(Output)) *Fai
 const waitDelay = 5 * time.Second
 
 func runCommand(ctx context.Context, m Setting, e Entry, line string, timeout time.Duration) Output {
-	sh := shell.Command(ctx, line)
-	sh.Dir, sh.Env, sh.WaitDelay = m.HostDir, append(e.Env[:len(e.Env):len(e.Env)], m.Env...), waitDelay
+	env := append(e.Env[:len(e.Env):len(e.Env)], m.Env...)
+	var sb sandbox.Sandbox
+	dir := m.HostDir
 	if e.Where == Sandbox {
-		sh.Dir = m.SandboxDir
+		sb, dir = m.Sandbox, m.SandboxDir
 	}
+	sh := sandbox.Shell(ctx, sb, dir, line, env)
+	sh.WaitDelay = waitDelay
 	var out bytes.Buffer
 	sh.Stdout, sh.Stderr = &out, &out
 	err := sh.Run()

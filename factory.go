@@ -17,6 +17,7 @@ import (
 	"github.com/Marcel-Goehn/kraftwerk/internal/prompt"
 	"github.com/Marcel-Goehn/kraftwerk/internal/runlock"
 	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
+	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox/container"
 	"github.com/Marcel-Goehn/kraftwerk/internal/step"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
 	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
@@ -59,11 +60,11 @@ const defaultKeepDays = 30
 
 // runFactory runs the Factory over the ready Tickets (of only the Spec or
 // standalone Ticket only names, if set), recording the Run in its log
-// directory, and prints how it ended. Only `kind = "none"` exists so far.
+// directory, and prints how it ended. The native Sandbox doesn't exist yet.
 func runFactory(values map[string]any, root, only string, view runView, stdout, stderr io.Writer) int {
-	if kind := stringAt(values, defaultSandbox, "sandbox", "kind"); kind != "none" {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk run: the %s Sandbox isn't available in this kraftwerk yet; run with `--sandbox none --i-accept-unsandboxed-risk` (or set them in .kraftwerk/config.local.toml)\n",
-			kind)
+	kind := stringAt(values, defaultSandbox, "sandbox", "kind")
+	if kind == "native" {
+		_, _ = fmt.Fprintln(stderr, "kraftwerk run: the native Sandbox isn't available in this kraftwerk yet; use `kind = \"container\"`, or run with `--sandbox none --i-accept-unsandboxed-risk` (or set them in .kraftwerk/config.local.toml)")
 		return exitConfigError
 	}
 	prompts, ok := loadPrompts(root, stderr)
@@ -74,6 +75,18 @@ func runFactory(values map[string]any, root, only string, view runView, stdout, 
 	s, code, ok := secretsForRun(values, root, stderr)
 	if !ok {
 		return code
+	}
+	var runArgWarnings []string
+	if kind == "container" {
+		var refused []string
+		refused, runArgWarnings = container.CheckRunArgs(runArgs(values), s.credentialEnv())
+		if len(refused) > 0 {
+			for _, r := range refused {
+				_, _ = fmt.Fprintf(stderr, "error: %s\n", r)
+			}
+			_, _ = fmt.Fprintln(stderr, "kraftwerk run: fix the errors above")
+			return exitConfigError
+		}
 	}
 	lock, err := runlock.Acquire(filepath.Join(root, factory.StateDir, "lock"))
 	var held *runlock.HeldError
@@ -109,6 +122,9 @@ func runFactory(values map[string]any, root, only string, view runView, stdout, 
 		log.Write(runlog.Line{Kind: runlog.Warning, Text: fmt.Sprintf("warning: pruning old logs: %v", err)})
 	}
 	writeBanner(log, values, s)
+	for _, w := range runArgWarnings {
+		log.Write(runlog.Line{Kind: runlog.Warning, Text: "warning: " + w})
+	}
 	if lock.StalePID != 0 {
 		log.Write(runlog.Line{Kind: runlog.Warning, Text: fmt.Sprintf("took over the lock of PID %d, which is no longer running", lock.StalePID)})
 	}
@@ -121,7 +137,20 @@ func runFactory(values map[string]any, root, only string, view runView, stdout, 
 	} else {
 		opts := factoryOptions(values, root, only, tracker.Redacted(tr, s.redactor.String), s, prompts, log)
 		opts.Drain = drain
-		opts.Preflight = func(ctx context.Context) error { return preflight(ctx, tr, s) }
+		sandboxes := containerSandboxes(values, root, kind, log)
+		opts.Preflight = func(ctx context.Context) error {
+			if err := preflight(ctx, tr, s); err != nil {
+				return err
+			}
+			if sandboxes == nil {
+				return nil
+			}
+			return setupError(ctx, sandboxes.Prepare(ctx))
+		}
+		if sandboxes != nil {
+			opts.Sandboxes = sandboxes.Create
+			opts.ClearSandboxes = func(ctx context.Context) error { return setupError(ctx, sandboxes.Connect(ctx)) }
+		}
 		res = factory.Run(ctx, opts)
 	}
 	code = exitCode(res)
@@ -131,6 +160,45 @@ func runFactory(values map[string]any, root, only string, view runView, stdout, 
 	}
 	printStop(stderr, res)
 	return code
+}
+
+// setupError makes err one a person must fix before a Run can start,
+// unless the Run was stopped meanwhile.
+func setupError(ctx context.Context, err error) error {
+	if err == nil || ctx.Err() != nil {
+		return err
+	}
+	return &factory.SetupError{Msg: err.Error()}
+}
+
+// containerSandboxes is what creates a Run's container Sandboxes, nil for
+// any other kind.
+func containerSandboxes(values map[string]any, root, kind string, log *runlog.Log) *container.Provider {
+	if kind != "container" {
+		return nil
+	}
+	env := map[string]string{}
+	table, _ := valueAt(values, "sandbox", "env").(map[string]any)
+	for k, v := range table {
+		if s, ok := v.(string); ok {
+			env[k] = s
+		}
+	}
+	return container.New(container.Options{
+		Root: root, StateDir: filepath.Join(root, factory.StateDir), RunID: log.ID(), RunArgs: runArgs(values), Env: env,
+		Log: func(line string) {
+			kind := runlog.Event
+			if strings.HasPrefix(line, "warning:") {
+				kind = runlog.Warning
+			}
+			log.Write(runlog.Line{Kind: kind, Text: line})
+		},
+	})
+}
+
+// runArgs is `sandbox.run_args`.
+func runArgs(values map[string]any) []string {
+	return stringsOf(valueAt(values, "sandbox", "run_args"))
 }
 
 // isTerminal reports whether w is a terminal.
@@ -197,7 +265,7 @@ func factoryOptions(values map[string]any, root, only string, tr tracker.Tracker
 		RunStep:        stepRunner(values, s, log),
 		Review:         boolAt(values, true, "steps", "review", "enabled"),
 		Verify:         verifyCommands(values),
-		VerifyEnv:      s.commandEnv(boolAt(values, true, "sandbox", "scrub_credentials")),
+		VerifyEnv:      verifyEnv(values, s),
 		VerifyTimeout:  step.DefaultTimeout,
 		Log:            log.Write,
 		LinkBlockerFix: tr.Describe().LinkBlockerFix,
@@ -244,6 +312,7 @@ func stepRunner(values map[string]any, sec *secrets, log *runlog.Log) func(conte
 		defer attempt.Close()
 		r := step.Runner{
 			Harness:     settings.harness,
+			Sandbox:     req.Sandbox,
 			Env:         env,
 			Unset:       unset,
 			IdleTimeout: settings.idleTimeout,
@@ -359,10 +428,33 @@ func hookEntries(values map[string]any, point string, s *secrets) []hook.Entry {
 			Commands: hookCommands(table),
 			Where:    where,
 			Timeout:  durationAt(table, 0, "timeout"),
-			Env:      s.hookEnv(where, stringsOf(table["secrets"])),
+			Env:      hookEnv(values, s, where, stringsOf(table["secrets"])),
 		})
 	}
 	return entries
+}
+
+// inContainer reports whether the Run's Sandboxes are containers, where a
+// command gets only what is meant for it: the host's env stays out.
+func inContainer(values map[string]any) bool {
+	return stringAt(values, defaultSandbox, "sandbox", "kind") == "container"
+}
+
+// verifyEnv is the env of the Feedback commands the Factory runs itself.
+func verifyEnv(values map[string]any, s *secrets) []string {
+	scrub := boolAt(values, true, "sandbox", "scrub_credentials")
+	if inContainer(values) {
+		return s.containerCommandEnv(scrub)
+	}
+	return s.commandEnv(scrub)
+}
+
+// hookEnv is the env of a Hook entry.
+func hookEnv(values map[string]any, s *secrets, where string, names []string) []string {
+	if where == hook.Sandbox && inContainer(values) {
+		return s.containerHookEnv()
+	}
+	return s.hookEnv(where, names)
 }
 
 // hookCommands are the command lines of a Hook entry: its `run`, or its

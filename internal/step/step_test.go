@@ -396,3 +396,50 @@ func TestAStepThatKeepsTalkingGetsNoIdleWarning(t *testing.T) {
 		t.Errorf("got %d idle warnings, want none", n)
 	}
 }
+
+// passThrough is a Sandbox that runs commands on the host and notes how it
+// was used.
+type passThrough struct {
+	argv, env []string
+	kills     atomic.Int32
+}
+
+func (p *passThrough) Exec(argv, env []string) ([]string, []string) {
+	p.argv, p.env = argv, env
+	return argv, append(os.Environ(), env...)
+}
+
+func (p *passThrough) KillAll(context.Context) error {
+	p.kills.Add(1)
+	return nil
+}
+
+func (p *passThrough) Destroy(context.Context) error { return nil }
+
+func TestAStepInASandboxGetsOnlyItsOwnEnvAndHasItsLeftoversKilled(t *testing.T) {
+	withFakeHarness(t, `{"sessions": [{"report": {"outcome": "done", "summary": "ok"}}]}`)
+	t.Setenv("SOMETHING_OF_THE_USERS", "stays on the host")
+	sb := &passThrough{}
+	r := step.Runner{Harness: claudecode.ClaudeCode{}, Env: map[string]string{"API_TOKEN": "sk-secret"}, Sandbox: sb}
+
+	out := r.Run(context.Background(), newStep("hello"), t.TempDir())
+
+	if out.Kind != harness.Reported {
+		t.Fatalf("outcome = %+v, want a report", out)
+	}
+	if len(sb.argv) == 0 || sb.argv[0] != "claude" {
+		t.Errorf("Sandbox was asked to run %q, want the Harness as the Sandbox knows it", sb.argv)
+	}
+	joined := strings.Join(sb.env, "\n")
+	for _, want := range []string{"API_TOKEN=sk-secret", "GIT_TERMINAL_PROMPT=0"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("Sandbox env lacks %q:\n%s", want, joined)
+		}
+	}
+	if strings.Contains(joined, "SOMETHING_OF_THE_USERS") {
+		t.Errorf("the host's env went into the Sandbox:\n%s", joined)
+	}
+	if got := sb.kills.Load(); got != 1 {
+		t.Errorf("KillAll ran %d times, want 1", got)
+	}
+}

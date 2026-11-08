@@ -15,6 +15,7 @@ import (
 	"github.com/Marcel-Goehn/kraftwerk/internal/git"
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness/claudecode"
+	"github.com/Marcel-Goehn/kraftwerk/internal/hook"
 	"github.com/Marcel-Goehn/kraftwerk/internal/redact"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/github"
 )
@@ -202,6 +203,39 @@ func (s *secrets) hookEnv(where string, names []string) []string {
 		env = append(env, k+"="+v)
 	}
 	return env
+}
+
+// containerCommandEnv is commandEnv for a command in a container Sandbox,
+// where nothing of the host's env goes in.
+func (s *secrets) containerCommandEnv(scrub bool) []string {
+	env := slices.Clone(git.NonInteractiveEnv)
+	if !scrub {
+		for k, v := range s.project {
+			env = append(env, k+"="+v)
+		}
+	}
+	return env
+}
+
+// containerHookEnv is the env of a Hook in a container Sandbox: every
+// project secret, as ForHook gives any Hook in a Sandbox.
+func (s *secrets) containerHookEnv() []string {
+	env := slices.Clone(git.NonInteractiveEnv)
+	for k, v := range credentials.ForHook(s.project, hook.Sandbox, nil) {
+		env = append(env, k+"="+v)
+	}
+	return env
+}
+
+// credentialEnv are the variables that hold credentials in a Step or Hook.
+func (s *secrets) credentialEnv() []string {
+	names := slices.Concat(s.harnessEnv, s.hostOnly)
+	if s.auth != nil {
+		for k := range s.auth.Env {
+			names = append(names, k)
+		}
+	}
+	return names
 }
 
 // redacted are stdout and stderr behind the redactor.

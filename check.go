@@ -2,13 +2,16 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/config"
+	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox/container"
 )
 
 // localFlags are the CLI flags that override the config files. They count
@@ -93,6 +96,16 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stdout, "kraftwerk check: %d project %s resolved\n", len(s.project), pluralize(len(s.project), "secret", "secrets"))
 		if !boolAt(values, true, "sandbox", "scrub_credentials") {
 			_, _ = fmt.Fprintln(stderr, "warning: sandbox.scrub_credentials: with scrubbing off, the agent gets the project secrets ([sandbox.secrets]) and can read them")
+		}
+	}
+
+	if inContainer(values) {
+		refused, warnings := container.CheckRunArgs(runArgs(values), s.credentialEnv())
+		for _, w := range warnings {
+			_, _ = fmt.Fprintf(stderr, "warning: %s\n", w)
+		}
+		if len(refused) > 0 {
+			return fail(errors.New(strings.Join(refused, "\n")))
 		}
 	}
 

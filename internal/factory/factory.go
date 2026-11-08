@@ -21,6 +21,7 @@ import (
 	"github.com/Marcel-Goehn/kraftwerk/internal/prompt"
 	"github.com/Marcel-Goehn/kraftwerk/internal/redact"
 	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
+	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
 	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
 )
@@ -45,6 +46,13 @@ type Options struct {
 	// RunStep runs a Step in Step.Dir and says how it ended. Steps of
 	// different Tickets call it at the same time.
 	RunStep func(ctx context.Context, s Step) harness.Outcome
+	// Sandboxes creates a Sandbox for each Ticket's build, merge Step and
+	// verify of a merged result; nil means no Sandboxes (`kind = "none"`).
+	Sandboxes func(ctx context.Context, req sandbox.Request) (sandbox.Sandbox, error)
+	// ClearSandboxes, if set, removes what a crashed Run left of its
+	// Sandboxes. It runs first, while their worktrees still exist; its error
+	// stops the Run.
+	ClearSandboxes func(ctx context.Context) error
 	// Review is whether the review Step runs after an implement Step that
 	// committed.
 	Review bool
@@ -116,6 +124,8 @@ type Step struct {
 	// worktree, or inside the merge's for a merge Step.
 	Dir    string
 	Prompt string
+	// Sandbox is where the Step runs, nil for directly in Dir.
+	Sandbox sandbox.Sandbox
 	// Log logs a line of the Step's output, such as a tool call, under
 	// the Ticket and the Step.
 	Log func(kind runlog.Kind, text string)
@@ -285,6 +295,11 @@ func (r *run) run(ctx context.Context) error {
 		return err
 	}
 	defer r.removeSpecWorktrees()
+	if r.opts.ClearSandboxes != nil {
+		if err := r.opts.ClearSandboxes(ctx); err != nil {
+			return err
+		}
+	}
 	r.cleanUp(ctx)
 	if err := r.replay(ctx); err != nil {
 		return err
@@ -722,6 +737,9 @@ type build struct {
 	branch, worktree, dir string
 	// base is the Spec branch tip the Ticket branch was cut from.
 	base string
+	// sandbox is where its Steps, verify and Sandbox Hooks run, nil for no
+	// Sandbox.
+	sandbox sandbox.Sandbox
 }
 
 // verifyAttempts is how often implement → review → verify may run: a
@@ -733,6 +751,12 @@ const verifyAttempts = 2
 // the summary for the close comment, or why the Ticket failed, or an
 // error that stops the Run.
 func (r *run) build(ctx context.Context, b build) (summary string, failed *failure, stop error) {
+	sb, closeSandbox, failed := r.openSandbox(ctx, b.tk, "build", b.worktree)
+	if failed != nil {
+		return "", failed, nil
+	}
+	defer closeSandbox()
+	b.sandbox = sb
 	if failed := r.sandboxCreated(ctx, b); failed != nil {
 		return "", failed, nil
 	}
@@ -758,7 +782,7 @@ func (r *run) verify(ctx context.Context, b build) *verify.Failure {
 		return nil
 	}
 	r.tlogf(b.tk, "verify: started")
-	f := verify.Run(ctx, b.dir, r.opts.VerifyEnv, r.opts.VerifyTimeout, r.opts.Verify)
+	f := verify.Run(ctx, b.sandbox, b.dir, r.opts.VerifyEnv, r.opts.VerifyTimeout, r.opts.Verify)
 	if f == nil {
 		r.tlogf(b.tk, "verify: passed")
 		return nil
@@ -767,6 +791,30 @@ func (r *run) verify(ctx context.Context, b build) *verify.Failure {
 		r.tlogf(b.tk, "verify:   %s", strings.TrimRight(l, "\r\n"))
 	}
 	return f
+}
+
+// sandboxDestroyTimeout bounds removing a Sandbox.
+const sandboxDestroyTimeout = 2 * time.Minute
+
+// openSandbox creates the Sandbox of one piece of a Ticket's work on the
+// worktree, and returns what removes it, even after a kill. Without
+// Sandboxes there is nothing to create.
+func (r *run) openSandbox(ctx context.Context, tk tracker.Ticket, purpose, worktree string) (sandbox.Sandbox, func(), *failure) {
+	if r.opts.Sandboxes == nil {
+		return nil, func() {}, nil
+	}
+	name := purpose + "-" + tk.ID.Branch
+	sb, err := r.opts.Sandboxes(ctx, sandbox.Request{Name: name, Worktree: worktree, Rel: r.rel})
+	if err != nil {
+		return nil, nil, factoryFailure(fmt.Errorf("creating its Sandbox: %w", err))
+	}
+	return sb, func() {
+		ctx, cancel := context.WithTimeout(context.Background(), sandboxDestroyTimeout)
+		defer cancel()
+		if err := sb.Destroy(ctx); err != nil {
+			r.line(tk, runlog.Line{Kind: runlog.Warning, Text: fmt.Sprintf("warning: removing its Sandbox: %v", err)})
+		}
+	}, nil
 }
 
 // verifyLogLines is how many of a failed Feedback command's last lines
@@ -783,7 +831,7 @@ func (r *run) implementAndReview(ctx context.Context, b build, verifyFailed *ver
 		return "", factoryFailure(err), nil
 	}
 	r.line(tk, runlog.Line{Step: Implement, Text: "started on " + b.branch})
-	out, failed, stop := r.runStep(ctx, Step{Name: Implement, Ticket: tk, Dir: b.dir, Prompt: prompt.Implement(r.part(Implement), b.prompt, b.recent, verifyFailed), Log: r.stepLog(tk, Implement)})
+	out, failed, stop := r.runStep(ctx, Step{Name: Implement, Ticket: tk, Dir: b.dir, Sandbox: b.sandbox, Prompt: prompt.Implement(r.part(Implement), b.prompt, b.recent, verifyFailed), Log: r.stepLog(tk, Implement)})
 	if failed != nil || stop != nil {
 		return "", failed, stop
 	}
@@ -812,7 +860,7 @@ func (r *run) implementAndReview(ctx context.Context, b build, verifyFailed *ver
 		return "", factoryFailure(err), nil
 	}
 	r.line(tk, runlog.Line{Step: Review, Text: "started"})
-	out, failed, stop = r.runStep(ctx, Step{Name: Review, Ticket: tk, Dir: b.dir, Prompt: prompt.Review(r.part(Review), b.prompt, b.base), Log: r.stepLog(tk, Review)})
+	out, failed, stop = r.runStep(ctx, Step{Name: Review, Ticket: tk, Dir: b.dir, Sandbox: b.sandbox, Prompt: prompt.Review(r.part(Review), b.prompt, b.base), Log: r.stepLog(tk, Review)})
 	if failed != nil || stop != nil {
 		return "", failed, stop
 	}

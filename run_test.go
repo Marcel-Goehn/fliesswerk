@@ -202,17 +202,45 @@ func TestRunDryRun(t *testing.T) {
 	})
 }
 
-func TestRunWithASandboxIsNotAvailableYet(t *testing.T) {
+func TestRunWithANativeSandboxIsNotAvailableYet(t *testing.T) {
 	bin := buildKraftwerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": dryRunProject})
 	log := filepath.Join(t.TempDir(), "gh.log")
 
-	_, stderr, code := runEnv(t, bin, root, ghEnv(t, "dryrun", "FAKEGH_LOG="+log), "run")
+	_, stderr, code := runEnv(t, bin, root, ghEnv(t, "dryrun", "FAKEGH_LOG="+log), "run", "--sandbox", "native")
 
 	if code != 3 || !strings.Contains(stderr, "--sandbox none") {
 		t.Fatalf("exit code = %d, want 3 pointing at --sandbox none; stderr: %s", code, stderr)
 	}
 	if _, err := os.Stat(log); err == nil {
 		t.Fatal("gh ran although the Run can't start")
+	}
+}
+
+func TestARunWithoutAContainerEngineStopsWithTheFix(t *testing.T) {
+	bin := buildKraftwerk(t, "")
+	root := projectDir(t, map[string]string{"config.toml": dryRunProject})
+
+	_, stderr, code := runEnv(t, bin, root, ghEnv(t, "dryrun"), "run")
+
+	if code != 3 || !strings.Contains(stderr, "Docker or Podman") {
+		t.Fatalf("exit code = %d, want 3 naming the engines; stderr: %s", code, stderr)
+	}
+}
+
+func TestARefusedRunArgStopsTheRunBeforeItStarts(t *testing.T) {
+	bin := buildKraftwerk(t, "")
+	for _, arg := range []string{"--network=host", "--env=GH_TOKEN"} {
+		root := projectDir(t, map[string]string{"config.toml": dryRunProject + "\n[sandbox]\nrun_args = [\"" + arg + "\"]\n"})
+		log := filepath.Join(t.TempDir(), "gh.log")
+
+		_, stderr, code := runEnv(t, bin, root, ghEnv(t, "dryrun", "FAKEGH_LOG="+log), "run")
+
+		if code != 3 || !strings.Contains(stderr, strings.Split(arg, "=")[0]) {
+			t.Fatalf("%s: exit code = %d, want 3 naming the flag; stderr: %s", arg, code, stderr)
+		}
+		if _, err := os.Stat(log); err == nil {
+			t.Fatalf("%s: gh ran although the Run can't start", arg)
+		}
 	}
 }

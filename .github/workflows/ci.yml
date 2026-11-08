@@ -1,4 +1,5 @@
-# CI: lint, the six builds, tests on all three OSes, Semgrep and govulncheck.
+# CI: lint, the six builds, tests on all three OSes, the container Sandbox on
+# Docker and rootless Podman, Semgrep and govulncheck.
 # It runs on every push to `develop` (the default branch, which feature
 # branches start from) and on every PR into `develop` or `main`, including
 # each new push to an open PR. Pushes to a feature branch without a PR don't
@@ -95,6 +96,27 @@ jobs:
       - name: go test
         run: go test ./...
 
+  # The container Sandbox on real engines: both are on the runner, and
+  # KRAFTWERK_ENGINE picks one. -p 1 keeps the packages' engine use apart.
+  container:
+    name: container (${{ matrix.engine }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [docker, podman]
+    env:
+      KRAFTWERK_ENGINE: ${{ matrix.engine }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: go test (integration)
+        run: go test -tags integration -p 1 -timeout 20m ./internal/sandbox/container/ .
+
   semgrep:
     name: semgrep
     runs-on: ubuntu-latest
@@ -128,7 +150,7 @@ jobs:
   ci:
     name: ci
     if: ${{ always() }}
-    needs: [lint, build, test, semgrep, govulncheck]
+    needs: [lint, build, test, container, semgrep, govulncheck]
     runs-on: ubuntu-latest
     steps:
       - name: All every-push checks passed

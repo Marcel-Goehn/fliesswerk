@@ -22,6 +22,7 @@ import (
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/git"
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
+	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
 )
 
 // Limits of a Step.
@@ -61,29 +62,42 @@ type Runner struct {
 	// Unset are variables left out of the Factory's own env, so that a
 	// credential of the user's own can't win over the configured one.
 	Unset []string
+	// Sandbox, if set, is where each Step runs. Nothing of the Factory's own
+	// env goes in: only the non-interactive git env, Env and the Harness's
+	// flags.
+	Sandbox sandbox.Sandbox
 }
 
 // Run runs one Step in dir and returns its Outcome. The Step's env is the
 // Factory's own without Unset, plus the non-interactive git env, Env and
-// the Harness's flags; its stdin is the prompt, then closed.
+// the Harness's flags; its stdin is the prompt, then closed. With a Sandbox
+// it runs there instead, in the Sandbox's own project directory, and dir is
+// unused.
 func (r Runner) Run(ctx context.Context, s harness.Step, dir string) harness.Outcome {
 	inv := r.Harness.Command(s)
-	argv, err := resolve(inv.Argv)
+	stepEnv := slices.Clone(git.NonInteractiveEnv)
+	for k, v := range r.Env {
+		stepEnv = append(stepEnv, k+"="+v)
+	}
+	for k, v := range inv.Env {
+		stepEnv = append(stepEnv, k+"="+v)
+	}
+	argv, env, start := inv.Argv, []string(nil), startTree
+	if r.Sandbox != nil {
+		argv, env = r.Sandbox.Exec(inv.Argv, stepEnv)
+		dir, start = "", startClient
+	} else {
+		env = slices.DeleteFunc(os.Environ(), func(kv string) bool {
+			name, _, _ := strings.Cut(kv, "=")
+			return slices.ContainsFunc(r.Unset, func(u string) bool { return strings.EqualFold(u, name) })
+		})
+		env = append(env, stepEnv...)
+	}
+	argv, err := resolve(argv)
 	if err != nil {
 		return failed(fmt.Sprintf("can't start %s: %v", inv.Argv[0], err))
 	}
-	env := slices.DeleteFunc(os.Environ(), func(kv string) bool {
-		name, _, _ := strings.Cut(kv, "=")
-		return slices.ContainsFunc(r.Unset, func(u string) bool { return strings.EqualFold(u, name) })
-	})
-	env = append(env, git.NonInteractiveEnv...)
-	for k, v := range r.Env {
-		env = append(env, k+"="+v)
-	}
-	for k, v := range inv.Env {
-		env = append(env, k+"="+v)
-	}
-	p, t, err := startTree(func(attr *syscall.SysProcAttr) (*process, error) {
+	p, t, err := start(func(attr *syscall.SysProcAttr) (*process, error) {
 		return spawn(argv, dir, env, attr)
 	})
 	if err != nil {
@@ -110,6 +124,7 @@ func (r Runner) Run(ctx context.Context, s harness.Step, dir string) harness.Out
 	if !hasExited {
 		waitErr = <-exited
 	}
+	r.clearSandbox()
 	drained := make(chan struct{})
 	drain := time.AfterFunc(drainDelay, func() { close(drained) })
 	defer drain.Stop()
@@ -178,6 +193,16 @@ func (r Runner) watch(ctx context.Context, o *output, exited <-chan error) (reas
 			return fmt.Sprintf("stopped: %v", ctx.Err()), nil, false
 		}
 	}
+}
+
+// clearSandbox kills what the Step left in its Sandbox: the kill above only
+// reached the engine's client. If it fails, what is left dies with the
+// Sandbox at the latest.
+func (r Runner) clearSandbox() {
+	if r.Sandbox == nil {
+		return
+	}
+	_ = r.Sandbox.KillAll(context.Background())
 }
 
 func orDefault(d, def time.Duration) time.Duration {

@@ -13,6 +13,11 @@ import (
 // kill-on-close that the Harness, and so everything it starts, belongs to.
 type tree struct{ job windows.Handle }
 
+// startClient starts a container engine's client, like any Harness here.
+func startClient(spawn func(*syscall.SysProcAttr) (*process, error)) (*process, *tree, error) {
+	return startTree(spawn)
+}
+
 // startTree starts the Harness suspended, puts it in a new job object and
 // only then lets it run, so nothing it starts can be outside the job. A
 // new process group keeps a terminal's Ctrl-C away from it.

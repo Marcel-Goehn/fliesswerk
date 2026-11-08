@@ -63,7 +63,7 @@ func (r *run) runEnd(ctx context.Context) {
 // worktree. After that a build hands the Ticket back to a person, and a
 // merge re-queues it.
 func (r *run) sandboxCreated(ctx context.Context, b build) *failure {
-	m := hook.Setting{HostDir: r.opts.Root, SandboxDir: b.dir}
+	m := hook.Setting{HostDir: r.opts.Root, SandboxDir: b.dir, Sandbox: b.sandbox}
 	log := func(line string) { r.tlogf(b.tk, "%s", line) }
 	for fresh := 0; ; fresh++ {
 		f := r.runHooks(ctx, "sandbox_created", m, r.opts.Hooks.SandboxCreated, log)

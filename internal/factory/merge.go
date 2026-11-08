@@ -163,10 +163,25 @@ func (r *run) merge(ctx context.Context, w *ticketWork) (failed *failure, stop e
 		return mergeFailure(err), nil
 	}
 	r.tlogf(tk, "merged %s", w.specBranch)
-	if f := r.verify(ctx, b); f != nil {
-		return &failure{handBack: true, kind: KindVerify, reason: "verify on the merged result: " + f.Error(), verify: f}, nil
+	return r.verifyMerged(ctx, b), nil
+}
+
+// verifyMerged runs verify on the merged result, in a Sandbox of its own:
+// the Ticket's was removed when its build ended.
+func (r *run) verifyMerged(ctx context.Context, b build) *failure {
+	if len(r.opts.Verify) == 0 {
+		return nil
 	}
-	return nil, nil
+	sb, closeSandbox, failed := r.openSandbox(ctx, b.tk, "verify", b.worktree)
+	if failed != nil {
+		return failed
+	}
+	defer closeSandbox()
+	b.sandbox = sb
+	if f := r.verify(ctx, b); f != nil {
+		return &failure{handBack: true, kind: KindVerify, reason: "verify on the merged result: " + f.Error(), verify: f}
+	}
+	return nil
 }
 
 // resolve has the merge Step resolve a real conflict, in a worktree of its
@@ -185,11 +200,16 @@ func (r *run) resolve(ctx context.Context, w *ticketWork, tip, message string, c
 			r.warnf("warning: %v", err)
 		}
 	}()
+	sb, closeSandbox, failed := r.openSandbox(ctx, tk, "merge", dir)
+	if failed != nil {
+		return "", failed, nil
+	}
+	defer closeSandbox()
 	repo, stepDir := git.Repo{Dir: dir}, filepath.Join(dir, r.rel)
 	// The Hooks come first: they may install what the project's manifests
 	// name, and those can be among the conflicting files.
 	inMergeWorktree := b
-	inMergeWorktree.dir = stepDir
+	inMergeWorktree.dir, inMergeWorktree.sandbox = stepDir, sb
 	if failed := r.sandboxCreated(ctx, inMergeWorktree); failed != nil {
 		return "", failed, nil
 	}
@@ -204,7 +224,7 @@ func (r *run) resolve(ctx context.Context, w *ticketWork, tip, message string, c
 	c.Spec = r.withClosed(c.Spec)
 	m := prompt.Merging{SpecBranch: w.specBranch, Files: conflict.Files, Merged: others}
 	r.line(tk, runlog.Line{Step: Merge, Text: fmt.Sprintf("started on %v", conflict)})
-	out, failed, stop := r.runStep(ctx, Step{Name: Merge, Ticket: tk, Dir: stepDir, Prompt: prompt.Merge(r.part(Merge), c, m), Log: r.stepLog(tk, Merge)})
+	out, failed, stop := r.runStep(ctx, Step{Name: Merge, Ticket: tk, Dir: stepDir, Sandbox: sb, Prompt: prompt.Merge(r.part(Merge), c, m), Log: r.stepLog(tk, Merge)})
 	if failed != nil || stop != nil {
 		return "", failed, stop
 	}
@@ -213,6 +233,9 @@ func (r *run) resolve(ctx context.Context, w *ticketWork, tip, message string, c
 	}
 	// The Ticket's commits have passed this check, and the Spec branch's are
 	// the base of this diff, so whatever it finds is the merge Step's.
+	if failed := r.rejectPlantedGit(dir); failed != nil {
+		return "", failed, nil
+	}
 	changed, err := git.Repo{Dir: stepDir}.Changed(ctx, tip, "HEAD")
 	if err != nil {
 		return "", mergeFailure(err), nil

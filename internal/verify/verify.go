@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/shell"
+	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
 )
 
 // Command is one Feedback command from `[commands]`.
@@ -46,21 +46,26 @@ const waitDelay = 5 * time.Second
 
 // Run runs cmds one after another in dir with env, stopping at the first
 // that fails. A command still running after timeout is stopped, with
-// every process it started. No commands means no checks.
-func Run(ctx context.Context, dir string, env []string, timeout time.Duration, cmds []Command) *Failure {
+// every process it started. No commands means no checks. With a Sandbox,
+// the commands run in it, in its own project directory, and dir is unused.
+func Run(ctx context.Context, sb sandbox.Sandbox, dir string, env []string, timeout time.Duration, cmds []Command) *Failure {
 	for _, c := range cmds {
-		if f := run(ctx, dir, env, timeout, c); f != nil {
+		if f := run(ctx, sb, dir, env, timeout, c); f != nil {
+			if sb != nil {
+				// Ending the engine's client left the command running inside.
+				_ = sb.KillAll(context.WithoutCancel(ctx))
+			}
 			return f
 		}
 	}
 	return nil
 }
 
-func run(ctx context.Context, dir string, env []string, timeout time.Duration, c Command) *Failure {
+func run(ctx context.Context, sb sandbox.Sandbox, dir string, env []string, timeout time.Duration, c Command) *Failure {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	sh := shell.Command(ctx, c.Line)
-	sh.Dir, sh.Env, sh.WaitDelay = dir, env, waitDelay
+	sh := sandbox.Shell(ctx, sb, dir, c.Line, env)
+	sh.WaitDelay = waitDelay
 	var out bytes.Buffer
 	sh.Stdout, sh.Stderr = &out, &out
 	err := sh.Run()
