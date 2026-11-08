@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
+
+	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox/native"
 )
 
 // version is injected at build time with -ldflags "-X main.version=...".
@@ -14,6 +16,9 @@ import (
 var version string
 
 func main() {
+	if code, ok := native.RunHelper(os.Args[1:]); ok {
+		os.Exit(code)
+	}
 	os.Exit(runCLI(os.Args[1:], os.Stdout, os.Stderr))
 }
 

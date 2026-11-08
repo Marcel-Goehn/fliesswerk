@@ -22,6 +22,13 @@ import (
 // credential prompt, no editor, no pager.
 var NonInteractiveEnv = []string{"GIT_TERMINAL_PROMPT=0", "GIT_EDITOR=true", "GIT_PAGER=cat"}
 
+// hostEnv is what the Factory's own git runs with. A Sandbox can write
+// refs, and a ref under refs/replace would change what git says a commit
+// contains, hiding from the Factory that it touched a Protected path.
+func hostEnv() []string {
+	return append(append(os.Environ(), NonInteractiveEnv...), "GIT_NO_REPLACE_OBJECTS=1")
+}
+
 // Repo is a git repository, worked on through the directory Dir (the
 // user's checkout or one of the Factory's worktrees).
 type Repo struct {
@@ -43,7 +50,7 @@ func (r Repo) output(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...) //nolint:gosec // git is the tool this package exists to run
 	shell.Isolate(cmd)
 	cmd.Dir = r.Dir
-	cmd.Env = append(os.Environ(), NonInteractiveEnv...)
+	cmd.Env = hostEnv()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
@@ -81,7 +88,7 @@ func (r Repo) IsIgnored(ctx context.Context, path string) (bool, error) {
 	cmd := exec.CommandContext(ctx, "git", "check-ignore", "-q", "--", path) //nolint:gosec // path is a fixed path in the runtime state
 	shell.Isolate(cmd)
 	cmd.Dir = r.Dir
-	cmd.Env = append(os.Environ(), NonInteractiveEnv...)
+	cmd.Env = hostEnv()
 	err := cmd.Run()
 	var exit *exec.ExitError
 	switch {

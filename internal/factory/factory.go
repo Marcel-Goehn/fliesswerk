@@ -804,7 +804,7 @@ func (r *run) openSandbox(ctx context.Context, tk tracker.Ticket, purpose, workt
 		return nil, func() {}, nil
 	}
 	name := purpose + "-" + tk.ID.Branch
-	sb, err := r.opts.Sandboxes(ctx, sandbox.Request{Name: name, Worktree: worktree, Rel: r.rel})
+	sb, err := r.opts.Sandboxes(ctx, sandbox.Request{Name: name, Worktree: worktree, Rel: r.rel, Protected: r.protectedPaths()})
 	if err != nil {
 		return nil, nil, factoryFailure(fmt.Errorf("creating its Sandbox: %w", err))
 	}

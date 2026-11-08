@@ -205,9 +205,8 @@ func (s *secrets) hookEnv(where string, names []string) []string {
 	return env
 }
 
-// containerCommandEnv is commandEnv for a command in a container Sandbox,
-// where nothing of the host's env goes in.
-func (s *secrets) containerCommandEnv(scrub bool) []string {
+// sandboxCommandEnv is commandEnv for a command in a Sandbox, where nothing of the host's env goes in.
+func (s *secrets) sandboxCommandEnv(scrub bool) []string {
 	env := slices.Clone(git.NonInteractiveEnv)
 	if !scrub {
 		for k, v := range s.project {
@@ -217,9 +216,9 @@ func (s *secrets) containerCommandEnv(scrub bool) []string {
 	return env
 }
 
-// containerHookEnv is the env of a Hook in a container Sandbox: every
+// sandboxHookEnv is the env of a Hook in a Sandbox: every
 // project secret, as ForHook gives any Hook in a Sandbox.
-func (s *secrets) containerHookEnv() []string {
+func (s *secrets) sandboxHookEnv() []string {
 	env := slices.Clone(git.NonInteractiveEnv)
 	for k, v := range credentials.ForHook(s.project, hook.Sandbox, nil) {
 		env = append(env, k+"="+v)

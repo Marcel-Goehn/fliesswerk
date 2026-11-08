@@ -30,6 +30,9 @@ type Request struct {
 	// Worktree is the git worktree it holds, and Rel the project root
 	// relative to the top of it.
 	Worktree, Rel string
+	// Protected are the project's Protected paths, as patterns relative to
+	// the project root.
+	Protected []string
 }
 
 // Shell is the host command that runs line with the Sandbox's shell, or

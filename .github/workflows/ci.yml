@@ -1,5 +1,6 @@
 # CI: lint, the six builds, tests on all three OSes, the container Sandbox on
-# Docker and rootless Podman, Semgrep and govulncheck.
+# Docker and rootless Podman, the native Sandbox on bwrap, Semgrep and
+# govulncheck.
 # It runs on every push to `develop` (the default branch, which feature
 # branches start from) and on every PR into `develop` or `main`, including
 # each new push to an open PR. Pushes to a feature branch without a PR don't
@@ -123,6 +124,28 @@ jobs:
       - name: go test (integration)
         run: go test -tags integration -p 1 -timeout 20m ./internal/sandbox/container/ .
 
+  # The native Sandbox on real bwrap, on a stock runner with no sysctl
+  # changes. Where AppArmor blocks bwrap, the tests prove that it's detected
+  # and its fix named, and skip what needs a working bwrap.
+  native:
+    name: native (bwrap)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Install bubblewrap
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+      - name: go generate (the proxy sidecar's root filesystems)
+        run: go generate ./internal/proxyimage
+      - name: go test (integration)
+        run: |
+          go test -tags integration -v -timeout 10m ./internal/sandbox/native/
+          go test -tags integration -v -timeout 10m -run 'Native' .
+
   semgrep:
     name: semgrep
     runs-on: ubuntu-latest
@@ -156,7 +179,7 @@ jobs:
   ci:
     name: ci
     if: ${{ always() }}
-    needs: [lint, build, test, container, semgrep, govulncheck]
+    needs: [lint, build, test, container, native, semgrep, govulncheck]
     runs-on: ubuntu-latest
     steps:
       - name: All every-push checks passed

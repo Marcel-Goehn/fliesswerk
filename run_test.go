@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -202,18 +203,46 @@ func TestRunDryRun(t *testing.T) {
 	})
 }
 
-func TestRunWithANativeSandboxIsNotAvailableYet(t *testing.T) {
+func TestARunThatCannotBuildANativeSandboxStopsWithTheFix(t *testing.T) {
 	bin := buildKraftwerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": dryRunProject})
 	log := filepath.Join(t.TempDir(), "gh.log")
 
+	// The tests' minimal PATH has no bwrap.
 	_, stderr, code := runEnv(t, bin, root, ghEnv(t, "dryrun", "FAKEGH_LOG="+log), "run", "--sandbox", "native")
 
-	if code != 3 || !strings.Contains(stderr, "--sandbox none") {
-		t.Fatalf("exit code = %d, want 3 pointing at --sandbox none; stderr: %s", code, stderr)
+	want := "apt install bubblewrap"
+	if runtime.GOOS != "linux" {
+		want = "--sandbox none"
+	}
+	if code != 3 || !strings.Contains(stderr, want) {
+		t.Fatalf("exit code = %d, want 3 saying %q; stderr: %s", code, want, stderr)
+	}
+}
+
+func TestANativeSandboxRefusesAPathItMustNeverExpose(t *testing.T) {
+	bin := buildKraftwerk(t, "")
+	root := projectDir(t, map[string]string{"config.toml": dryRunProject + "\n[sandbox]\nkind = \"native\"\nread_only_paths = [\"/var/run/docker.sock\"]\n"})
+	log := filepath.Join(t.TempDir(), "gh.log")
+
+	_, stderr, code := runEnv(t, bin, root, ghEnv(t, "dryrun", "FAKEGH_LOG="+log), "run")
+
+	if code != 3 || !strings.Contains(stderr, "sandbox.read_only_paths") || !strings.Contains(stderr, "refused") {
+		t.Fatalf("exit code = %d, want 3 refusing the path; stderr: %s", code, stderr)
 	}
 	if _, err := os.Stat(log); err == nil {
 		t.Fatal("gh ran although the Run can't start")
+	}
+}
+
+func TestCheckWarnsAboutANativeSandboxFootgun(t *testing.T) {
+	bin := buildKraftwerk(t, "")
+	root := projectDir(t, map[string]string{"config.toml": "version = 1\n[sandbox]\nkind = \"native\"\nwritable_paths = [\"~/.bashrc\"]\n"})
+
+	_, stderr, _ := runEnv(t, bin, root, ghEnv(t, "ok"), "check")
+
+	if !strings.Contains(stderr, "warning: sandbox.writable_paths") || !strings.Contains(stderr, "shell rc file") {
+		t.Fatalf("stderr doesn't warn: %s", stderr)
 	}
 }
 

@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/egress"
-	"github.com/Marcel-Goehn/kraftwerk/internal/git"
 	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
 )
 
@@ -90,7 +89,7 @@ func (p *Provider) Connect(ctx context.Context) error {
 // Prepare makes sure the image is current and starts the Run's proxy
 // sidecar. The Provider must be connected, and Close ends what this starts.
 func (p *Provider) Prepare(ctx context.Context) error {
-	p.identity = commitIdentity(ctx, p.opts.Root)
+	p.identity = sandbox.CommitIdentity(ctx, p.opts.Root)
 	if err := p.ensureImage(ctx); err != nil {
 		return err
 	}
@@ -135,22 +134,6 @@ func (p *Provider) cleanUp(ctx context.Context) {
 	if err := os.RemoveAll(filepath.Join(p.opts.StateDir, "sandboxes")); err != nil {
 		warn(err)
 	}
-}
-
-var identLine = regexp.MustCompile(`^(.*) <(.*)> \d+ [+-]\d+$`)
-
-// commitIdentity is the env that gives commits in a Sandbox the identity
-// the user's git would give them. The user's git config isn't in there.
-func commitIdentity(ctx context.Context, root string) []string {
-	var env []string
-	repo := git.Repo{Dir: root}
-	for _, who := range []string{"AUTHOR", "COMMITTER"} {
-		out, err := repo.Run(ctx, "var", "GIT_"+who+"_IDENT")
-		if m := identLine.FindStringSubmatch(strings.TrimSpace(out)); err == nil && m != nil {
-			env = append(env, "GIT_"+who+"_NAME="+m[1], "GIT_"+who+"_EMAIL="+m[2])
-		}
-	}
-	return env
 }
 
 // ensureImage builds the image if none exists for this Containerfile. The
@@ -281,15 +264,11 @@ func (m mount) flag() string {
 // Being mount points, those can't be renamed away. The worktree's `.git`
 // file is replaced by one with the path inside the Sandbox.
 func (p *Provider) mounts(worktree, state string) ([]mount, error) {
-	data, err := os.ReadFile(filepath.Join(worktree, ".git")) //nolint:gosec // the Factory's own worktree
+	dirs, err := sandbox.WorktreeGit(worktree)
 	if err != nil {
 		return nil, err
 	}
-	admin, ok := strings.CutPrefix(strings.TrimSpace(string(data)), "gitdir: ")
-	if !ok {
-		return nil, fmt.Errorf("%s is not a git worktree", worktree)
-	}
-	common, id := filepath.Dir(filepath.Dir(admin)), filepath.Base(admin)
+	common, admin, id := dirs.Common, dirs.Admin, dirs.ID
 
 	if err := os.MkdirAll(state, 0o750); err != nil {
 		return nil, err
@@ -297,17 +276,6 @@ func (p *Provider) mounts(worktree, state string) ([]mount, error) {
 	gitFile := filepath.Join(state, "git")
 	if err := os.WriteFile(gitFile, []byte("gitdir: "+gitDir+"/worktrees/"+id+"\n"), 0o644); err != nil { //nolint:gosec // readable by the Sandbox's user; holds a path
 		return nil, err
-	}
-	// A mount needs its source to exist, and git would read this file if
-	// the agent could create it.
-	if err := os.MkdirAll(filepath.Join(common, "logs"), 0o750); err != nil { //nolint:gosec // inside the git directory of the Factory's own worktree
-		return nil, err
-	}
-	worktreeConfig := filepath.Join(admin, "config.worktree")
-	if _, err := os.Stat(worktreeConfig); errors.Is(err, os.ErrNotExist) { //nolint:gosec // inside the git directory of the Factory's own worktree
-		if err := os.WriteFile(worktreeConfig, nil, 0o600); err != nil { //nolint:gosec // inside the git directory of the Factory's own worktree
-			return nil, err
-		}
 	}
 	mounts := []mount{
 		{source: worktree, target: workspaceDir},

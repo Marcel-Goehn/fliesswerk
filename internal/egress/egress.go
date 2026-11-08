@@ -40,6 +40,8 @@ type Options struct {
 	UpstreamProxy string
 	// Listen is the address to listen on; empty is a free port on loopback.
 	Listen string
+	// Socket, if set, is a Unix socket to listen on instead of Listen.
+	Socket string
 	// Log receives one plain-language line per denied connection.
 	Log func(string)
 }
@@ -102,7 +104,11 @@ func Start(ctx context.Context, o Options) (*Proxy, error) {
 	if err != nil {
 		return nil, err
 	}
-	l, err := net.Listen("tcp", cmp.Or(o.Listen, "127.0.0.1:0"))
+	network, address := "tcp", cmp.Or(o.Listen, "127.0.0.1:0")
+	if o.Socket != "" {
+		network, address = "unix", o.Socket
+	}
+	l, err := net.Listen(network, address)
 	if err != nil {
 		return nil, fmt.Errorf("the egress proxy can't listen: %w", err)
 	}

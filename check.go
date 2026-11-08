@@ -12,6 +12,7 @@ import (
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/config"
 	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox/container"
+	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox/native"
 )
 
 // localFlags are the CLI flags that override the config files. They count
@@ -99,15 +100,20 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
-	if inContainer(values) {
-		refused, warnings := container.CheckRunArgs(runArgs(values), s.credentialEnv())
-		for _, w := range warnings {
-			_, _ = fmt.Fprintf(stderr, "warning: %s\n", w)
-		}
-		if len(refused) > 0 {
-			return fail(errors.New(strings.Join(refused, "\n")))
-		}
+	refused, warnings := checkSandboxConfig(values, s)
+	for _, w := range warnings {
+		_, _ = fmt.Fprintf(stderr, "warning: %s\n", w)
+	}
+	if len(refused) > 0 {
+		return fail(errors.New(strings.Join(refused, "\n")))
+	}
+	switch stringAt(values, defaultSandbox, "sandbox", "kind") {
+	case "container":
 		if err := container.CheckEngine(ctx); err != nil {
+			return fail(err)
+		}
+	case "native":
+		if _, err := native.Check(ctx); err != nil {
 			return fail(err)
 		}
 	}

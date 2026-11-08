@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/git"
+	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
 )
 
 // factoryDir is the Factory's own directory, always a Protected path.
@@ -56,7 +57,7 @@ func (r *run) rejectPlantedGit(worktree string) *failure {
 func (r *run) rejectProtected(step string, files []string) *failure {
 	var hit []string
 	for _, f := range files {
-		if protected(f, r.protectedPaths()) {
+		if sandbox.Protected(f, r.protectedPaths()) {
 			hit = append(hit, f)
 		}
 	}
@@ -65,21 +66,4 @@ func (r *run) rejectProtected(step string, files []string) *failure {
 	}
 	return &failure{handBack: true, kind: KindProtectedPath, protected: hit,
 		reason: fmt.Sprintf("%s committed changes to %d Protected %s, which only a person may change", step, len(hit), plural(len(hit), "path", "paths"))}
-}
-
-// protected reports whether file, relative to the project root with
-// forward slashes, is one of patterns or inside one. A pattern ending in
-// "/" is a directory; any other is a file, a directory or a glob
-// (path.Match syntax, where * stays within one directory). A glob that
-// matches a directory protects everything in it.
-func protected(file string, patterns []string) bool {
-	for _, p := range patterns {
-		p = strings.TrimPrefix(path.Clean("/"+strings.TrimSuffix(p, "/")), "/")
-		for f := file; f != "." && f != "/"; f = path.Dir(f) {
-			if ok, _ := path.Match(p, f); ok {
-				return true
-			}
-		}
-	}
-	return false
 }
