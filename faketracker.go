@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"sync"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
@@ -58,7 +59,9 @@ type fakeState struct {
 // fileTracker is a fake Tracker that saves itself after every write.
 type fileTracker struct {
 	*fake.Tracker
-	path  string
+	path string
+	// mu keeps the Tickets of an Iteration from writing the file at once.
+	mu    sync.Mutex
 	state fakeState
 }
 
@@ -77,6 +80,8 @@ func (f *fileTracker) save(err error) error {
 
 // write applies a write, unless it is one of those meant to fail.
 func (f *fileTracker) write(apply func() error) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.state.FailWrites > 0 {
 		f.state.FailWrites--
 		return errors.Join(errors.New("fake tracker: the write failed"), f.save(nil))

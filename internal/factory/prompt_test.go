@@ -116,7 +116,7 @@ func inOrder(t *testing.T, p string, parts ...string) {
 	}
 }
 
-func TestATicketClosedEarlierInTheIterationIsMarkedClosedAndNoneQueuedIsInProgress(t *testing.T) {
+func TestTheOtherTicketsOfTheIterationAreMarkedInProgress(t *testing.T) {
 	f := newFixture(t)
 	tr := fake.New(ready,
 		fake.Issue{Number: 1, Title: "Spec: Shop", Body: "A shop.", Labels: []string{ready}},
@@ -136,6 +136,11 @@ func TestATicketClosedEarlierInTheIterationIsMarkedClosedAndNoneQueuedIsInProgre
 	if len(res.Closed) != 2 || res.Iterations != 1 {
 		t.Fatalf("result = %+v, want #2 and #3 closed in one Iteration", res)
 	}
-	inOrder(t, steps.seen[0].Prompt, "- #2 Add the cart (this Ticket)", "- #3 Add the shelf (open)")
-	inOrder(t, steps.seen[1].Prompt, "- #2 Add the cart (closed)", "- #3 Add the shelf (this Ticket)")
+	for _, seen := range steps.seen {
+		if seen.Ticket.ID.Display == "#2" {
+			inOrder(t, seen.Prompt, "- #2 Add the cart (this Ticket)", "- #3 Add the shelf (in progress)")
+		} else {
+			inOrder(t, seen.Prompt, "- #2 Add the cart (in progress)", "- #3 Add the shelf (this Ticket)")
+		}
+	}
 }

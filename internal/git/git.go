@@ -51,10 +51,19 @@ func (r Repo) output(ctx context.Context, args ...string) (string, error) {
 		if msg == "" {
 			msg = err.Error()
 		}
-		return stdout.String(), fmt.Errorf("git %s: %s", strings.Join(args, " "), msg)
+		return stdout.String(), &runError{msg: fmt.Sprintf("git %s: %s", strings.Join(args, " "), msg), cause: err}
 	}
 	return stdout.String(), nil
 }
+
+// runError is a git command that failed: git's stderr, and how it ended.
+type runError struct {
+	msg   string
+	cause error
+}
+
+func (e *runError) Error() string { return e.msg }
+func (e *runError) Unwrap() error { return e.cause }
 
 // Prefix is r.Dir relative to the root of its working tree, "" at the
 // root. Git works it out, so it holds whatever path r.Dir is reached by
@@ -243,6 +252,50 @@ func (r Repo) Touched(ctx context.Context, from, to string) ([]string, error) {
 // failing if that isn't a fast-forward.
 func (r Repo) MergeFastForward(ctx context.Context, rev string) error {
 	_, err := r.Run(ctx, "merge", "--quiet", "--ff-only", rev)
+	return err
+}
+
+// ConflictError says a merge has real conflicts.
+type ConflictError struct {
+	// Files are the conflicting files.
+	Files []string
+}
+
+func (e *ConflictError) Error() string {
+	return "conflict in " + strings.Join(e.Files, ", ")
+}
+
+// MergeTree merges theirs into ours without touching a worktree, a branch
+// or the index, and returns the merged tree. Real conflicts are a
+// *ConflictError.
+func (r Repo) MergeTree(ctx context.Context, ours, theirs string) (string, error) {
+	out, err := r.output(ctx, "merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", ours, theirs)
+	var exit *exec.ExitError
+	conflicted := errors.As(err, &exit) && exit.ExitCode() == 1
+	if err != nil && !conflicted {
+		return "", err
+	}
+	fields := strings.Split(strings.TrimRight(out, "\x00"), "\x00")
+	if conflicted {
+		return "", &ConflictError{Files: fields[1:]}
+	}
+	return fields[0], nil
+}
+
+// CommitTree makes a commit of tree with the given parents and returns
+// its SHA. No branch moves.
+func (r Repo) CommitTree(ctx context.Context, tree, message string, parents ...string) (string, error) {
+	args := []string{"commit-tree", tree, "-m", message}
+	for _, p := range parents {
+		args = append(args, "-p", p)
+	}
+	return r.Run(ctx, args...)
+}
+
+// ResetHard moves the branch checked out in r.Dir to rev, along with its
+// tracked files.
+func (r Repo) ResetHard(ctx context.Context, rev string) error {
+	_, err := r.Run(ctx, "reset", "--quiet", "--hard", rev)
 	return err
 }
 

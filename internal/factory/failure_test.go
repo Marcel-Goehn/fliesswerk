@@ -14,6 +14,7 @@ import (
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
 	"github.com/Marcel-Goehn/kraftwerk/internal/redact"
 	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
+	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
 	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
 )
@@ -21,7 +22,7 @@ import (
 const investigate = "needs-investigation"
 
 // failOptions are options with the failure settings a Run needs.
-func failOptions(f fixture, tr *fake.Tracker, runStep func(context.Context, factory.Step) harness.Outcome) factory.Options {
+func failOptions(f fixture, tr tracker.Tracker, runStep func(context.Context, factory.Step) harness.Outcome) factory.Options {
 	opts := options(f, tr, runStep)
 	opts.CannotDoLabel = investigate
 	opts.RunID = "2026-11-07T14-03-12"

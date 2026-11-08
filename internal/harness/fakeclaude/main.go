@@ -18,6 +18,8 @@
 //	    {"background": "beat", "detach": true},  // … in its own session (setsid)
 //	    {"sleep": "1m"},         // go silent
 //	    {"chatter": "1m"}        // write a text event every 50ms
+//	    {"touch": "/tmp/x"},     // create a file, to tell another session
+//	    {"await": "/tmp/x"}      // wait up to 30s for a file to exist
 //	  ],
 //	  "report":  {"outcome": "done", "summary": "…"},  // left out: no report
 //	  "error":   "auth",         // auth | transient | other: fail instead
@@ -80,6 +82,9 @@ type action struct {
 	Sleep      string `json:"sleep"`
 	Chatter    string `json:"chatter"`
 	Detach     bool   `json:"detach"`
+	// Touch and Await are paths that let sessions wait for each other.
+	Touch string `json:"touch"`
+	Await string `json:"await"`
 }
 
 // envBeat makes the fake a background grandchild beating into this file.
@@ -170,6 +175,7 @@ func pick(prompt string) session {
 		fail("fakeclaude: %s: %v", path, err)
 	}
 	runsPath := path + ".runs"
+	defer lockFile(runsPath + ".lock")()
 	runs := map[int]int{}
 	if data, err := os.ReadFile(runsPath); err == nil { //nolint:gosec // next to the test's script
 		_ = json.Unmarshal(data, &runs)
@@ -187,6 +193,21 @@ func pick(prompt string) session {
 	}
 	fail("fakeclaude: no session in %s matches the prompt", path)
 	return session{}
+}
+
+// lockFile takes the lock file at path, for sessions running at once, and
+// returns what frees it.
+func lockFile(path string) func() {
+	for end := time.Now().Add(awaitLimit); time.Now().Before(end); time.Sleep(time.Millisecond) {
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) //nolint:gosec // next to the test's script
+		if err != nil {
+			continue
+		}
+		_ = f.Close()
+		return func() { _ = os.Remove(path) } //nolint:gosec // next to the test's script
+	}
+	fail("fakeclaude: can't take the lock %s", path)
+	return nil
 }
 
 // writer writes Claude Code `stream-json` lines and keeps the usage
@@ -270,6 +291,12 @@ func (w *writer) act(a action) {
 		if err := cmd.Start(); err != nil {
 			fail("fakeclaude: background: %v", err)
 		}
+	case a.Touch != "":
+		if err := os.WriteFile(a.Touch, nil, 0o600); err != nil {
+			fail("fakeclaude: touch: %v", err)
+		}
+	case a.Await != "":
+		await(a.Await)
 	case a.Sleep != "":
 		time.Sleep(duration(a.Sleep))
 	case a.Chatter != "":
@@ -365,6 +392,20 @@ func duration(s string) time.Duration {
 		fail("fakeclaude: %v", err)
 	}
 	return d
+}
+
+// awaitLimit bounds a wait for a file, so that a session nobody answers
+// fails the test instead of hanging it.
+const awaitLimit = 30 * time.Second
+
+// await waits until path exists.
+func await(path string) {
+	for end := time.Now().Add(awaitLimit); time.Now().Before(end); time.Sleep(10 * time.Millisecond) {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+	}
+	fail("fakeclaude: nothing created %s in time", path)
 }
 
 // beat appends a byte to path every 20ms, forever.

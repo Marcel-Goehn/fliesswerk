@@ -57,7 +57,7 @@ func (r *run) failBuild(ctx context.Context, b build, f *failure) {
 	} else {
 		r.tlogf(tk, "handed back with %s", r.opts.CannotDoLabel)
 	}
-	r.discard(ctx, b)
+	r.discard(b)
 }
 
 // LogDir is where a Run's logs go, relative to the project root, with
@@ -66,8 +66,12 @@ func LogDir(runID string) string {
 	return runlog.RelDir(runID)
 }
 
-// discard removes the Ticket's worktree and branch.
-func (r *run) discard(ctx context.Context, b build) {
+// discard removes the Ticket's worktree and branch, also once the Run or
+// the Ticket's Spec is killed.
+func (r *run) discard(b build) {
+	ctx := context.Background()
+	r.gitMu.Lock()
+	defer r.gitMu.Unlock()
 	if err := r.repo.RemoveWorktree(ctx, b.worktree); err != nil {
 		r.warnf("warning: %v", err)
 	}

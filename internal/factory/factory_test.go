@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -411,12 +412,15 @@ func TestARunWorksWhenTheRootIsNotGitsCanonicalPath(t *testing.T) {
 // byStep runs each Step's function by name, recording the Steps it saw.
 type byStep struct {
 	fns  map[string]func(context.Context, factory.Step) harness.Outcome
+	mu   sync.Mutex
 	seen []factory.Step
 }
 
 // run is the RunStep that dispatches by name.
 func (b *byStep) run(ctx context.Context, s factory.Step) harness.Outcome {
+	b.mu.Lock()
 	b.seen = append(b.seen, s)
+	b.mu.Unlock()
 	fn, ok := b.fns[s.Name]
 	if !ok {
 		return harness.Outcome{Kind: harness.Failed, Class: harness.Other, Message: "no " + s.Name + " in the test"}

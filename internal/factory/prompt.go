@@ -14,9 +14,9 @@ import (
 
 // promptContext is what every Step of the Ticket is told, read once
 // before implement: its comments and its Spec, whose Ticket list counts
-// the Tickets this Run closed as closed. A sequential Run works on one
-// Ticket at a time, so none of the others is in progress.
-func (r *run) promptContext(ctx context.Context, tk tracker.Ticket, spec *tracker.Spec, branch string) (prompt.Context, error) {
+// the Tickets this Run closed as closed. working holds, by ID.Key, the
+// Tickets of this Iteration, which are in progress.
+func (r *run) promptContext(ctx context.Context, tk tracker.Ticket, spec *tracker.Spec, branch string, working map[string]bool) (prompt.Context, error) {
 	comments, err := r.opts.Tracker.Comments(ctx, tk.ID)
 	if err != nil {
 		return prompt.Context{}, fmt.Errorf("reading its comments: %w", err)
@@ -25,14 +25,14 @@ func (r *run) promptContext(ctx context.Context, tk tracker.Ticket, spec *tracke
 		s := *spec
 		s.Tickets = slices.Clone(spec.Tickets)
 		for i, st := range s.Tickets {
-			if slices.ContainsFunc(r.res.Closed, func(c tracker.Ticket) bool { return c.ID.Key == st.ID.Key }) {
+			if r.closed(st.ID) {
 				s.Tickets[i].State = tracker.Closed
 			}
 		}
 		spec = &s
 	}
 	return prompt.Context{
-		Ticket: tk, Comments: comments, Spec: spec,
+		Ticket: tk, Comments: comments, Spec: spec, InProgress: working,
 		Branch: branch, Protected: r.protectedPaths(), Commands: r.opts.Commands, Standards: r.opts.Standards,
 	}, nil
 }

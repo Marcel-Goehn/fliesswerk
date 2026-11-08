@@ -1,8 +1,8 @@
 // Package factory is the Factory's loop: it takes the ready Tickets an
-// Iteration may work on, implements each on a short-lived Ticket branch in
-// a worktree it owns, fast-forwards the Spec branch, pushes it and closes
-// the Ticket. Code decides all of it; the agent only writes code and
-// reports.
+// Iteration may work on, implements them at once, each on a short-lived
+// Ticket branch in a worktree it owns, merges each into its Spec branch
+// through that Spec's merge queue, pushes it and closes the Ticket. Code
+// decides all of it; the agent only writes code and reports.
 package factory
 
 import (
@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/frontier"
@@ -38,9 +39,11 @@ type Options struct {
 	// CannotDoLabel replaces ReadyLabel on a Ticket handed back to a
 	// person.
 	CannotDoLabel string
+	// MaxParallel is how many Tickets an Iteration works on at once.
 	MaxParallel   int
 	MaxIterations int
-	// RunStep runs a Step in Step.Dir and says how it ended.
+	// RunStep runs a Step in Step.Dir and says how it ended. Steps of
+	// different Tickets call it at the same time.
 	RunStep func(ctx context.Context, s Step) harness.Outcome
 	// Review is whether the review Step runs after an implement Step that
 	// committed.
@@ -52,7 +55,8 @@ type Options struct {
 	VerifyEnv []string
 	// VerifyTimeout stops a Feedback command that runs longer.
 	VerifyTimeout time.Duration
-	// Log gets a line for everything the Run does; nil drops them.
+	// Log gets a line for everything the Run does, one call at a time;
+	// nil drops them.
 	Log func(runlog.Line)
 	// LinkBlockerFix comes from the Tracker's Description.
 	LinkBlockerFix func(ticket, blocker tracker.ID) string
@@ -130,6 +134,7 @@ const (
 	KindNoReport      = "no_report"
 	KindHarnessError  = "harness_error"
 	KindVerify        = "verify"
+	KindMerge         = "merge"
 	KindProtectedPath = "protected_path"
 	KindHook          = "sandbox_created"
 	KindPushRejected  = "push_rejected"
@@ -230,6 +235,15 @@ type run struct {
 	user string
 	// claimed holds the Specs this Run claimed, by ID.Key.
 	claimed map[string]bool
+	// requeued holds the Tickets whose merge has failed once, by ID.Key.
+	requeued map[string]bool
+	// mu guards what the Tickets of an Iteration share: res, done,
+	// stoppedSpecs, logs and requeued. It also keeps calls of opts.Log one
+	// at a time.
+	mu sync.Mutex
+	// gitMu keeps the Tickets' changes to .git/config one at a time: git
+	// refuses a second writer.
+	gitMu sync.Mutex
 }
 
 // Run runs Iterations until the frontier is empty or MaxIterations is
@@ -239,7 +253,7 @@ func Run(ctx context.Context, opts Options) Result {
 		repo:      git.Repo{Dir: opts.Root},
 		worktrees: filepath.Join(opts.Root, StateDir, "worktrees"),
 		specDirs:  map[string]string{}, done: map[string]bool{}, stoppedSpecs: map[string]bool{},
-		logs: map[string]*lastLines{}, claimed: map[string]bool{},
+		logs: map[string]*lastLines{}, claimed: map[string]bool{}, requeued: map[string]bool{},
 	}
 	r.writes = &durableTracker{
 		Tracker: opts.Tracker, path: filepath.Join(opts.Root, StateDir, "replay.json"),
@@ -310,13 +324,8 @@ func (r *run) run(ctx context.Context) error {
 			noun = "Ticket"
 		}
 		r.logf("Iteration %d: taking %d %s", i, len(plan.Take), noun)
-		for _, tk := range plan.Take {
-			if err := r.interrupted(ctx); err != nil {
-				return err
-			}
-			if err := r.work(ctx, tk, snap); err != nil {
-				return err
-			}
+		if err := r.iterate(ctx, plan.Take, snap); err != nil {
+			return err
 		}
 	}
 	if err := r.interrupted(ctx); err != nil {
@@ -459,14 +468,86 @@ func (r *run) workable(snap tracker.Snapshot) tracker.Snapshot {
 	return out
 }
 
-// work takes one Ticket through implement, the fast-forward, the push and
-// the close. Only an error that stops the whole Run is returned; anything
-// else fails the Ticket alone.
-func (r *run) work(ctx context.Context, tk tracker.Ticket, snap tracker.Snapshot) error {
-	if r.stoppedSpecs[tk.SpecID().Key] {
-		return nil
+// lane is one Spec's part of an Iteration.
+type lane struct {
+	// ctx ends when the Spec stops or the Run does: its Steps are killed.
+	ctx  context.Context
+	kill context.CancelFunc
+	// queue is its merge queue.
+	queue mergeQueue
+}
+
+// ticketWork is one Ticket of an Iteration, set up and ready to be built.
+type ticketWork struct {
+	tk                  tracker.Ticket
+	spec                *tracker.Spec
+	specBranch, specDir string
+	lane                *lane
+	b                   build
+}
+
+// iterate takes the Iteration's Tickets through their Steps at once, and
+// returns when every one of them has ended. It returns why the Run must
+// stop, if it must.
+//
+// The Tickets are set up one after the other: they share their Spec's
+// Claim and branch, and git refuses a second writer of .git/config.
+func (r *run) iterate(ctx context.Context, take []tracker.Ticket, snap tracker.Snapshot) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	lanes, working := map[string]*lane{}, map[string]bool{}
+	for _, tk := range take {
+		working[tk.ID.Key] = true
 	}
-	r.done[tk.ID.Key] = true
+	var prepared []*ticketWork
+	var stop error
+	for _, tk := range take {
+		if stop = r.interrupted(ctx); stop != nil {
+			break
+		}
+		l, ok := lanes[tk.SpecID().Key]
+		if !ok {
+			l = &lane{}
+			l.ctx, l.kill = context.WithCancel(ctx)
+			lanes[tk.SpecID().Key] = l
+		}
+		w, err := r.prepare(ctx, tk, snap, l, working)
+		if err != nil {
+			stop = err
+			break
+		}
+		if w != nil {
+			prepared = append(prepared, w)
+		}
+	}
+
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for _, w := range prepared {
+		wg.Go(func() {
+			err := r.finish(w)
+			if err == nil {
+				return
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			// What stopped the Run is worth more than the kills it caused,
+			// and a kill more than the drain it cut short.
+			if stop == nil || errors.Is(stop, errKilled) || errors.Is(stop, errDrained) {
+				stop = err
+			}
+			cancel()
+		})
+	}
+	wg.Wait()
+	return stop
+}
+
+// prepare claims the Ticket's Spec and cuts its Ticket branch from the
+// Spec branch's tip. A nil result means the Ticket failed alone. Only an
+// error that stops the whole Run is returned.
+func (r *run) prepare(ctx context.Context, tk tracker.Ticket, snap tracker.Snapshot, l *lane, working map[string]bool) (*ticketWork, error) {
+	r.setDone(tk, true)
 	r.tlogf(tk, "%s (%s)", tk.Title, where(tk))
 
 	var spec *tracker.Spec
@@ -477,12 +558,12 @@ func (r *run) work(ctx context.Context, tk tracker.Ticket, snap tracker.Snapshot
 	}
 	// giveUp ends the Ticket over a failure of the Factory's own, which a
 	// kill of the Run can also cause: then nothing is held against it.
-	giveUp := func(err error) error {
+	giveUp := func(err error) (*ticketWork, error) {
 		if ctx.Err() != nil {
-			return errKilled
+			return nil, errKilled
 		}
 		r.fail(tk, KindFactory, err.Error())
-		return nil
+		return nil, nil
 	}
 	if err := r.claim(ctx, tk, snap); err != nil {
 		return giveUp(err)
@@ -506,7 +587,7 @@ func (r *run) work(ctx context.Context, tk tracker.Ticket, snap tracker.Snapshot
 		return giveUp(err)
 	}
 
-	pc, err := r.promptContext(ctx, tk, spec, ticketBranch)
+	pc, err := r.promptContext(ctx, tk, spec, ticketBranch, working)
 	if err != nil {
 		return giveUp(err)
 	}
@@ -514,63 +595,44 @@ func (r *run) work(ctx context.Context, tk tracker.Ticket, snap tracker.Snapshot
 	if err != nil {
 		return giveUp(err)
 	}
-	b := build{tk: tk, prompt: pc, recent: recent, branch: ticketBranch, worktree: ticketDir, dir: filepath.Join(ticketDir, r.rel), base: specTip}
-	summary, failed, stop := r.build(ctx, b)
+	return &ticketWork{
+		tk: tk, spec: spec, specBranch: specBranch, specDir: specDir, lane: l,
+		b: build{tk: tk, prompt: pc, recent: recent, branch: ticketBranch, worktree: ticketDir, dir: filepath.Join(ticketDir, r.rel), base: specTip},
+	}, nil
+}
+
+// finish takes one Ticket through its Steps and its Spec's merge queue.
+// Only an error that stops the whole Run is returned; anything else fails
+// the Ticket alone.
+func (r *run) finish(w *ticketWork) error {
+	ctx := w.lane.ctx
 	if ctx.Err() != nil {
-		r.tlogf(tk, "killed; its work is discarded, and it is left as it was")
-		r.discard(context.WithoutCancel(ctx), b)
-		return errKilled
+		return r.abandon(w)
+	}
+	summary, failed, stop := r.build(ctx, w.b)
+	if ctx.Err() != nil {
+		return r.abandon(w)
 	}
 	if stop != nil {
 		return stop
 	}
 	if failed != nil {
-		r.failBuild(ctx, b, failed)
+		r.failBuild(ctx, w.b, failed)
 		return nil
 	}
-	commits, err := r.repo.Log(ctx, specTip, ticketBranch)
-	if err != nil {
-		return giveUp(err)
-	}
-	r.statsOf(tk).Commits = len(commits)
-	// From the push on, the Ticket's work lands whole: a kill can't leave
-	// commits on the remote with the Ticket still open. Tracker writes
-	// keep ctx, since a kill must end their waits; they survive it anyway.
-	landing := context.WithoutCancel(ctx)
-	// The Ticket's tip goes to the remote Spec branch first, so a rejected
-	// push leaves the local Spec branch where it was. Then the local one
-	// fast-forwards to it.
-	if err := r.repo.Push(landing, r.opts.Remote, ticketBranch, specBranch); err != nil {
-		if !errors.Is(err, git.ErrPushRejected) {
-			r.fail(tk, KindFactory, fmt.Sprintf("pushing %s failed: %v", specBranch, err))
-			return nil
-		}
-		r.stoppedSpecs[tk.SpecID().Key] = true
-		r.res.StoppedSpecs = append(r.res.StoppedSpecs, StoppedSpec{
-			ID: tk.SpecID(), Branch: specBranch,
-			Fix: fmt.Sprintf("bring your local branch up to date with `git fetch %s %s:%s`, then start a new Run", r.opts.Remote, specBranch, specBranch),
-		})
-		r.fail(tk, KindPushRejected, fmt.Sprintf("the push of %s was rejected, so %s stops for this Run: %v", specBranch, tk.SpecID(), err))
+	return r.land(w, summary)
+}
+
+// abandon discards the work of a Ticket that was killed and leaves the
+// Ticket as it was. If only its Spec stopped, the Run carries on.
+func (r *run) abandon(w *ticketWork) error {
+	r.discard(w.b)
+	if r.specStopped(w.tk) {
+		r.tlogf(w.tk, "killed, as %s stopped for this Run; its work is discarded, and it is left as it was", w.tk.SpecID())
 		return nil
 	}
-	r.tlogf(tk, "pushed %s", specBranch)
-	if err := (git.Repo{Dir: specDir}).MergeFastForward(landing, ticketBranch); err != nil {
-		r.fail(tk, KindFactory, fmt.Sprintf("%s was pushed, but the local branch can't be fast-forwarded to %s: %v", specBranch, ticketBranch, err))
-		return nil
-	}
-	if err := r.opts.Tracker.Close(ctx, tk.ID, closeComment(summary, commits, specBranch)); err != nil {
-		r.fail(tk, KindFactory, fmt.Sprintf("its commits are on %s, but closing it failed: %v", specBranch, err))
-		return nil
-	}
-	r.res.Closed = append(r.res.Closed, tk)
-	r.line(tk, runlog.Line{Kind: runlog.Success, Text: "closed"})
-	r.discard(landing, b)
-	if r.wasLast(tk, spec) {
-		r.finishSpec(tk, spec, specBranch)
-		r.release(ctx, tk.SpecID())
-		r.specFinished(ctx, tk.SpecID(), specBranch, specDir)
-	}
-	return nil
+	r.tlogf(w.tk, "killed; its work is discarded, and it is left as it was")
+	return errKilled
 }
 
 // finishSpec notes that the Ticket's Spec is finished.
@@ -579,6 +641,8 @@ func (r *run) finishSpec(tk tracker.Ticket, spec *tracker.Spec, branch string) {
 	if spec != nil {
 		title = spec.Title
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.res.SpecsFinished = append(r.res.SpecsFinished, FinishedSpec{ID: tk.SpecID(), Title: title, Branch: branch})
 }
 
@@ -624,6 +688,8 @@ func (r *run) release(ctx context.Context, id tracker.ID) {
 
 // closed reports whether this Run closed the Ticket.
 func (r *run) closed(id tracker.ID) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	for _, tk := range r.res.Closed {
 		if tk.ID.Key == id.Key {
 			return true
@@ -843,19 +909,31 @@ func (r *run) countCommits(ctx context.Context, from, branch string) (int, error
 }
 
 func (r *run) fail(tk tracker.Ticket, kind, reason string) {
+	r.mu.Lock()
 	r.res.Failed = append(r.res.Failed, Failure{Ticket: tk, Reason: reason, Kind: kind})
+	r.mu.Unlock()
 	r.line(tk, runlog.Line{Kind: runlog.Failure, Text: "failed: " + reason})
 }
 
 // countUsage adds what one Step attempt used to its Ticket and the Run.
 func (r *run) countUsage(tk tracker.Ticket, out harness.Outcome) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.res.Usage.Add(out.Usage)
 	s := r.statsOf(tk)
 	s.Usage.Add(out.Usage)
 	s.LargestContextWindow = max(s.LargestContextWindow, out.ContextWindow)
 }
 
-// statsOf is the Ticket's stats, started at its first use.
+// setCommits notes how many commits the Ticket lands.
+func (r *run) setCommits(tk tracker.Ticket, n int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.statsOf(tk).Commits = n
+}
+
+// statsOf is the Ticket's stats, started at its first use. The caller
+// holds mu.
 func (r *run) statsOf(tk tracker.Ticket) *TicketStats {
 	for _, s := range r.res.Stats {
 		if s.Ticket.ID.Key == tk.ID.Key {
@@ -865,6 +943,20 @@ func (r *run) statsOf(tk tracker.Ticket) *TicketStats {
 	s := &TicketStats{Ticket: tk}
 	r.res.Stats = append(r.res.Stats, s)
 	return s
+}
+
+// setDone notes whether this Run is finished with the Ticket.
+func (r *run) setDone(tk tracker.Ticket, done bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.done[tk.ID.Key] = done
+}
+
+// specStopped reports whether a rejected push stopped the Ticket's Spec.
+func (r *run) specStopped(tk tracker.Ticket) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.stoppedSpecs[tk.SpecID().Key]
 }
 
 // specBranch finds the branch of the Ticket's Spec by number, locally and
@@ -995,6 +1087,8 @@ func (r *run) lineTo(log *lastLines, tk tracker.Ticket, l runlog.Line) {
 
 // ticketLog is the Ticket's log of its last rendered lines.
 func (r *run) ticketLog(tk tracker.Ticket) *lastLines {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	l, ok := r.logs[tk.ID.Key]
 	if !ok {
 		l = &lastLines{}
@@ -1026,9 +1120,12 @@ func (r *run) warnf(format string, a ...any) {
 }
 
 func (r *run) emit(l runlog.Line) {
-	if r.opts.Log != nil {
-		r.opts.Log(l)
+	if r.opts.Log == nil {
+		return
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.opts.Log(l)
 }
 
 // firstNonEmpty is a, or b when a is empty.
