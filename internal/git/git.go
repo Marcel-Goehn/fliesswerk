@@ -190,6 +190,13 @@ func (r Repo) AddWorktree(ctx context.Context, path, branch string) error {
 	return err
 }
 
+// AddDetachedWorktree checks rev out in a new worktree at path, on no
+// branch: commits made there move no branch.
+func (r Repo) AddDetachedWorktree(ctx context.Context, path, rev string) error {
+	_, err := r.Run(ctx, "worktree", "add", "--quiet", "--detach", path, rev)
+	return err
+}
+
 // RemoveWorktree removes the worktree at path, with whatever it holds.
 func (r Repo) RemoveWorktree(ctx context.Context, path string) error {
 	_, err := r.Run(ctx, "worktree", "remove", "--force", path)
@@ -212,7 +219,21 @@ func (c Commit) Short() string { return c.SHA[:min(len(c.SHA), 7)] }
 
 // Log lists the commits reachable from to but not from from, oldest first.
 func (r Repo) Log(ctx context.Context, from, to string) ([]Commit, error) {
-	out, err := r.Run(ctx, "log", "--reverse", "--format=%H %s", from+".."+to)
+	return r.commits(ctx, "log", "--reverse", "--format=%H %s", from+".."+to)
+}
+
+// LogTouching is Log, limited to the commits that changed one of files,
+// which are relative to the top of the working tree: r.Dir must be there.
+// A commit on a side branch counts even if a merge later dropped its
+// change.
+func (r Repo) LogTouching(ctx context.Context, from, to string, files []string) ([]Commit, error) {
+	args := []string{"--literal-pathspecs", "log", "--full-history", "--reverse", "--format=%H %s", from + ".." + to, "--"}
+	return r.commits(ctx, append(args, files...)...)
+}
+
+// commits runs a git command that prints "<sha> <subject>" lines.
+func (r Repo) commits(ctx context.Context, args ...string) ([]Commit, error) {
+	out, err := r.Run(ctx, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -236,6 +257,11 @@ func (r Repo) Touched(ctx context.Context, from, to string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	return sortedPaths(out), nil
+}
+
+// sortedPaths are the NUL-separated paths of out, once each and sorted.
+func sortedPaths(out string) []string {
 	seen := map[string]bool{}
 	var files []string
 	for _, f := range strings.Split(out, "\x00") {
@@ -245,7 +271,18 @@ func (r Repo) Touched(ctx context.Context, from, to string) ([]string, error) {
 		}
 	}
 	sort.Strings(files)
-	return files, nil
+	return files
+}
+
+// Changed lists, sorted, the files that differ between from and to. Paths
+// are relative to r.Dir, with forward slashes, and files outside it are
+// left out. A rename counts as both of its paths.
+func (r Repo) Changed(ctx context.Context, from, to string) ([]string, error) {
+	out, err := r.Run(ctx, "diff", "--name-only", "--no-renames", "--relative", "-z", from, to)
+	if err != nil {
+		return nil, err
+	}
+	return sortedPaths(out), nil
 }
 
 // MergeFastForward moves the branch checked out in r.Dir forward to rev,
@@ -257,7 +294,7 @@ func (r Repo) MergeFastForward(ctx context.Context, rev string) error {
 
 // ConflictError says a merge has real conflicts.
 type ConflictError struct {
-	// Files are the conflicting files.
+	// Files are the conflicting files, relative to the Repo's Dir.
 	Files []string
 }
 
@@ -280,6 +317,51 @@ func (r Repo) MergeTree(ctx context.Context, ours, theirs string) (string, error
 		return "", &ConflictError{Files: fields[1:]}
 	}
 	return fields[0], nil
+}
+
+// StartMerge merges rev into HEAD in r.Dir and leaves the merge in
+// progress, conflicts and all, for someone to finish with a commit of the
+// given message.
+func (r Repo) StartMerge(ctx context.Context, rev, message string) error {
+	_, err := r.Run(ctx, "merge", "--quiet", "--no-ff", "--no-commit", "-m", message, rev)
+	if _, inProgress := r.Run(ctx, "rev-parse", "--verify", "--quiet", "MERGE_HEAD"); inProgress == nil {
+		return nil
+	}
+	return err
+}
+
+// Clean reports whether r.Dir has nothing uncommitted: no changes, no
+// untracked files, no merge conflicts. Ignored files don't count.
+func (r Repo) Clean(ctx context.Context) (bool, error) {
+	out, err := r.Run(ctx, "status", "--porcelain")
+	return out == "", err
+}
+
+// Contains reports whether commit is rev or one of its ancestors.
+func (r Repo) Contains(ctx context.Context, rev, commit string) (bool, error) {
+	missing, err := r.Log(ctx, rev, commit)
+	return len(missing) == 0, err
+}
+
+// ConflictMarkers lists those of files that hold conflict markers at rev.
+// The files are relative to the top of the working tree: r.Dir must be
+// there. A file rev doesn't have holds none. "=======" alone is no marker,
+// since it also underlines headings.
+func (r Repo) ConflictMarkers(ctx context.Context, rev string, files []string) ([]string, error) {
+	args := []string{"--literal-pathspecs", "grep", "-z", "-l", "-I", "-E", "^(<<<<<<<|>>>>>>>) ", rev, "--"}
+	out, err := r.output(ctx, append(args, files...)...)
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() == 1 {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var marked []string
+	for _, f := range strings.Split(strings.TrimRight(out, "\x00"), "\x00") {
+		marked = append(marked, strings.TrimPrefix(f, rev+":"))
+	}
+	return marked, nil
 }
 
 // CommitTree makes a commit of tree with the given parents and returns

@@ -69,7 +69,7 @@ func Implement(part string, c Context, recent Recent, failed *verify.Failure) st
 			failed.Command.Name, failed.Command.Line, failed.Err, fence, failed.Tail(RetryOutputLines), fence)
 	}
 	editable(&b, fill(part, implementStep, c))
-	bottom(&b, c, "The Factory closes it after your work has been merged.")
+	bottom(&b, c, "The Factory closes it after your work has been merged.", onBranch(c))
 	b.WriteString(`# Done
 
 When you are finished, report "done" with a short summary of what you changed.
@@ -98,10 +98,63 @@ func Review(part string, c Context, base string) string {
 		"Closed Tickets are finished. In progress and open Tickets are someone else's work: don't add them, even if they look easy to include.")
 	fmt.Fprintf(&b, "# What changed\n\nThe work to review is every commit on this branch since `%s`. Read it with:\n\n- `git log %s..HEAD`\n- `git diff %s..HEAD`\n\n", base, base, base)
 	editable(&b, fill(part, reviewStep, c))
-	bottom(&b, c, "The Factory closes it after the change has been merged.")
+	bottom(&b, c, "The Factory closes it after the change has been merged.", onBranch(c))
 	b.WriteString(`# Done
 
 When you are finished, report "done" with a short summary of what you found and fixed, or that the change is fine as it is.
+`)
+	return b.String()
+}
+
+// Merging is what only the merge Step is told.
+type Merging struct {
+	// SpecBranch is the branch the Ticket is being merged into.
+	SpecBranch string
+	// Files are the conflicting files.
+	Files []string
+	// Merged are the Tickets merged since this one started whose commits
+	// touched Files, in the order they landed.
+	Merged []MergedTicket
+}
+
+// MergedTicket is a Ticket on the other side of a conflict.
+type MergedTicket struct {
+	Ticket tracker.Ticket
+	// Commits are its commits that touched the conflicting files.
+	Commits []git.Commit
+}
+
+// Merge is the merge prompt, around part.
+func Merge(part string, c Context, m Merging) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# Task\n\nResolve the merge of Ticket %s: %s\n\nThis Ticket's work is being merged into `%s`, and other Tickets changed the same files after it started. The merge is in progress in this worktree and has stopped on its conflicts. The Ticket's %s\n\n",
+		c.Ticket.ID, c.Ticket.Title, m.SpecBranch, strings.TrimPrefix(provided(c.Spec), "Its "))
+	ticket(&b, c)
+	spec(&b, c, "The Ticket is part of Spec %s: %s. The Spec describes the whole feature. Use it to understand what each side of the conflict is for.",
+		"Resolve only this conflict. The other Tickets' work is not yours to add or change.")
+	b.WriteString("# Conflicting files\n\nTheir paths start at the top of the repository.\n\n")
+	for _, f := range m.Files {
+		fmt.Fprintf(&b, "- `%s`\n", f)
+	}
+	b.WriteString("\n")
+	if len(m.Merged) > 0 {
+		b.WriteString("# Tickets merged since this Ticket started\n\nThese Tickets' commits touched the conflicting files. They are the other side of the conflict.\n\n")
+	}
+	for _, t := range m.Merged {
+		fmt.Fprintf(&b, "## %s %s\n\n<ticket>\n%s\n</ticket>\n\n", t.Ticket.ID, t.Ticket.Title, strings.TrimSpace(t.Ticket.Body))
+		for _, cm := range t.Commits {
+			fmt.Fprintf(&b, "- %s %s\n", cm.Short(), cm.Subject)
+		}
+		b.WriteString("\n")
+	}
+	editable(&b, fill(part, mergeStep, c))
+	bottom(&b, c, "The Factory closes it after the merge has been verified and pushed.",
+		fmt.Sprintf("You are in a worktree made for this merge, at the tip of `%s`, on no branch. Commit the merge here. Don't push, switch branches, rebase, rewrite existing commits or abort the merge.", m.SpecBranch))
+	b.WriteString(`# Done
+
+When the merge is committed and nothing is left uncommitted, report "done" with a short summary of how you resolved it.
+
+Report "cannot_do", with the reason, only if the two sides can't both be kept, or the merged code fails and you can't fix it. The Ticket is then implemented afresh on top of the other Tickets' work.
 `)
 	return b.String()
 }
@@ -186,9 +239,15 @@ func editable(b *strings.Builder, part string) {
 	}
 }
 
+// onBranch is the Rule that says where a Step on the Ticket branch works.
+func onBranch(c Context) string {
+	return fmt.Sprintf("You are on the branch `%s`, in a worktree made for this Ticket. Commit your work here. Don't push, switch branches, rebase or rewrite existing commits.", c.Branch)
+}
+
 // bottom writes the fixed bottom's reminder and Rules; closes says when
-// the Factory closes the Ticket.
-func bottom(b *strings.Builder, c Context, closes string) {
+// the Factory closes the Ticket, and whereRule is the Rule on where the
+// Step works.
+func bottom(b *strings.Builder, c Context, closes, whereRule string) {
 	quoted := make([]string, len(c.Protected))
 	for i, p := range c.Protected {
 		quoted[i] = "`" + p + "`"
@@ -199,11 +258,11 @@ func bottom(b *strings.Builder, c Context, closes string) {
 
 # Rules
 
-- You are on the branch `+"`%s`"+`, in a worktree made for this Ticket. Commit your work here. Don't push, switch branches, rebase or rewrite existing commits.
+- %s
 - Never change these Protected paths: %s. Work that changes them is rejected, and the Ticket goes back to a person.
 - Do not leave commented-out code or TODO comments in committed code.
 
-`, closes, c.Branch, strings.Join(quoted, ", "))
+`, closes, whereRule, strings.Join(quoted, ", "))
 }
 
 // CodeFence is a run of backticks longer than any in text, so text can't

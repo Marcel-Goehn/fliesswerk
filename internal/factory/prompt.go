@@ -21,20 +21,25 @@ func (r *run) promptContext(ctx context.Context, tk tracker.Ticket, spec *tracke
 	if err != nil {
 		return prompt.Context{}, fmt.Errorf("reading its comments: %w", err)
 	}
-	if spec != nil {
-		s := *spec
-		s.Tickets = slices.Clone(spec.Tickets)
-		for i, st := range s.Tickets {
-			if r.closed(st.ID) {
-				s.Tickets[i].State = tracker.Closed
-			}
-		}
-		spec = &s
-	}
 	return prompt.Context{
-		Ticket: tk, Comments: comments, Spec: spec, InProgress: working,
+		Ticket: tk, Comments: comments, Spec: r.withClosed(spec), InProgress: working,
 		Branch: branch, Protected: r.protectedPaths(), Commands: r.opts.Commands, Standards: r.opts.Standards,
 	}, nil
+}
+
+// withClosed is spec, with the Tickets this Run closed counted as closed.
+func (r *run) withClosed(spec *tracker.Spec) *tracker.Spec {
+	if spec == nil {
+		return nil
+	}
+	s := *spec
+	s.Tickets = slices.Clone(spec.Tickets)
+	for i, st := range s.Tickets {
+		if r.closed(st.ID) {
+			s.Tickets[i].State = tracker.Closed
+		}
+	}
+	return &s
 }
 
 // recentCommits are the Spec branch's commits since the base branch, or,

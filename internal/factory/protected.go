@@ -24,6 +24,12 @@ func (r *run) checkProtected(ctx context.Context, b build, step, from string) *f
 	if err != nil {
 		return factoryFailure(err)
 	}
+	return r.rejectProtected(step, files)
+}
+
+// rejectProtected fails the Ticket if the Step changed a Protected path
+// among files, which are relative to the project root.
+func (r *run) rejectProtected(step string, files []string) *failure {
 	var hit []string
 	for _, f := range files {
 		if protected(f, r.protectedPaths()) {

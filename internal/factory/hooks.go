@@ -60,7 +60,8 @@ func (r *run) runEnd(ctx context.Context) {
 
 // sandboxCreated runs the sandbox_created Hooks of a Ticket's Sandbox. A
 // failure is a Step failure: the Hooks get one fresh retry in the same
-// worktree, and then the Ticket goes back to a person.
+// worktree. After that a build hands the Ticket back to a person, and a
+// merge re-queues it.
 func (r *run) sandboxCreated(ctx context.Context, b build) *failure {
 	m := hook.Setting{HostDir: r.opts.Root, SandboxDir: b.dir}
 	log := func(line string) { r.tlogf(b.tk, "%s", line) }

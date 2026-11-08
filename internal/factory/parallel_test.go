@@ -190,6 +190,20 @@ func parallel(f fixture, tr tracker.Tracker, steps map[string]func(context.Conte
 	return opts
 }
 
+// refusingMerges are options for a Run working on two Tickets at once
+// whose merge Step reports cannot_do on every conflict.
+func refusingMerges(f fixture, tr tracker.Tracker, steps map[string]func(context.Context, factory.Step) harness.Outcome) factory.Options {
+	opts := parallel(f, tr, steps)
+	run := opts.RunStep
+	opts.RunStep = func(ctx context.Context, s factory.Step) harness.Outcome {
+		if s.Name == factory.Merge {
+			return reports(harness.CannotDo, "The two can't both be kept.")(ctx, s)
+		}
+		return run(ctx, s)
+	}
+	return opts
+}
+
 func TestAConflictingTicketIsImplementedAfreshFromTheUpdatedSpecBranch(t *testing.T) {
 	f := newFixture(t)
 	tr := fake.New(ready, ticketsOf("Write it one way", "Write it another way")...)
@@ -206,7 +220,7 @@ func TestAConflictingTicketIsImplementedAfreshFromTheUpdatedSpecBranch(t *testin
 		},
 	}}
 
-	res := factory.Run(context.Background(), parallel(f, tr, map[string]func(context.Context, factory.Step) harness.Outcome{
+	res := factory.Run(context.Background(), refusingMerges(f, tr, map[string]func(context.Context, factory.Step) harness.Outcome{
 		"#2": commitFile("shared.txt", "from 2\n"),
 		"#3": ticket3.run,
 	}))
@@ -240,7 +254,7 @@ func TestASecondFailedMergeHandsTheTicketBack(t *testing.T) {
 		afterClosed(t, tr, 4, commitFile("shared.txt", "from 3 again\n")),
 	}}
 
-	res := factory.Run(context.Background(), parallel(f, tr, map[string]func(context.Context, factory.Step) harness.Outcome{
+	res := factory.Run(context.Background(), refusingMerges(f, tr, map[string]func(context.Context, factory.Step) harness.Outcome{
 		"#2": commitFile("shared.txt", "from 2\n"),
 		"#3": ticket3.run,
 		"#4": commitFile("shared.txt", "from 4\n"),

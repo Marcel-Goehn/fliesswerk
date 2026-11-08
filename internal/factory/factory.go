@@ -104,15 +104,16 @@ type Options struct {
 const (
 	Implement = "implement"
 	Review    = "review"
+	Merge     = "merge"
 )
 
 // Step is one Step the Run hands to RunStep.
 type Step struct {
-	// Name is Implement or Review.
+	// Name is Implement, Review or Merge.
 	Name   string
 	Ticket tracker.Ticket
 	// Dir is where the Step runs: the project root inside the Ticket's
-	// worktree.
+	// worktree, or inside the merge's for a merge Step.
 	Dir    string
 	Prompt string
 	// Log logs a line of the Step's output, such as a tool call, under
@@ -475,6 +476,16 @@ type lane struct {
 	kill context.CancelFunc
 	// queue is its merge queue.
 	queue mergeQueue
+	// landed are the Tickets it has merged so far, oldest first. Only the
+	// Ticket whose turn it is in the queue uses it.
+	landed []landedTicket
+}
+
+// landedTicket is a Ticket on the Spec branch and its own commits, which
+// nothing in git ties to it: a fast-forward leaves no merge commit.
+type landedTicket struct {
+	tk      tracker.Ticket
+	commits []git.Commit
 }
 
 // ticketWork is one Ticket of an Iteration, set up and ready to be built.
@@ -484,6 +495,8 @@ type ticketWork struct {
 	specBranch, specDir string
 	lane                *lane
 	b                   build
+	// resolution is the merge Step's summary, if one resolved a conflict.
+	resolution string
 }
 
 // iterate takes the Iteration's Tickets through their Steps at once, and
