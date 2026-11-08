@@ -221,7 +221,8 @@ func TestARunWithoutAContainerEngineStopsWithTheFix(t *testing.T) {
 	bin := buildKraftwerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": dryRunProject})
 
-	_, stderr, code := runEnv(t, bin, root, ghEnv(t, "dryrun"), "run")
+	// Whichever engine CI picks for its own job, this Run must choose itself.
+	_, stderr, code := runEnv(t, bin, root, ghEnv(t, "dryrun", "KRAFTWERK_ENGINE="), "run")
 
 	if code != 3 || !strings.Contains(stderr, "Docker or Podman") {
 		t.Fatalf("exit code = %d, want 3 naming the engines; stderr: %s", code, stderr)

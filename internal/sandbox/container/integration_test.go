@@ -44,6 +44,11 @@ func gitIn(t *testing.T, dir string, args ...string) string {
 
 func newProject(t *testing.T, runArgs ...string) *project {
 	t.Helper()
+	// The identity a Sandbox's commits get is the one the host's git has.
+	for _, who := range []string{"AUTHOR", "COMMITTER"} {
+		t.Setenv("GIT_"+who+"_NAME", "Test")
+		t.Setenv("GIT_"+who+"_EMAIL", "t@example.com")
+	}
 	root := t.TempDir()
 	gitIn(t, root, "init", "-q", "-b", "main")
 	if err := os.MkdirAll(filepath.Join(root, ".kraftwerk", "state"), 0o750); err != nil {

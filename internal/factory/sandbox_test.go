@@ -18,8 +18,8 @@ import (
 	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
 )
 
-// recordedSandbox runs its commands on the host, in the Sandbox's project
-// directory as a real one would, and notes them.
+// recordedSandbox notes the commands it is asked to run. Each just passes,
+// or fails if it says `exit 1`, through a git call that does so on every OS.
 type recordedSandbox struct {
 	req sandbox.Request
 
@@ -34,8 +34,11 @@ func (s *recordedSandbox) Exec(argv, env []string) ([]string, []string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.lines = append(s.lines, argv[len(argv)-1])
-	script := "cd '" + s.req.Worktree + "/" + s.req.Rel + "' && " + argv[len(argv)-1]
-	return []string{"/bin/sh", "-c", script}, env
+	result := "--version"
+	if strings.Contains(argv[len(argv)-1], "exit 1") {
+		result = "--no-such-flag"
+	}
+	return []string{"git", result}, append(os.Environ(), env...)
 }
 
 func (s *recordedSandbox) KillAll(context.Context) error {
