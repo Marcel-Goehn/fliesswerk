@@ -267,15 +267,16 @@ func TestAFailedVerifyOnTheMergedResultReQueuesTheTicketAndLeavesTheSpecBranch(t
 		afterClosed(t, tr, 2, commitFile("b.go", "package x\n")),
 		func(ctx context.Context, s factory.Step) harness.Outcome {
 			tipAtRetry = f.remoteRef(t, specBranch)
-			return commitFile("b.go", "package x\n")(ctx, s)
+			return commitFile("c.go", "package x\n")(ctx, s)
 		},
 	}}
 	opts := parallel(f, tr, map[string]func(context.Context, factory.Step) harness.Outcome{
 		"#2": commitFile("a.go", "package x\n"),
 		"#3": ticket3.run,
 	})
-	// It passes everywhere but on a merge commit.
-	opts.Verify = []verify.Command{{Name: "test", Line: "git rev-parse --verify -q HEAD^2 && exit 1 || exit 0"}}
+	// It passes unless a.go and b.go are both there, as only on the merged
+	// result. No caret: cmd.exe would eat it.
+	opts.Verify = []verify.Command{{Name: "test", Line: "git ls-files --error-unmatch a.go b.go && exit 1 || exit 0"}}
 
 	res := factory.Run(context.Background(), opts)
 
