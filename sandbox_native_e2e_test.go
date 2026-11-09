@@ -146,7 +146,11 @@ KWK_FAKE_HARNESS_SCRIPT = "`+p.scriptPath+`"
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := []string{fakeClaudeBinDir(t), filepath.Dir(git), "/bin"}
+	curl, err := exec.LookPath("curl") // `check` probes the Sandbox with it
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := []string{fakeClaudeBinDir(t), filepath.Dir(git), filepath.Dir(curl), "/bin"}
 	if runtime.GOOS == "linux" {
 		bwrap, err := exec.LookPath("bwrap")
 		if err != nil {

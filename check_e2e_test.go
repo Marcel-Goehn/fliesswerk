@@ -237,6 +237,7 @@ func TestCheckNamesTheFixWhenThereIsNoEngine(t *testing.T) {
 			env = append(env, "PATH="+failing+string(os.PathListSeparator)+p)
 		}
 	}
+	env = append(env, "KRAFTWERK_ENGINE=") // CI picks one, and this is about having neither
 
 	_, stderr, code := runEnv(t, bin, root, env, "check")
 
