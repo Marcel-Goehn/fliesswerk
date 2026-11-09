@@ -68,13 +68,13 @@ func TestCheckTestsABedrockCredentialWithoutMintingAnything(t *testing.T) {
 
 func TestARunHandsBedrockCredentialsOverInAReadableFile(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("the scripted agent copies the file with sh")
+		t.Skip("the scripted agent copies the file with /bin/cp")
 	}
 	bin := buildTestKraftwerk(t)
 	stsURL, actions := fakeSTS(t)
 	copied := filepath.Join(t.TempDir(), "seen.json")
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, {"match": "Ticket #2", "expand": true, "actions": [
-		{"run": ["sh", "-c", "cp \"$KRAFTWERK_CREDENTIAL_FILE\" `+copied+`"]},
+		{"run": ["/bin/cp", "$KRAFTWERK_CREDENTIAL_FILE", "`+copied+`"]},
 		{"run": ["git", "commit", "-q", "--allow-empty", "-m", "done"]}
 	], "report": {"outcome": "done", "summary": "Done."}}]}`)
 	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), noSandbox+bedrockKeys)
