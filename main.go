@@ -23,6 +23,7 @@ func main() {
 }
 
 const usage = `Usage:
+  kraftwerk init                  set this project up, mostly by confirming what the repo suggests
   kraftwerk check [--commands]    find where a setup is stuck, before any token is spent;
                                   --commands also runs the project's commands on base_branch
   kraftwerk run [<N>]             implement the ready Tickets, Iteration by Iteration (of only Spec or standalone Ticket N)
@@ -50,6 +51,9 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 1 && args[0] == "--version" {
 		_, _ = fmt.Fprintf(stdout, "kraftwerk %s\n", versionString())
 		return exitOK
+	}
+	if len(args) > 0 && args[0] == "init" {
+		return runInit(args[1:], os.Stdin, stdout, stderr)
 	}
 	if len(args) > 0 && args[0] == "check" {
 		return runCheck(args[1:], stdout, stderr)

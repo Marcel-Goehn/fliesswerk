@@ -187,7 +187,8 @@ type Description struct {
 	Kind string
 	// ConfigSection is the config table that holds its settings.
 	ConfigSection string
-	// Questions are what `init` asks to fill in ConfigSection.
+	// Questions are what `init` asks right after the Tracker's own select
+	// question, in this order.
 	Questions []Question
 	// Checks are the machine checks `check` runs, in order.
 	Checks []Check

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcel-Goehn/kraftwerk/internal/config"
 	"github.com/Marcel-Goehn/kraftwerk/internal/egress"
 	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
@@ -22,6 +23,7 @@ import (
 	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
 	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox/container"
 	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox/native"
+	"github.com/Marcel-Goehn/kraftwerk/internal/setup"
 	"github.com/Marcel-Goehn/kraftwerk/internal/step"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
 	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
@@ -253,11 +255,13 @@ func credentialDir(root string) string {
 	return filepath.Join(root, factory.StateDir, "credentials")
 }
 
-// checkSandboxConfig checks the settings of the Run's Sandbox kind. refused
+// checkSandboxConfig checks that no line is left for a person to fill in, and
+// the settings of the Run's Sandbox kind. refused
 // stop the Run; warnings stay the user's call.
 func checkSandboxConfig(values map[string]any, root string, s *secrets) (refused, warnings []string) {
+	refused = leftoverTodos(root)
 	if !inSandbox(values) {
-		return nil, nil
+		return refused, nil
 	}
 	ca, err := sandbox.LoadCACerts(root, caCerts(values))
 	if err != nil {
@@ -272,6 +276,24 @@ func checkSandboxConfig(values map[string]any, root string, s *secrets) (refused
 		more = append(more, native.CheckCACerts(ca.Paths, native.CurrentHost())...)
 	}
 	return append(refused, more...), warnings
+}
+
+// leftoverTodos names every line `init` left for a person to fill in that
+// still is, in the files that shape a Sandbox.
+func leftoverTodos(root string) []string {
+	var found []string
+	for _, name := range []string{"Containerfile", "config.toml", "config.local.toml"} {
+		data, err := os.ReadFile(filepath.Join(root, config.Dir, name)) //nolint:gosec // the project's own files
+		if err != nil {
+			continue // a missing file has nothing left to fill in
+		}
+		for i, line := range strings.Split(string(data), "\n") {
+			if strings.Contains(line, setup.TodoMarker) {
+				found = append(found, fmt.Sprintf("%s/%s:%d: fill this in and delete the marker: %s", config.Dir, name, i+1, strings.TrimSpace(line)))
+			}
+		}
+	}
+	return found
 }
 
 // caCerts is `[network] ca_certs`.

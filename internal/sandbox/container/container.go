@@ -227,9 +227,19 @@ func (p *Provider) ensureImage(ctx context.Context) error {
 	}
 	p.log("Building the Sandbox image from .kraftwerk/Containerfile")
 	if _, err := p.engine.run(ctx, append(args, empty)...); err != nil {
-		return fmt.Errorf("building the Sandbox image from .kraftwerk/Containerfile: %w", err)
+		return fmt.Errorf("building the Sandbox image from .kraftwerk/Containerfile: %w", explainBuildFailure(err))
 	}
 	return nil
+}
+
+// explainBuildFailure adds the fix to the one build failure that isn't about
+// the Containerfile: `RUN --mount`, which the build secret needs, on a Docker
+// with no BuildKit. Distribution packages of Docker often leave it out.
+func explainBuildFailure(err error) error {
+	if !strings.Contains(err.Error(), "requires BuildKit") && !strings.Contains(err.Error(), "buildx component is missing") {
+		return err
+	}
+	return fmt.Errorf("%w\nDocker needs its buildx plugin to build this image: install it (on Debian or Ubuntu, `sudo apt install docker-buildx`; otherwise see https://docs.docker.com/go/buildx/) and run this again", err)
 }
 
 // caSecret is the build secret `ca_certs` go in as.

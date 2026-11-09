@@ -380,6 +380,7 @@ func (t *Tracker) Describe() tracker.Description {
 		ConfigSection: "tracker",
 		Questions: []tracker.Question{
 			{Key: "tracker.repo", Prompt: "Which GitHub repository holds your Tickets (owner/name)?"},
+			{Key: "branches.base_branch", Prompt: "Which branch should feature branches start from?", Default: "main"},
 			{Key: "tracker.ready_label", Prompt: "Which label marks a Ticket Ready for agent?", Default: "ready-for-agent"},
 		},
 		Checks: []tracker.Check{

@@ -278,3 +278,15 @@ func TestCheckWarnsAndSkipsTheProbeWhileARunIsInProgress(t *testing.T) {
 	}
 	mustContain(t, "stderr", stderr, "a Run is in progress")
 }
+
+func TestCheckRefusesWhileATodoLineIsLeft(t *testing.T) {
+	p := checkProject(t, "")
+	writeFile(t, filepath.Join(p.work, ".kraftwerk", "Containerfile"), "FROM scratch\n# TODO(kraftwerk): install Ruby\n")
+
+	code := p.kwk(t, "check")
+
+	if code != exitConfigError {
+		t.Fatalf("exit code = %d, want %d\nstderr: %s", code, exitConfigError, p.stderr)
+	}
+	mustContain(t, "stderr", p.stderr, ".kraftwerk/Containerfile:2", "TODO(kraftwerk): install Ruby")
+}

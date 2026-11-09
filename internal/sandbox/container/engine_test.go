@@ -156,3 +156,21 @@ func TestNoEngineNamesTheFix(t *testing.T) {
 		t.Errorf("err = %v, want one naming both engines", err)
 	}
 }
+
+func TestABuildWithoutBuildKitNamesTheFix(t *testing.T) {
+	err := explainBuildFailure(errors.New("docker build: exit status 1: the --mount option requires BuildKit. Refer to https://docs.docker.com/go/buildkit/"))
+
+	for _, want := range []string{"buildx", "docker-buildx", "requires BuildKit"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("%q lacks %q", err, want)
+		}
+	}
+}
+
+func TestAnyOtherBuildFailureIsLeftAsItIs(t *testing.T) {
+	cause := errors.New("docker build: exit status 1: no space left on device")
+
+	if err := explainBuildFailure(cause); !errors.Is(err, cause) || err.Error() != cause.Error() {
+		t.Errorf("got %v", err)
+	}
+}
