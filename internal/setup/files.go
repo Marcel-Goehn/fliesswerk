@@ -34,17 +34,31 @@ type File struct{ Path, Content string }
 func Files(f Facts, a Answers, h Harness) []File {
 	in := func(name string) string { return path.Join(config.Dir, name) }
 	files := []File{
-		{in(".gitignore"), "# " + generated + "\nconfig.local.toml\n.env\nlogs/\nstate/\n"},
+		gitignoreFile(),
 		{in("config.toml"), configTOML(f, a, h)},
 	}
 	if a.Kind == kindContainer {
 		files = append(files, File{in("Containerfile"), containerfile(f, a, h)})
 	}
-	if a.Unsandboxed {
-		files = append(files, File{in("config.local.toml"), "# Your own settings for this project. Never committed.\n\n[sandbox]\nkind = \"none\"\ni_accept_unsandboxed_risk = true\n"})
-	}
 	for _, step := range prompt.Steps {
 		files = append(files, File{path.Join(prompt.Dir, step+".md"), prompt.Marker(step) + "\n\n" + prompt.Builtin(step, prompt.Latest(step))})
+	}
+	return files
+}
+
+// gitignoreFile keeps what is personal or a Run's own out of the repo.
+func gitignoreFile() File {
+	return File{path.Join(config.Dir, ".gitignore"), "# " + generated + "\nconfig.local.toml\n.env\nlogs/\nstate/\n"}
+}
+
+// Recreated are the team's files a re-run may bring back, all but the
+// config itself and the prompts: a deleted prompt stays deleted. kind is the
+// Sandbox kind this person runs. The Containerfile is read from the repo as
+// it is now, every language the repo shows being taken as chosen.
+func Recreated(f Facts, kind string, h Harness) []File {
+	files := []File{gitignoreFile()}
+	if kind == kindContainer {
+		files = append(files, File{path.Join(config.Dir, "Containerfile"), containerfile(f, Answers{Languages: f.Languages()}, h)})
 	}
 	return files
 }

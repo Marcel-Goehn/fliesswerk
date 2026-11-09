@@ -198,13 +198,29 @@ func ResolveAuth(ctx context.Context, r Resolver, desc harness.Description, tabl
 // TLSEndpoint is the host, with a port if it has its own, where the method's
 // Harness talks TLS, "" if it doesn't. A test call to that host says more than
 // Endpoints can: a gateway's scheme and port.
-func (a *Auth) TLSEndpoint() string {
-	if len(a.Endpoints) == 0 {
+func (a *Auth) TLSEndpoint() string { return tlsEndpoint(a.Endpoints, a.test) }
+
+// MethodTLSEndpoint is the TLSEndpoint of m once its fields are known. It
+// reads no secret, so fields needn't hold any.
+func MethodTLSEndpoint(m harness.AuthMethod, fields map[string]string) string {
+	var endpoints []string
+	if m.Endpoints != nil {
+		endpoints = m.Endpoints(fields)
+	}
+	var test harness.Request
+	if m.TestCall != nil {
+		test = m.TestCall(fields)
+	}
+	return tlsEndpoint(endpoints, test)
+}
+
+func tlsEndpoint(endpoints []string, test harness.Request) string {
+	if len(endpoints) == 0 {
 		return ""
 	}
-	u, err := url.Parse(a.test.URL)
-	if err != nil || u.Hostname() != a.Endpoints[0] {
-		return a.Endpoints[0]
+	u, err := url.Parse(test.URL)
+	if err != nil || u.Hostname() != endpoints[0] {
+		return endpoints[0]
 	}
 	if u.Scheme != "https" {
 		return ""

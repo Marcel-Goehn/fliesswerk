@@ -2,15 +2,20 @@ package main
 
 import (
 	"context"
+	"crypto/x509"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
+	"golang.org/x/crypto/x509roots/fallback/bundle"
+
 	"github.com/Marcel-Goehn/kraftwerk/internal/egress"
 	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
 	"github.com/Marcel-Goehn/kraftwerk/internal/git"
 	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
+	"github.com/Marcel-Goehn/kraftwerk/internal/setup"
 )
 
 // probeCleanupTimeout bounds one step of removing what a probe set up.
@@ -23,6 +28,54 @@ func harnessEndpoint(s *secrets) string {
 		return ""
 	}
 	return s.auth.TLSEndpoint()
+}
+
+// findInterception asks, before there is any Sandbox, what `check` later asks
+// from inside one: the public roots stand in for what a Sandbox trusts, with
+// the team's `ca_certs` on top. Anything but an unknown authority says nothing
+// about interception, and `check` reports it better.
+func findInterception(values map[string]any, root string) func(context.Context, string) *setup.Interception {
+	return func(ctx context.Context, host string) *setup.Interception {
+		route, err := egress.OptionsFrom(values, nil).Route()
+		if err != nil {
+			return nil
+		}
+		trusted := publicRoots()
+		if team, err := sandbox.LoadCACerts(root, stringsOf(valueAt(values, "network", "ca_certs"))); err == nil {
+			trusted.AppendCertsFromPEM(team.PEM)
+		}
+		var unknown x509.UnknownAuthorityError
+		if _, err := sandbox.VerifiedChain(route, trusted)(ctx, host); !errors.As(err, &unknown) {
+			return nil
+		}
+		chain, err := sandbox.VerifiedChain(route, nil)(ctx, host)
+		if err != nil {
+			return nil
+		}
+		found := &setup.Interception{Host: host}
+		if last := chain[len(chain)-1]; sandbox.IsRoot(last) {
+			found.Root = last
+		}
+		return found
+	}
+}
+
+// publicRoots are the roots of the Mozilla list, which is what the public CA
+// packages of a Sandbox hold.
+func publicRoots() *x509.CertPool {
+	pool := x509.NewCertPool()
+	for r := range bundle.Roots() {
+		cert, err := x509.ParseCertificate(r.Certificate)
+		if err != nil {
+			continue
+		}
+		if r.Constraint == nil {
+			pool.AddCert(cert)
+		} else {
+			pool.AddCertWithConstraint(cert, r.Constraint)
+		}
+	}
+	return pool
 }
 
 // probeDir is the worktree of the Sandbox that a probe starts.

@@ -41,7 +41,9 @@ func listModels(base string, header map[string]string) harness.Request {
 var authMethods = []harness.AuthMethod{
 	{
 		Name:      "oauth_token",
-		Fields:    []harness.AuthField{{Key: "secret", Secret: true}},
+		Label:     "A Claude subscription",
+		Hint:      "Get a long-lived token with `claude setup-token`.",
+		Fields:    []harness.AuthField{{Key: "secret", Secret: true, Prompt: "the token", StoreKey: "claude"}},
 		Env:       map[string]string{"CLAUDE_CODE_OAUTH_TOKEN": "secret"},
 		Endpoints: anthropicEndpoints,
 		TestCall: func(f map[string]string) harness.Request {
@@ -53,7 +55,8 @@ var authMethods = []harness.AuthMethod{
 	},
 	{
 		Name:      "api_key",
-		Fields:    []harness.AuthField{{Key: "secret", Secret: true}},
+		Label:     "An Anthropic API key",
+		Fields:    []harness.AuthField{{Key: "secret", Secret: true, Prompt: "the API key", StoreKey: "claude_api_key"}},
 		Env:       map[string]string{"ANTHROPIC_API_KEY": "secret"},
 		Endpoints: anthropicEndpoints,
 		TestCall: func(f map[string]string) harness.Request {
@@ -66,12 +69,13 @@ var authMethods = []harness.AuthMethod{
 		// through on their acknowledgement, go in the env. The free test
 		// call is STS GetCallerIdentity, which the AWS SDK signs on the host,
 		// so the method declares no TestCall.
-		Name: "bedrock",
+		Name:  "bedrock",
+		Label: "Amazon Bedrock",
 		Fields: []harness.AuthField{
-			{Key: "region"},
-			{Key: "profile", Optional: true},
-			{Key: "access_key_id", Secret: true, Optional: true},
-			{Key: "secret_access_key", Secret: true, Optional: true},
+			{Key: "region", Prompt: "Which AWS region?"},
+			{Key: "profile", Optional: true, Prompt: "Which AWS profile? Enter to give access keys instead"},
+			{Key: "access_key_id", Secret: true, Optional: true, Prompt: "the AWS access key ID", StoreKey: "aws_access_key_id", UnlessSet: "profile"},
+			{Key: "secret_access_key", Secret: true, Optional: true, Prompt: "the AWS secret access key", StoreKey: "aws_secret_access_key", UnlessSet: "profile"},
 			{Key: "role_arn", Optional: true},
 			{Key: "i_accept_long_lived_keys_in_sandbox", Flag: true, Optional: true},
 		},
@@ -81,9 +85,13 @@ var authMethods = []harness.AuthMethod{
 		},
 	},
 	{
-		Name:   "gateway",
-		Fields: []harness.AuthField{{Key: "base_url"}, {Key: "secret", Secret: true}},
-		Env:    map[string]string{"ANTHROPIC_BASE_URL": "base_url", "ANTHROPIC_AUTH_TOKEN": "secret"},
+		Name:  "gateway",
+		Label: "A gateway that speaks Anthropic's API",
+		Fields: []harness.AuthField{
+			{Key: "base_url", Prompt: "What is the gateway's URL?"},
+			{Key: "secret", Secret: true, Prompt: "the gateway token", StoreKey: "claude_gateway"},
+		},
+		Env: map[string]string{"ANTHROPIC_BASE_URL": "base_url", "ANTHROPIC_AUTH_TOKEN": "secret"},
 		Endpoints: func(f map[string]string) []string {
 			u, err := url.Parse(f["base_url"])
 			if err != nil || u.Hostname() == "" {
@@ -114,7 +122,9 @@ func (ClaudeCode) Describe() harness.Description {
 			"windows": "irm https://claude.ai/install.ps1 | iex",
 		},
 
-		AuthMethods: authMethods,
+		AuthQuestion: "How do you sign in to Claude?",
+		AuthMethods:  authMethods,
+		ImportAuth:   importAuth,
 
 		FixedEnv: []string{envNoTraffic, envScrub},
 		RedactEnv: []string{

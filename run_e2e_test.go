@@ -120,6 +120,7 @@ func writeFile(t *testing.T, path, content string) {
 // and a fake Harness script.
 type runProject struct {
 	remote, work   string
+	home           string // the user's home, once initEnv made one
 	trackerPath    string
 	scriptPath     string
 	baseSHA        string

@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 
+	"golang.org/x/term"
+
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
 )
 
@@ -42,18 +44,30 @@ type Answers struct {
 	ProtectClaude bool
 }
 
-// asker puts questions to a person, one line per answer.
-type asker struct {
+// Asker puts questions to a person, one line per answer.
+type Asker struct {
 	in  *bufio.Reader
 	out io.Writer
+	// terminal is where a secret is read from without echoing it, nil when
+	// the input isn't a terminal.
+	terminal *os.File
+}
+
+// NewAsker asks out and reads the answers from in.
+func NewAsker(in io.Reader, out io.Writer) Asker {
+	a := Asker{in: bufio.NewReader(in), out: out}
+	if f, ok := in.(*os.File); ok && term.IsTerminal(int(f.Fd())) { //nolint:gosec // a file descriptor fits an int
+		a.terminal = f
+	}
+	return a
 }
 
 // say prints one line.
-func (a asker) say(format string, args ...any) { _, _ = fmt.Fprintf(a.out, format+"\n", args...) }
+func (a Asker) say(format string, args ...any) { _, _ = fmt.Fprintf(a.out, format+"\n", args...) }
 
 // line reads one answer. Running out of input stops `init`: taking the
 // suggestions instead would be the --yes it doesn't have.
-func (a asker) line() (string, error) {
+func (a Asker) line() (string, error) {
 	text, err := a.in.ReadString('\n')
 	if errors.Is(err, io.EOF) && text == "" {
 		return "", errors.New("the input ended before the last question; nothing was written")
@@ -65,7 +79,7 @@ func (a asker) line() (string, error) {
 }
 
 // text asks one question: Enter takes the suggestion.
-func (a asker) text(question, suggestion string) (string, error) {
+func (a Asker) text(question, suggestion string) (string, error) {
 	if suggestion != "" {
 		question += " [" + suggestion + "]"
 	}
@@ -78,7 +92,7 @@ func (a asker) text(question, suggestion string) (string, error) {
 }
 
 // required asks until it has an answer.
-func (a asker) required(question, suggestion string) (string, error) {
+func (a Asker) required(question, suggestion string) (string, error) {
 	for {
 		answer, err := a.text(question, suggestion)
 		if err != nil || answer != "" {
@@ -88,12 +102,34 @@ func (a asker) required(question, suggestion string) (string, error) {
 	}
 }
 
+// secret asks until it has a secret, hidden from a terminal.
+func (a Asker) secret(question string) (string, error) {
+	for {
+		_, _ = fmt.Fprint(a.out, question+" (input is hidden): ")
+		answer, err := a.hiddenLine()
+		if err != nil || answer != "" {
+			return answer, err
+		}
+		a.say("  This one needs an answer.")
+	}
+}
+
+// hiddenLine reads one line without echoing it, if there is an echo to stop.
+func (a Asker) hiddenLine() (string, error) {
+	if a.terminal == nil {
+		return a.line()
+	}
+	b, err := term.ReadPassword(int(a.terminal.Fd())) //nolint:gosec // a file descriptor fits an int
+	a.say("")
+	return strings.TrimSpace(string(b)), err
+}
+
 // option is one choice of a select question.
 type option struct{ value, label string }
 
 // pick asks a select question, by number or by value; Enter takes the
 // first option.
-func (a asker) pick(question string, options []option) (string, error) {
+func (a Asker) pick(question string, options []option) (string, error) {
 	a.say("%s", question)
 	for i, o := range options {
 		a.say("  %d) %s", i+1, o.label)
@@ -113,7 +149,7 @@ func (a asker) pick(question string, options []option) (string, error) {
 }
 
 // yes asks a yes-or-no question.
-func (a asker) yes(question string, def bool) (bool, error) {
+func (a Asker) yes(question string, def bool) (bool, error) {
 	suggestion := "y/N"
 	if def {
 		suggestion = "Y/n"
@@ -137,8 +173,7 @@ func (a asker) yes(question string, def bool) (bool, error) {
 
 // Ask puts the project questions, in their fixed order, and settles the
 // answers. Enter takes what the repo suggests.
-func Ask(root string, in io.Reader, out io.Writer, f Facts, questions []tracker.Question) (Answers, error) {
-	a := asker{bufio.NewReader(in), out}
+func Ask(root string, a Asker, f Facts, questions []tracker.Question) (Answers, error) {
 	a.say("Setting up this project. Press Enter to take the suggestion in brackets, or type - to leave it out.\n")
 	var ans Answers
 	var err error
@@ -198,7 +233,7 @@ func services(root, file string) ([]Service, error) {
 }
 
 // languages asks which languages the project uses.
-func (a asker) languages(f Facts) ([]string, error) {
+func (a Asker) languages(f Facts) ([]string, error) {
 	var ids []string
 	a.say("What does your project use? Install anything else yourself in the Containerfile.")
 	for _, r := range recipes {
@@ -242,7 +277,7 @@ func parseLanguages(answer string, ids []string) (chosen []string, bad string) {
 }
 
 // commands asks for each well-known Feedback command.
-func (a asker) commands(suggested map[string]string) (map[string]string, error) {
+func (a Asker) commands(suggested map[string]string) (map[string]string, error) {
 	a.say("Which commands tell the agent whether its change works?")
 	out := map[string]string{}
 	for _, name := range wellKnownCommands {
@@ -258,7 +293,7 @@ func (a asker) commands(suggested map[string]string) (map[string]string, error) 
 }
 
 // file asks for a file in the project; "" means none.
-func (a asker) file(root, question, suggestion string) (string, error) {
+func (a Asker) file(root, question, suggestion string) (string, error) {
 	for {
 		answer, err := a.text(question+" (a path, Enter or - for none)", suggestion)
 		if err != nil || answer == "" || answer == none {
@@ -273,7 +308,7 @@ func (a asker) file(root, question, suggestion string) (string, error) {
 }
 
 // sandbox asks for the Sandbox kind, and a second time before none.
-func (a asker) sandbox(ans *Answers) error {
+func (a Asker) sandbox(ans *Answers) error {
 	kind, err := a.pick("Where should the agent run?", []option{
 		{kindContainer, "In a container (recommended). Needs Docker or Podman. The agent sees only the project."},
 		{kindNative, "Directly on this machine, fenced in by the operating system. Linux, macOS, WSL2."},

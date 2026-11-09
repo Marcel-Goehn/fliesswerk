@@ -388,6 +388,14 @@ func (t *Tracker) Describe() tracker.Description {
 			{Name: "gh login", Run: t.checkLogin},
 			{Name: "GitHub repository", Run: t.checkRepo},
 		},
+		Access: tracker.Access{ //nolint:gosec // labels and functions, no credential
+			Name:        "GitHub",
+			LoggedIn:    func(ctx context.Context) bool { return t.checkLogin(ctx) == nil },
+			LoginLabel:  "Your `gh` login",
+			TokenLabel:  "A fine-grained token that reaches only this repository",
+			Walkthrough: tokenWalkthrough,
+			TokenKey:    tokenKey,
+		},
 		TokenSource:    "`[tracker] token` in config.local.toml, handed to gh as GH_TOKEN; without it, gh's own login",
 		LinkBlockerFix: t.linkBlockerFix,
 	}

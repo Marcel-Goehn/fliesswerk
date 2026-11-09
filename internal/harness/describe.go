@@ -28,9 +28,15 @@ type Description struct {
 	// Sandbox, by GOOS.
 	HostInstallHint map[string]string
 
+	// AuthQuestion is how `init` asks which auth method a person uses.
+	AuthQuestion string
 	// AuthMethods are the auth methods the Harness accepts, in the order
 	// `init` offers them. `check` rejects any other.
 	AuthMethods []AuthMethod
+
+	// ImportAuth finds an auth setup the Harness already has in the user's
+	// home, for `init` to offer. Nil, or nil from it, means there is none.
+	ImportAuth func(home string) *ImportedAuth
 
 	// FixedEnv are env flags Command always sets, by name. Values may
 	// depend on the Step (EnvScrub is left out when scrubbing is off).
@@ -69,6 +75,10 @@ func (d Description) CheckVersion(output string) error {
 // in its `[harnesses.<name>]` table.
 type AuthMethod struct {
 	Name string
+	// Label is how `init` offers it.
+	Label string
+	// Hint, if set, is what `init` says once it has been chosen.
+	Hint string
 	// Fields are the config keys the method reads, besides `method`.
 	Fields []AuthField
 	// Env maps each env name the Step gets to the Field its value comes
@@ -82,9 +92,27 @@ type AuthMethod struct {
 	TestCall func(fields map[string]string) Request
 }
 
+// ImportedAuth is an auth setup found on the user's machine.
+type ImportedAuth struct {
+	// Method is the AuthMethod it is.
+	Method string
+	// Values are the fields it settles, by key. Never a secret.
+	Values map[string]string
+	// Question is how `init` offers it.
+	Question string
+}
+
 // AuthField is one config key of an AuthMethod.
 type AuthField struct {
 	Key string
+	// Prompt is how `init` asks for it: a question, or for a Secret what to
+	// call it ("the API key"). A field with none is never asked for.
+	Prompt string
+	// StoreKey is the name a Secret gets in the user-level credentials file.
+	StoreKey string
+	// UnlessSet names a field that, once answered, makes this one
+	// unnecessary, so `init` doesn't ask for it.
+	UnlessSet string
 	// Secret marks a credential: it takes a secret source (env, command,
 	// stored, dotenv), never a plain value.
 	Secret bool

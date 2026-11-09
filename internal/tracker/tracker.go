@@ -190,6 +190,8 @@ type Description struct {
 	// Questions are what `init` asks right after the Tracker's own select
 	// question, in this order.
 	Questions []Question
+	// Access is how `init` asks a person to reach the Tracker.
+	Access Access
 	// Checks are the machine checks `check` runs, in order.
 	Checks []Check
 	// TokenSource says, in plain words, where the Tracker's token comes
@@ -197,6 +199,21 @@ type Description struct {
 	TokenSource string
 	// LinkBlockerFix is how to turn a text-only Blocker into a native one.
 	LinkBlockerFix func(ticket, blocker ID) string
+}
+
+// Access is what `init` needs to settle how a person reaches the Tracker.
+type Access struct {
+	// Name is the Tracker's name in a question.
+	Name string
+	// LoggedIn reports whether the person has the Tracker's own login.
+	LoggedIn func(ctx context.Context) bool
+	// LoginLabel and TokenLabel offer that login and a token of their own.
+	LoginLabel, TokenLabel string
+	// Walkthrough says how to make a token for repo with the least it needs.
+	Walkthrough func(repo string) string
+	// TokenKey is the token's name in the user-level credentials file. It
+	// differs per repo, as such a token only reaches one.
+	TokenKey func(repo string) string
 }
 
 // Question is one question `init` asks.
