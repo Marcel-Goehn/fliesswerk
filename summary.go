@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
+	"github.com/Marcel-Goehn/kraftwerk/internal/memory"
 	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
 )
@@ -68,6 +69,9 @@ func summaryOf(res factory.Result, id string, started time.Time, code int) runlo
 		s.SpecsFinished = append(s.SpecsFinished, runlog.FinishedSpec{ID: f.ID.String(), Title: f.Title, Branch: f.Branch})
 	}
 	s.QueuedWrites = res.QueuedWrites
+	if res.Memory != nil {
+		s.Memory = &runlog.Memory{PeakEstimateMB: memory.MB(res.Memory.PeakEstimate), Waits: res.Memory.Waits}
+	}
 	return s
 }
 

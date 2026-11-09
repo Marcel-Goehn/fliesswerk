@@ -23,6 +23,8 @@ import (
 type recordedSandbox struct {
 	req      sandbox.Request
 	services []sandbox.Service
+	// use is what MemoryUse reports.
+	use int64
 
 	mu        sync.Mutex
 	lines     []string
@@ -51,6 +53,8 @@ func (s *recordedSandbox) KillAll(context.Context) error {
 
 func (s *recordedSandbox) Services() []sandbox.Service { return s.services }
 
+func (s *recordedSandbox) MemoryUse(context.Context) (int64, error) { return s.use, nil }
+
 func (s *recordedSandbox) Destroy(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -65,6 +69,8 @@ type sandboxes struct {
 	made []*recordedSandbox
 	// services, if set, says what each Sandbox can reach, by its name.
 	services func(name string) []sandbox.Service
+	// use, if set, says how much memory each Sandbox holds, by its name.
+	use func(name string) int64
 }
 
 func (m *sandboxes) create(_ context.Context, req sandbox.Request) (sandbox.Sandbox, error) {
@@ -73,6 +79,9 @@ func (m *sandboxes) create(_ context.Context, req sandbox.Request) (sandbox.Sand
 	s := &recordedSandbox{req: req}
 	if m.services != nil {
 		s.services = m.services(req.Name)
+	}
+	if m.use != nil {
+		s.use = m.use(req.Name)
 	}
 	m.made = append(m.made, s)
 	return s, nil

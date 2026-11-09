@@ -40,7 +40,7 @@ type runningService struct {
 // CheckServices enforces the compose tool's version and the rules on the
 // compose file, for `check`. Having no engine at all is left to the Run,
 // which stops with the fix.
-func CheckServices(ctx context.Context, root, composeFile string, services []string) error {
+func CheckServices(ctx context.Context, root, composeFile string, own, shared []string) error {
 	e, err := Resolve(ctx)
 	if err != nil {
 		return nil
@@ -49,47 +49,107 @@ func CheckServices(ctx context.Context, root, composeFile string, services []str
 	if err != nil {
 		return err
 	}
-	_, err = tool.validate(ctx, root, composeFile, services)
+	_, err = tool.validate(ctx, root, composeFile, own, shared)
 	return err
 }
 
-// startServices brings up the Sandbox's own copy of the Services and
-// connects them to its network. The stack is on record before anything
-// starts, so that a failure part way still gets cleaned up.
+// startServices brings up the Sandbox's own copy of the Services and connects
+// them and the Run's shared Services to its network. The stack is on record
+// before anything starts, so that a failure part way still gets cleaned up.
 func (p *Provider) startServices(ctx context.Context, b *box, req sandbox.Request) ([]runningService, error) {
-	if len(p.opts.Services) == 0 {
+	if len(p.opts.Services) == 0 && p.shared == nil {
 		return nil, nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, servicesTimeout)
 	defer cancel()
-	root := filepath.Join(req.Worktree, req.Rel)
-	cp, err := p.compose.validate(ctx, root, p.opts.ComposeFile, p.opts.Services)
-	if err != nil {
-		return nil, err
-	}
-	stack, err := writeStack(cp, p.opts.Services, composeProjectName(p.opts.Root, p.project, req.Name), filepath.Join(root, p.opts.ComposeFile), b.state)
-	if err != nil {
-		return nil, err
-	}
-	b.compose, b.stack = p.compose, &stack
-	p.log("Starting the Services of %s", req.Name)
-	if err := p.compose.up(ctx, stack, p.opts.Services); err != nil {
-		return nil, err
-	}
-	containers, err := p.compose.running(ctx, stack)
-	if err != nil {
-		return nil, err
-	}
-	services := make([]runningService, 0, len(containers))
-	for _, c := range containers {
-		s, err := p.connectService(ctx, b.name, c, cp.Services[c.Service])
+	var services []runningService
+	if len(p.opts.Services) > 0 {
+		root := filepath.Join(req.Worktree, req.Rel)
+		cp, err := p.compose.validate(ctx, root, p.opts.ComposeFile, p.opts.Services, p.opts.Shared)
 		if err != nil {
 			return nil, err
 		}
-		services = append(services, s)
+		stack, err := writeStack(cp, p.opts.Services, composeProjectName(p.opts.Root, p.project, req.Name), filepath.Join(root, p.opts.ComposeFile), b.state)
+		if err != nil {
+			return nil, err
+		}
+		b.compose, b.stack = p.compose, &stack
+		p.log("Starting the Services of %s", req.Name)
+		if err := p.compose.up(ctx, stack, p.opts.Services); err != nil {
+			return nil, err
+		}
+		containers, err := p.compose.running(ctx, stack)
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range containers {
+			s, err := p.connectService(ctx, b.name, c, cp.Services[c.Service])
+			if err != nil {
+				return nil, err
+			}
+			b.ownContainers = append(b.ownContainers, c.Name)
+			services = append(services, s)
+		}
+	}
+	if p.shared != nil {
+		for _, c := range p.shared.containers {
+			// A helper of both sides: the Sandbox keeps its own copy.
+			if slices.ContainsFunc(services, func(s runningService) bool { return s.name == c.Service }) {
+				continue
+			}
+			b.sharedContainers = append(b.sharedContainers, c.Name)
+			s, err := p.connectService(ctx, b.name, c, p.shared.project.Services[c.Service])
+			if err != nil {
+				return nil, err
+			}
+			services = append(services, s)
+		}
 	}
 	claimLocalhost(services, p.log)
 	return services, nil
+}
+
+// StartShared brings up the shared Services from the worktree in req, on
+// record like a Sandbox's so that a crashed Run's get cleaned up. Each Sandbox
+// connects them to its own network. It returns what removes them, also with
+// an error once anything may have started.
+func (p *Provider) StartShared(ctx context.Context, req sandbox.Request) (func(context.Context) error, error) {
+	ctx, cancel := context.WithTimeout(ctx, servicesTimeout)
+	defer cancel()
+	root := filepath.Join(req.Worktree, req.Rel)
+	cp, err := p.compose.validate(ctx, root, p.opts.ComposeFile, p.opts.Services, p.opts.Shared)
+	if err != nil {
+		return nil, err
+	}
+	state := filepath.Join(p.opts.StateDir, "sandboxes", req.Name)
+	if err := os.MkdirAll(state, 0o750); err != nil {
+		return nil, err
+	}
+	stack, err := writeStack(cp, p.opts.Shared, composeProjectName(p.opts.Root, p.project, req.Name), filepath.Join(root, p.opts.ComposeFile), state)
+	if err != nil {
+		return nil, err
+	}
+	stop := func(ctx context.Context) error {
+		if err := p.compose.down(ctx, stack); err != nil {
+			return err // the record says what is still to remove
+		}
+		return os.RemoveAll(state)
+	}
+	if err := p.compose.up(ctx, stack, p.opts.Shared); err != nil {
+		return stop, err
+	}
+	containers, err := p.compose.running(ctx, stack)
+	if err != nil {
+		return stop, err
+	}
+	p.shared = &sharedServices{project: cp, containers: containers}
+	return stop, nil
+}
+
+// sharedServices are the Run's shared Services, once they run.
+type sharedServices struct {
+	project    composeProject
+	containers []composeContainer
 }
 
 // writeStack writes a Sandbox's compose override and puts its Compose project

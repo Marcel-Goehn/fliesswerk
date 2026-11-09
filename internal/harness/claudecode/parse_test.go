@@ -231,3 +231,21 @@ func TestParseSummarisesToolCallsOnOneLine(t *testing.T) {
 		}
 	}
 }
+
+func TestAHarnessKilledBeforeItsResultLineHasRunOutOfMemory(t *testing.T) {
+	events := parseFile(t, filepath.Join("testdata", "killed.jsonl"))
+
+	got := harness.Resolve(events, 137)
+
+	if got.Kind != harness.Failed || got.Class != harness.OutOfMemory {
+		t.Errorf("outcome = %+v, want a failure of class %q", got, harness.OutOfMemory)
+	}
+}
+
+func TestExit137AfterTheResultLineIsNotOutOfMemory(t *testing.T) {
+	events := parseFile(t, filepath.Join("testdata", "done.jsonl"))
+
+	if got := harness.Resolve(events, 137); got.Kind != harness.Reported {
+		t.Errorf("outcome = %+v, want the report: the core kills a Harness that lingers", got)
+	}
+}

@@ -6,6 +6,9 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
 )
 
 // withFakeDocker adds a docker to env that reports the given platform.
@@ -142,5 +145,50 @@ func TestCheckRefusesAServiceANativeSandboxCouldNotReach(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "db") || !strings.Contains(stderr, `ports: ["127.0.0.1:<H>:<C>"]`) {
 		t.Errorf("stderr doesn't name the fix: %s", stderr)
+	}
+}
+
+func TestCheckReportsThePeakAndTheWaitsOfTheLastRun(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake docker is a shell script")
+	}
+	bin := buildKraftwerk(t, "")
+	root := projectDir(t, map[string]string{"config.toml": "version = 1\n", "state/memory.json": `{"peak_bytes": 3221225472, "last_run_waits": 2}`})
+
+	stdout, stderr, code := runEnv(t, bin, root, withFakeDocker(t, ghEnv(t, "ok"), "linux x86_64"), "check")
+
+	if code != exitOK {
+		t.Fatalf("exit code = %d; stderr: %s", code, stderr)
+	}
+	if want := "memory: peak estimate 3072 MB per Sandbox (measured), 2 waits for memory in the last Run"; !strings.Contains(stdout, want) {
+		t.Errorf("stdout lacks %q:\n%s", want, stdout)
+	}
+}
+
+func TestCheckSaysWhenNoPeakHasBeenMeasured(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake docker is a shell script")
+	}
+	bin := buildKraftwerk(t, "")
+	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
+
+	stdout, stderr, code := runEnv(t, bin, root, withFakeDocker(t, ghEnv(t, "ok"), "linux x86_64"), "check")
+
+	if code != exitOK {
+		t.Fatalf("exit code = %d; stderr: %s", code, stderr)
+	}
+	if want := "memory: peak estimate 2048 MB per Sandbox (not measured yet)"; !strings.Contains(stdout, want) {
+		t.Errorf("stdout lacks %q:\n%s", want, stdout)
+	}
+}
+
+func TestSummaryCarriesTheMemoryOfTheRun(t *testing.T) {
+	s := summaryOf(factory.Result{Memory: &factory.MemoryReport{PeakEstimate: 3 << 30, Waits: 4}}, "run", time.Now(), exitOK)
+
+	if s.Memory == nil || s.Memory.PeakEstimateMB != 3072 || s.Memory.Waits != 4 {
+		t.Errorf("memory = %+v, want 3072 MB and 4 waits", s.Memory)
+	}
+	if got := s.Text(); !strings.Contains(got, "Memory: peak estimate 3072 MB, 4 waits") {
+		t.Errorf("the summary lacks the memory:\n%s", got)
 	}
 }

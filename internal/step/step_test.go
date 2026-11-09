@@ -417,6 +417,8 @@ func (p *passThrough) KillAll(context.Context) error {
 
 func (p *passThrough) Services() []sandbox.Service { return nil }
 
+func (p *passThrough) MemoryUse(context.Context) (int64, error) { return 0, nil }
+
 func (p *passThrough) Destroy(context.Context) error { return nil }
 
 func TestAStepInASandboxGetsOnlyItsOwnEnvAndHasItsLeftoversKilled(t *testing.T) {
@@ -444,5 +446,28 @@ func TestAStepInASandboxGetsOnlyItsOwnEnvAndHasItsLeftoversKilled(t *testing.T) 
 	}
 	if got := sb.kills.Load(); got != 1 {
 		t.Errorf("KillAll ran %d times, want 1", got)
+	}
+}
+
+func TestAHarnessThatGetsSIGKILLedHasRunOutOfMemory(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no SIGKILL")
+	}
+	withFakeHarness(t, `{"sessions": [{"kill": true}]}`)
+
+	out := step.Runner{Harness: claudecode.ClaudeCode{}}.Run(context.Background(), harness.Step{Prompt: "go"}, t.TempDir())
+
+	if out.Kind != harness.Failed || out.Class != harness.OutOfMemory {
+		t.Errorf("outcome = %+v, want a failure of class %q", out, harness.OutOfMemory)
+	}
+}
+
+func TestAHarnessTheFactoryKillsHasNotRunOutOfMemory(t *testing.T) {
+	withFakeHarness(t, `{"sessions": [{"actions": [{"sleep": "30s"}]}]}`)
+
+	out := step.Runner{Harness: claudecode.ClaudeCode{}, IdleTimeout: 200 * time.Millisecond}.Run(context.Background(), harness.Step{Prompt: "go"}, t.TempDir())
+
+	if out.Kind != harness.Failed || out.Class != harness.Other {
+		t.Errorf("outcome = %+v, want a failure of class %q", out, harness.Other)
 	}
 }

@@ -49,10 +49,11 @@ type Options struct {
 	Egress egress.Options
 	// Version is the Factory's, which tags the sidecar's image.
 	Version string
-	// ComposeFile is the compose file relative to the project root, and
-	// Services the Services to start from it, none for a project without.
-	ComposeFile string
-	Services    []string
+	// ComposeFile is the compose file relative to the project root, Services
+	// the own Services to start from it for each Sandbox, and Shared the ones
+	// that run once per Run; none for a project without.
+	ComposeFile      string
+	Services, Shared []string
 	// EnvTemplates are each Service's `env` templates, by Service.
 	EnvTemplates map[string]map[string]string
 	// Log gets a line about what the Provider does.
@@ -74,6 +75,8 @@ type Provider struct {
 	project string
 	// identity is the commit identity the host would use.
 	identity []string
+	// shared are the Run's shared Services, nil until they run.
+	shared *sharedServices
 }
 
 // New is a Provider that still has to be prepared.
@@ -97,7 +100,7 @@ func (p *Provider) Connect(ctx context.Context) error {
 	}
 	p.engine = engine
 	p.log("Container engine: %s", engine)
-	if len(p.opts.Services) > 0 {
+	if p.hasServices() {
 		if p.compose, err = resolveCompose(ctx, engine, runCLI, exec.LookPath); err != nil {
 			return err
 		}
@@ -110,8 +113,8 @@ func (p *Provider) Connect(ctx context.Context) error {
 // image is current and starts the Run's proxy sidecar. The Provider must be
 // connected, and Close ends what this starts.
 func (p *Provider) Prepare(ctx context.Context) error {
-	if len(p.opts.Services) > 0 {
-		if _, err := p.compose.validate(ctx, p.opts.Root, p.opts.ComposeFile, p.opts.Services); err != nil {
+	if p.hasServices() {
+		if _, err := p.compose.validate(ctx, p.opts.Root, p.opts.ComposeFile, p.opts.Services, p.opts.Shared); err != nil {
 			return err
 		}
 	}
@@ -120,6 +123,11 @@ func (p *Provider) Prepare(ctx context.Context) error {
 		return err
 	}
 	return p.startSidecar(ctx)
+}
+
+// hasServices reports whether the project has any Service, own or shared.
+func (p *Provider) hasServices() bool {
+	return len(p.opts.Services)+len(p.opts.Shared) > 0
 }
 
 // labels mark something as this Run's.
@@ -140,7 +148,7 @@ func (p *Provider) cleanUp(ctx context.Context) {
 	filter := "label=" + labelProject + "=" + p.project
 	warn := func(err error) { p.log("warning: cleaning up an earlier Run's Sandboxes: %v", err) }
 	var stackErr error
-	if len(p.opts.Services) > 0 {
+	if p.hasServices() {
 		if stackErr = downRecorded(ctx, p.compose, p.opts.StateDir); stackErr != nil {
 			warn(stackErr)
 		}
@@ -208,7 +216,7 @@ func (p *Provider) Create(ctx context.Context, req sandbox.Request) (sandbox.San
 	b := &box{
 		engine: p.engine, name: name, sidecar: p.sidecar, state: filepath.Join(p.opts.StateDir, "sandboxes", name),
 		workdir: path.Join(workspaceDir, filepath.ToSlash(req.Rel)),
-		env:     p.baseEnv(),
+		env:     append(p.baseEnv(), "KRAFTWERK_SANDBOX="+req.Name),
 	}
 	mounts, err := p.mounts(req.Worktree, b.state)
 	if err != nil {
@@ -372,6 +380,10 @@ type box struct {
 	compose  composeTool
 	stack    *composeStack
 	services []sandbox.Service
+	// ownContainers are its own Services' containers, whose memory counts as
+	// the Sandbox's. sharedContainers are the shared ones on its network,
+	// which outlive it.
+	ownContainers, sharedContainers []string
 }
 
 // start creates and starts the container, and makes its home.
@@ -440,8 +452,11 @@ func (b *box) Destroy(ctx context.Context) error {
 	if b.stack != nil {
 		stackErr = b.compose.down(ctx, *b.stack)
 	}
-	// A network with the sidecar on it can't go; if this fails, so does that.
-	_, _ = b.engine.run(ctx, "network", "disconnect", "--force", b.name, b.sidecar)
+	// A network with something still on it can't go; if this fails, so does
+	// that.
+	for _, name := range append([]string{b.sidecar}, b.sharedContainers...) {
+		_, _ = b.engine.run(ctx, "network", "disconnect", "--force", b.name, name)
+	}
 	_, netErr := b.engine.run(ctx, "network", "rm", b.name)
 	return errors.Join(forwardErr, rmErr, stackErr, netErr, os.RemoveAll(b.state))
 }

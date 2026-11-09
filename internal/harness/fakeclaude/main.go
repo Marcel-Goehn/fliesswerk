@@ -70,6 +70,9 @@ type session struct {
 	Expand bool `json:"expand"`
 	// Times is how often the session may run; 0 is no limit.
 	Times int `json:"times"`
+	// Kill has the session end by SIGKILL after its actions, as a kernel out
+	// of memory would end it.
+	Kill bool `json:"kill"`
 }
 
 type action struct {
@@ -127,6 +130,9 @@ func main() {
 	}
 	for _, a := range s.Actions {
 		w.act(a)
+	}
+	if s.Kill {
+		killSelf()
 	}
 	switch {
 	case s.Error != "":

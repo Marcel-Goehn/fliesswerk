@@ -133,15 +133,18 @@ func (c composeTool) config(ctx context.Context, file string) (composeProject, e
 	return parseProject([]byte(out))
 }
 
-// validate reads the compose file and refuses what the Factory can't give
-// each Sandbox a copy of. root is the project root, in the checkout or a
-// worktree, and composeFile relative to it.
-func (c composeTool) validate(ctx context.Context, root, composeFile string, services []string) (composeProject, error) {
+// validate reads the compose file and refuses what the Factory can't run:
+// what it can't give each Sandbox a copy of, and a dependency across the line
+// between own and shared Services. root is the project root, in the checkout
+// or a worktree, and composeFile relative to it.
+func (c composeTool) validate(ctx context.Context, root, composeFile string, own, shared []string) (composeProject, error) {
 	cp, err := c.config(ctx, filepath.Join(root, composeFile))
 	if err != nil {
 		return composeProject{}, err
 	}
-	if problems := cp.problems(services, filepath.ToSlash(filepath.Dir(composeFile))); len(problems) > 0 {
+	problems := cp.problems(slices.Concat(own, shared), filepath.ToSlash(filepath.Dir(composeFile)))
+	problems = append(problems, cp.crossDependencies(own, shared)...)
+	if len(problems) > 0 {
 		return composeProject{}, errors.New(strings.Join(problems, "\n"))
 	}
 	return cp, nil
@@ -501,6 +504,26 @@ func (cp composeProject) problems(names []string, composeDir string) []string {
 			}
 		}
 	}
+	return out
+}
+
+// crossDependencies are the `depends_on`s from one side of own and shared to
+// the other: a Service exists once per Sandbox or once per Run, and Compose
+// can only wait for what is in its own project. A helper neither names is
+// fine, and simply starts on each side that needs it.
+func (cp composeProject) crossDependencies(own, shared []string) []string {
+	var out []string
+	check := func(from, to []string, fromKind, toKind string) {
+		for _, name := range cp.started(from) {
+			for _, dep := range slices.Sorted(slices.Values(dependencies(cp.Services[name].DependsOn))) {
+				if slices.Contains(to, dep) {
+					out = append(out, fmt.Sprintf("compose file: the %s Service %s has `depends_on: %s`, a %s Service; make both shared or neither", fromKind, name, dep, toKind))
+				}
+			}
+		}
+	}
+	check(own, shared, "own", "shared")
+	check(shared, own, "shared", "own")
 	return out
 }
 

@@ -72,6 +72,8 @@ type Provider struct {
 	// proxyPort is the proxy's port on the host's loopback under Seatbelt,
 	// which has no loopback of the Sandbox's own to forward from.
 	proxyPort string
+	// shared are the Run's shared Services, none until they run.
+	shared []sandbox.PublishedService
 
 	mu     sync.Mutex
 	denied map[string]bool
@@ -207,10 +209,10 @@ func (p *Provider) Create(ctx context.Context, req sandbox.Request) (sandbox.San
 	}
 	// Seatbelt can't put a directory at another path, so the agent is told
 	// where its private home and temp directory really are.
-	home, tmp, groupDir := p.host.Home, "/tmp", ""
+	home, tmp, groupDir := p.host.Home, "/tmp", filepath.Join(state, groupsDir)
 	if p.host.Mac {
 		s.ProxyPort = p.proxyPort
-		home, tmp, groupDir = s.Home, s.Tmp, filepath.Join(state, groupsDir)
+		home, tmp = s.Home, s.Tmp
 	} else {
 		s.Socket = filepath.Join(p.socketDir, socketName)
 	}
@@ -239,7 +241,8 @@ func (p *Provider) Create(ctx context.Context, req sandbox.Request) (sandbox.San
 			return nil, err
 		}
 	}
-	b := &box{self: p.self, state: state, plan: filepath.Join(state, "plan.json"), groupDir: groupDir, env: p.baseEnv(path, home, tmp)}
+	b := &box{self: p.self, state: state, plan: filepath.Join(state, "plan.json"), groupDir: groupDir, env: p.baseEnv(path, home, tmp), ownServices: p.opts.Services}
+	b.setEnv([]string{"KRAFTWERK_SANDBOX=" + req.Name})
 	start := func() error {
 		if err := p.startServices(ctx, b, &s, req); err != nil {
 			return err
@@ -320,13 +323,16 @@ func (p *Provider) baseEnv(path []string, home, tmp string) map[string]string {
 // the bwrap or profile each command gets.
 type box struct {
 	self, state, plan string
-	// groupDir lists the process groups of its commands on macOS.
+	// groupDir lists the first processes of its commands, which on macOS are
+	// also the leaders of their process groups.
 	groupDir string
 	env      map[string]string
 	// services is what the Step is told it can reach, and stopServices ends
 	// them and their forwarders, nil for none.
 	services     []sandbox.Service
 	stopServices func(context.Context) error
+	// ownServices measures its own Services, nil for a project without.
+	ownServices Services
 }
 
 // Exec implements sandbox.Sandbox. The hidden helper builds the bwrap call or

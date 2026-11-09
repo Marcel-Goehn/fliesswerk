@@ -106,6 +106,16 @@ type Options struct {
 	// Run has cleaned up and replayed its writes, before any Iteration;
 	// its error stops the Run.
 	Preflight func(ctx context.Context) error
+	// SharedServices, if set, starts the Run's shared Services from the
+	// worktree in its request, once the run_start Hooks are done, and returns
+	// what removes them, which is also called after an error if it is set. Its
+	// error stops the Run.
+	SharedServices func(ctx context.Context, req sandbox.Request) (stop func(context.Context) error, err error)
+	// FreeMemory, if set, is how many bytes are free for another Sandbox,
+	// which turns on memory admission. Its error only warns.
+	FreeMemory func(ctx context.Context) (int64, error)
+	// MemoryPoll is how often memory is looked at; zero is DefaultMemoryPoll.
+	MemoryPoll time.Duration
 }
 
 // Names of the Steps.
@@ -150,6 +160,7 @@ const (
 	KindHook          = "sandbox_created"
 	KindPushRejected  = "push_rejected"
 	KindFactory       = "factory"
+	KindOutOfMemory   = "out_of_memory"
 )
 
 // TicketStats are what a Ticket's Steps used, over all their attempts.
@@ -212,6 +223,8 @@ type Result struct {
 	SpecsFinished []FinishedSpec
 	// QueuedWrites are the Tracker writes left for the next Run to replay.
 	QueuedWrites []string
+	// Memory is what memory admission saw, nil if it was off.
+	Memory *MemoryReport
 }
 
 // SetupError is a problem with the project that a person must fix before
@@ -255,6 +268,8 @@ type run struct {
 	// gitMu keeps the Tickets' changes to .git/config one at a time: git
 	// refuses a second writer.
 	gitMu sync.Mutex
+	// memory decides when a Sandbox may start, nil if nothing watches memory.
+	memory *admission
 }
 
 // Run runs Iterations until the frontier is empty or MaxIterations is
@@ -272,7 +287,11 @@ func Run(ctx context.Context, opts Options) Result {
 	}
 	opts.Tracker = r.writes
 	r.opts = opts
+	r.memory = newAdmission(r, opts)
 	r.res.Stopped = r.run(ctx)
+	if r.memory != nil {
+		r.res.Memory = r.memory.report()
+	}
 	for _, w := range r.writes.pending() {
 		r.res.QueuedWrites = append(r.res.QueuedWrites, w.String())
 	}
@@ -290,6 +309,9 @@ func writeBackoffOf(opts Options) func(int) time.Duration {
 // run is the Run from its first check to its last Hook. It returns why
 // the Run stopped before its end, if it did.
 func (r *run) run(ctx context.Context) error {
+	// The shared Services outlast the run_end Hooks, which may want them.
+	stopShared := func() {}
+	defer func() { stopShared() }()
 	defer r.runEnd(ctx)
 	if err := r.checkCheckout(ctx); err != nil {
 		return err
@@ -319,6 +341,14 @@ func (r *run) run(ctx context.Context) error {
 	r.user = user
 	if err := r.runStart(ctx); err != nil {
 		return err
+	}
+	stop, err := r.startShared(ctx)
+	stopShared = stop
+	if err != nil {
+		return err
+	}
+	if r.memory != nil {
+		r.memory.announce()
 	}
 
 	for i := 1; i <= r.opts.MaxIterations; i++ {
@@ -351,6 +381,52 @@ func (r *run) run(ctx context.Context) error {
 	r.logf("max_iterations (%d) reached.", r.opts.MaxIterations)
 	r.countStillReady(ctx)
 	return nil
+}
+
+// sharedName names the shared Services' Compose project and state.
+const sharedName = "shared"
+
+// sharedStopTimeout bounds removing the shared Services.
+const sharedStopTimeout = 2 * time.Minute
+
+// startShared starts the shared Services from a Factory worktree of the base
+// branch, which stays for the Run. What it returns removes them and the
+// worktree, even if they failed to start.
+func (r *run) startShared(ctx context.Context) (func(), error) {
+	if r.opts.SharedServices == nil {
+		return func() {}, nil
+	}
+	dir := filepath.Join(r.worktrees, "shared-services")
+	if err := r.clearWorktree(ctx, dir); err != nil {
+		return func() {}, err
+	}
+	if err := r.repo.AddDetachedWorktree(ctx, dir, r.opts.Remote+"/"+r.opts.BaseBranch); err != nil {
+		return func() {}, fmt.Errorf("checking out the base branch for the shared Services: %w", err)
+	}
+	r.logf("Starting the shared Services")
+	stopServices, err := r.opts.SharedServices(ctx, sandbox.Request{Name: sharedName, Worktree: dir, Rel: r.rel})
+	stop := func() {
+		stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sharedStopTimeout)
+		defer cancel()
+		if stopServices != nil {
+			if err := stopServices(stopCtx); err != nil {
+				// Their record names the compose file in the worktree, and
+				// that is how the next Run removes them.
+				r.warnf("warning: removing the shared Services: %v", err)
+				return
+			}
+		}
+		if err := r.repo.RemoveWorktree(stopCtx, dir); err != nil {
+			r.warnf("warning: %v", err)
+		}
+	}
+	if err != nil {
+		if ctx.Err() != nil {
+			return stop, errKilled
+		}
+		return stop, fmt.Errorf("starting the shared Services: %w", err)
+	}
+	return stop, nil
 }
 
 // Why an interrupted Run stopped.
@@ -645,6 +721,12 @@ func (r *run) finish(w *ticketWork) error {
 		return stop
 	}
 	if failed != nil {
+		if failed.drained {
+			r.discard(w.b)
+			r.setDone(w.tk, false)
+			r.tlogf(w.tk, "Ctrl-C came while it waited for memory; it is left as it was")
+			return nil
+		}
 		r.failBuild(ctx, w.b, failed)
 		return nil
 	}
@@ -740,6 +822,8 @@ type build struct {
 	// sandbox is where its Steps, verify and Sandbox Hooks run, nil for no
 	// Sandbox.
 	sandbox sandbox.Sandbox
+	// sandboxName is what its Sandbox Hooks are told KRAFTWERK_SANDBOX is.
+	sandboxName string
 }
 
 // verifyAttempts is how often implement → review → verify may run: a
@@ -751,12 +835,12 @@ const verifyAttempts = 2
 // the summary for the close comment, or why the Ticket failed, or an
 // error that stops the Run.
 func (r *run) build(ctx context.Context, b build) (summary string, failed *failure, stop error) {
-	sb, closeSandbox, failed := r.openSandbox(ctx, b.tk, "build", b.worktree)
+	sb, closeSandbox, failed := r.openSandbox(ctx, b.tk, purposeBuild, b.worktree)
 	if failed != nil {
 		return "", failed, nil
 	}
 	defer closeSandbox()
-	b.sandbox = sb
+	b.sandbox, b.sandboxName = sb, sandboxName(purposeBuild, b.tk)
 	b.prompt.Services = servicesOf(sb)
 	if failed := r.sandboxCreated(ctx, b); failed != nil {
 		return "", failed, nil
@@ -782,6 +866,7 @@ func (r *run) verify(ctx context.Context, b build) *verify.Failure {
 	if len(r.opts.Verify) == 0 {
 		return nil
 	}
+	r.memory.noteWork(b.sandbox)
 	r.tlogf(b.tk, "verify: started")
 	f := verify.Run(ctx, b.sandbox, b.dir, r.opts.VerifyEnv, r.opts.VerifyTimeout, r.opts.Verify)
 	if f == nil {
@@ -802,6 +887,19 @@ func servicesOf(sb sandbox.Sandbox) []sandbox.Service {
 	return sb.Services()
 }
 
+// What a Ticket's Sandboxes are for.
+const (
+	purposeBuild  = "build"
+	purposeVerify = "verify"
+	purposeMerge  = "merge"
+)
+
+// sandboxName is the name of one of a Ticket's Sandboxes, which it gets as
+// KRAFTWERK_SANDBOX.
+func sandboxName(purpose string, tk tracker.Ticket) string {
+	return purpose + "-" + tk.ID.Branch
+}
+
 // sandboxDestroyTimeout bounds removing a Sandbox.
 const sandboxDestroyTimeout = 2 * time.Minute
 
@@ -812,14 +910,36 @@ func (r *run) openSandbox(ctx context.Context, tk tracker.Ticket, purpose, workt
 	if r.opts.Sandboxes == nil {
 		return nil, func() {}, nil
 	}
-	name := purpose + "-" + tk.ID.Branch
-	sb, err := r.opts.Sandboxes(ctx, sandbox.Request{Name: name, Worktree: worktree, Rel: r.rel, Protected: r.protectedPaths()})
+	if r.memory != nil {
+		// Only a build can still be left out at Ctrl-C: a merge or verify
+		// belongs to a Ticket in flight, which finishes.
+		var drain <-chan struct{}
+		if purpose == purposeBuild {
+			drain = r.opts.Drain
+		}
+		release, err := r.memory.admit(ctx, tk, nil, drain)
+		if err != nil {
+			if errors.Is(err, errDrained) {
+				return nil, nil, &failure{drained: true, kind: KindFactory, reason: err.Error()}
+			}
+			return nil, nil, factoryFailure(fmt.Errorf("waiting for memory for its Sandbox: %w", err))
+		}
+		defer release()
+	}
+	sb, err := r.opts.Sandboxes(ctx, sandbox.Request{Name: sandboxName(purpose, tk), Worktree: worktree, Rel: r.rel, Protected: r.protectedPaths()})
 	if err != nil {
 		return nil, nil, factoryFailure(fmt.Errorf("creating its Sandbox: %w", err))
+	}
+	var m *meter
+	if r.memory != nil {
+		m = r.memory.watch(ctx, sb)
 	}
 	return sb, func() {
 		ctx, cancel := context.WithTimeout(context.Background(), sandboxDestroyTimeout)
 		defer cancel()
+		if m != nil {
+			r.memory.finish(ctx, tk, m)
+		}
 		if err := sb.Destroy(ctx); err != nil {
 			r.line(tk, runlog.Line{Kind: runlog.Warning, Text: fmt.Sprintf("warning: removing its Sandbox: %v", err)})
 		}
@@ -916,12 +1036,14 @@ const freshRetries = 1
 func (r *run) runStep(ctx context.Context, s Step) (out harness.Outcome, failed *failure, stop error) {
 	fresh, transient := 0, 0
 	for {
+		r.memory.noteWork(s.Sandbox)
 		out = r.opts.RunStep(ctx, s)
 		r.countUsage(s.Ticket, out)
 		if ctx.Err() != nil {
 			return out, nil, errKilled
 		}
 		var why, kind string
+		oom := false
 		switch {
 		case out.Kind == harness.Failed && out.Class == harness.Auth:
 			return out, nil, fmt.Errorf("%s %s: the Harness reported an auth error: %s", s.Ticket.ID, s.Name, out.Message)
@@ -937,6 +1059,8 @@ func (r *run) runStep(ctx context.Context, s Step) (out harness.Outcome, failed 
 				return out, nil, fmt.Errorf("%s %s: stopped while waiting to retry: %w", s.Ticket.ID, s.Name, err)
 			}
 			continue
+		case out.Kind == harness.Failed && out.Class == harness.OutOfMemory:
+			why, kind, oom = "killed for lack of memory"+r.memory.outOfMemory(ctx, s.Ticket, s.Sandbox), KindOutOfMemory, true
 		case out.Kind == harness.Failed:
 			why, kind = "the Harness failed: "+out.Message, KindHarnessError
 		case out.Kind == harness.NoReport:
@@ -949,6 +1073,11 @@ func (r *run) runStep(ctx context.Context, s Step) (out harness.Outcome, failed 
 		}
 		fresh++
 		r.line(s.Ticket, runlog.Line{Step: s.Name, Kind: runlog.Warning, Text: why + "; retrying in a fresh session"})
+		if oom {
+			if err := r.memory.roomToRetry(ctx, s.Ticket, s.Sandbox); err != nil {
+				return out, nil, errKilled
+			}
+		}
 	}
 }
 

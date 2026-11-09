@@ -172,7 +172,7 @@ func (r *run) verifyMerged(ctx context.Context, b build) *failure {
 	if len(r.opts.Verify) == 0 {
 		return nil
 	}
-	sb, closeSandbox, failed := r.openSandbox(ctx, b.tk, "verify", b.worktree)
+	sb, closeSandbox, failed := r.openSandbox(ctx, b.tk, purposeVerify, b.worktree)
 	if failed != nil {
 		return failed
 	}
@@ -200,7 +200,7 @@ func (r *run) resolve(ctx context.Context, w *ticketWork, tip, message string, c
 			r.warnf("warning: %v", err)
 		}
 	}()
-	sb, closeSandbox, failed := r.openSandbox(ctx, tk, "merge", dir)
+	sb, closeSandbox, failed := r.openSandbox(ctx, tk, purposeMerge, dir)
 	if failed != nil {
 		return "", failed, nil
 	}
@@ -209,7 +209,7 @@ func (r *run) resolve(ctx context.Context, w *ticketWork, tip, message string, c
 	// The Hooks come first: they may install what the project's manifests
 	// name, and those can be among the conflicting files.
 	inMergeWorktree := b
-	inMergeWorktree.dir, inMergeWorktree.sandbox = stepDir, sb
+	inMergeWorktree.dir, inMergeWorktree.sandbox, inMergeWorktree.sandboxName = stepDir, sb, sandboxName(purposeMerge, tk)
 	if failed := r.sandboxCreated(ctx, inMergeWorktree); failed != nil {
 		return "", failed, nil
 	}

@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
 )
@@ -18,10 +19,10 @@ import (
 type PublishedOptions struct {
 	// Root is the project root, and StateDir the runtime state in it.
 	Root, StateDir string
-	// ComposeFile is the compose file relative to the project root, and
-	// Services the Services the Sandboxes reach.
-	ComposeFile string
-	Services    []string
+	// ComposeFile is the compose file relative to the project root, Services
+	// the own Services and Shared the shared ones the Sandboxes reach.
+	ComposeFile      string
+	Services, Shared []string
 }
 
 // Published runs a project's Services for Sandboxes outside any engine, which
@@ -30,10 +31,16 @@ type PublishedOptions struct {
 type Published struct {
 	opts PublishedOptions
 	tool composeTool
+
+	mu sync.Mutex
+	// containers are each Sandbox's own containers, by its state directory.
+	containers map[string][]string
 }
 
 // NewPublished is a Published that still has to be connected.
-func NewPublished(opts PublishedOptions) *Published { return &Published{opts: opts} }
+func NewPublished(opts PublishedOptions) *Published {
+	return &Published{opts: opts, containers: map[string][]string{}}
+}
 
 // resolvePublishedTool finds the engine and compose tool the Services need.
 func resolvePublishedTool(ctx context.Context) (composeTool, error) {
@@ -61,30 +68,30 @@ func (p *Published) DownLeft(ctx context.Context) error {
 
 // Validate refuses a compose file these Services can't be run from.
 func (p *Published) Validate(ctx context.Context) error {
-	_, err := validatePublished(ctx, p.tool, p.opts.Root, p.opts.ComposeFile, p.opts.Services)
+	_, err := validatePublished(ctx, p.tool, p.opts.Root, p.opts.ComposeFile, p.opts.Services, p.opts.Shared)
 	return err
 }
 
 // CheckPublishedServices is Validate for `check`, where no engine at all is
 // as much of a problem as a bad compose file.
-func CheckPublishedServices(ctx context.Context, root, composeFile string, services []string) error {
+func CheckPublishedServices(ctx context.Context, root, composeFile string, own, shared []string) error {
 	tool, err := resolvePublishedTool(ctx)
 	if err != nil {
 		return err
 	}
-	_, err = validatePublished(ctx, tool, root, composeFile, services)
+	_, err = validatePublished(ctx, tool, root, composeFile, own, shared)
 	return err
 }
 
 // validatePublished is the compose rules, and that each Service has a TCP
 // port on the host for a Sandbox to reach.
-func validatePublished(ctx context.Context, tool composeTool, root, composeFile string, services []string) (composeProject, error) {
-	cp, err := tool.validate(ctx, root, composeFile, services)
+func validatePublished(ctx context.Context, tool composeTool, root, composeFile string, own, shared []string) (composeProject, error) {
+	cp, err := tool.validate(ctx, root, composeFile, own, shared)
 	if err != nil {
 		return composeProject{}, err
 	}
 	var problems []string
-	for _, name := range services {
+	for _, name := range slices.Concat(own, shared) {
 		if !cp.Services[name].publishesTCP() {
 			problems = append(problems, fmt.Sprintf("compose file: Service %s publishes no port, and a native Sandbox reaches a Service only through one; give it `ports: [\"127.0.0.1:<H>:<C>\"]`", name))
 		}
@@ -110,35 +117,61 @@ func (s composeService) publishesTCP() bool {
 // returned with an error once anything may have started. state is the
 // Sandbox's directory in the runtime state.
 func (p *Published) Start(ctx context.Context, state string, req sandbox.Request) (running []sandbox.PublishedService, stop func(context.Context) error, err error) {
+	if len(p.opts.Services) == 0 { // `up` without names would start every Service
+		return nil, func(context.Context) error { return nil }, nil
+	}
+	return p.start(ctx, state, req, p.opts.Services)
+}
+
+// StartShared brings up the shared Services, which every Sandbox of the Run
+// reaches, from the worktree in req.
+func (p *Published) StartShared(ctx context.Context, state string, req sandbox.Request) (running []sandbox.PublishedService, stop func(context.Context) error, err error) {
+	return p.start(ctx, state, req, p.opts.Shared)
+}
+
+// start runs the Compose project req names, with the Services in names.
+func (p *Published) start(ctx context.Context, state string, req sandbox.Request, names []string) (running []sandbox.PublishedService, stop func(context.Context) error, err error) {
 	ctx, cancel := context.WithTimeout(ctx, servicesTimeout)
 	defer cancel()
 	root := filepath.Join(req.Worktree, req.Rel)
-	cp, err := validatePublished(ctx, p.tool, root, p.opts.ComposeFile, p.opts.Services)
+	cp, err := validatePublished(ctx, p.tool, root, p.opts.ComposeFile, p.opts.Services, p.opts.Shared)
 	if err != nil {
 		return nil, nil, err
 	}
 	project := composeProjectName(p.opts.Root, projectHash(p.opts.Root), req.Name)
-	stack, err := writeStack(cp, p.opts.Services, project, filepath.Join(root, p.opts.ComposeFile), state)
+	stack, err := writeStack(cp, names, project, filepath.Join(root, p.opts.ComposeFile), state)
 	if err != nil {
 		return nil, nil, err
 	}
-	stop = func(ctx context.Context) error { return p.tool.down(ctx, stack) }
-	running, err = p.up(ctx, stack, cp)
+	stop = func(ctx context.Context) error {
+		p.mu.Lock()
+		delete(p.containers, state)
+		p.mu.Unlock()
+		return p.tool.down(ctx, stack)
+	}
+	running, err = p.up(ctx, state, stack, cp, names)
 	return running, stop, err
 }
 
 // up starts the project and reads back the configured Services' ports. What
 // a Service `depends_on` runs, but is nothing a Sandbox may reach.
-func (p *Published) up(ctx context.Context, stack composeStack, cp composeProject) ([]sandbox.PublishedService, error) {
-	if err := p.tool.up(ctx, stack, p.opts.Services); err != nil {
+func (p *Published) up(ctx context.Context, state string, stack composeStack, cp composeProject, names []string) ([]sandbox.PublishedService, error) {
+	if err := p.tool.up(ctx, stack, names); err != nil {
 		return nil, err
 	}
 	containers, err := p.tool.running(ctx, stack)
 	if err != nil {
 		return nil, err
 	}
-	services := make([]sandbox.PublishedService, 0, len(p.opts.Services))
-	for _, name := range p.opts.Services {
+	own := make([]string, 0, len(containers))
+	for _, c := range containers {
+		own = append(own, c.Name)
+	}
+	p.mu.Lock()
+	p.containers[state] = own
+	p.mu.Unlock()
+	services := make([]sandbox.PublishedService, 0, len(names))
+	for _, name := range names {
 		i := slices.IndexFunc(containers, func(c composeContainer) bool { return c.Service == name })
 		if i < 0 {
 			return nil, fmt.Errorf("the Service %s isn't running after it was started; a native Sandbox can only reach a Service that keeps running", name)
@@ -153,6 +186,16 @@ func (p *Published) up(ctx context.Context, stack composeStack, cp composeProjec
 		services = append(services, sandbox.PublishedService{Name: name, Aliases: cp.Services[name].aliases(name), Ports: ports})
 	}
 	return services, nil
+}
+
+// MemoryUse is what the own Services of the Sandbox with this state directory
+// hold.
+func (p *Published) MemoryUse(ctx context.Context, state string) (int64, error) {
+	p.mu.Lock()
+	names := p.containers[state]
+	p.mu.Unlock()
+	run := func(ctx context.Context, argv ...string) (string, error) { return p.tool.run(ctx, p.tool.env, argv...) }
+	return containerMemory(ctx, p.tool.engine, run, names)
 }
 
 // publishedPorts asks the engine rather than the compose tool, whose `port`

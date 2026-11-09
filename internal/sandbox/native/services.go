@@ -42,10 +42,36 @@ type Services interface {
 	// directory. They are ready when it returns; stop removes them, and is
 	// also returned with an error if anything may have started.
 	Start(ctx context.Context, state string, req sandbox.Request) (running []sandbox.PublishedService, stop func(context.Context) error, err error)
+	// StartShared brings up the Run's shared Services, as Start does.
+	StartShared(ctx context.Context, state string, req sandbox.Request) (running []sandbox.PublishedService, stop func(context.Context) error, err error)
+	// MemoryUse is what the own Services of the Sandbox with this state
+	// directory hold.
+	MemoryUse(ctx context.Context, state string) (int64, error)
 }
 
-// startServices brings up the Sandbox's Services and opens the way to them,
-// by the means of the host's Sandbox.
+// StartShared brings up the shared Services from the worktree in req, for
+// every Sandbox of the Run, on record like a Sandbox's own. It returns what
+// removes them, also with an error once anything may have started.
+func (p *Provider) StartShared(ctx context.Context, req sandbox.Request) (func(context.Context) error, error) {
+	state := filepath.Join(p.opts.StateDir, "sandboxes", req.Name)
+	if err := os.MkdirAll(state, 0o700); err != nil {
+		return nil, err
+	}
+	running, stopServices, err := p.opts.Services.StartShared(ctx, state, req)
+	if stopServices == nil {
+		return nil, err
+	}
+	p.shared = running
+	return func(ctx context.Context) error {
+		if err := stopServices(ctx); err != nil {
+			return err // the record says what is still to remove
+		}
+		return forceRemove(state)
+	}, err
+}
+
+// startServices brings up the Sandbox's own Services and opens the way to them
+// and the Run's shared ones, by the means of the host's Sandbox.
 func (p *Provider) startServices(ctx context.Context, b *box, s *sandboxPlan, req sandbox.Request) error {
 	if p.opts.Services == nil {
 		return nil
@@ -56,7 +82,7 @@ func (p *Provider) startServices(ctx context.Context, b *box, s *sandboxPlan, re
 	if err != nil {
 		return err
 	}
-	running = slices.SortedFunc(slices.Values(running), func(x, y sandbox.PublishedService) int { return strings.Compare(x.Name, y.Name) })
+	running = slices.SortedFunc(slices.Values(slices.Concat(running, p.shared)), func(x, y sandbox.PublishedService) int { return strings.Compare(x.Name, y.Name) })
 	if p.host.Mac {
 		p.publishToSeatbelt(b, s, running)
 		return nil

@@ -43,6 +43,11 @@ const (
 	Transient ErrorClass = "transient"
 	// Other is any other failure: one fresh retry of the Step.
 	Other ErrorClass = "other"
+	// OutOfMemory is a Harness something killed outright before the end of
+	// its session, which is what running out of memory looks like from
+	// outside: the memory estimate is raised and the Step gets one fresh
+	// retry.
+	OutOfMemory ErrorClass = "out_of_memory"
 )
 
 // Event is one common event parsed from a Harness's output. Only the

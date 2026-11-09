@@ -26,6 +26,10 @@ type Sandbox interface {
 	KillAll(ctx context.Context) error
 	// Services are the Services the Sandbox can reach, none if it has none.
 	Services() []Service
+	// MemoryUse is how many bytes the Sandbox and its own Services hold now.
+	// Shared Services aren't part of it: they exist once, however many
+	// Sandboxes there are.
+	MemoryUse(ctx context.Context) (int64, error)
 	// Destroy removes the Sandbox and everything created for it.
 	Destroy(ctx context.Context) error
 }

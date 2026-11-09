@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -48,6 +49,9 @@ func runExec(args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := recordRoot(filepath.Join(filepath.Dir(args[0]), groupsDir)); err != nil {
+		return err
+	}
 	opts, err := s.options(os.Environ())
 	if err != nil {
 		return err
@@ -58,6 +62,23 @@ func runExec(args []string) error {
 	}
 	argv := slices.Concat([]string{s.Launcher, "--args", strconv.Itoa(fd), "--", insideSelf, helperInit}, s.initRules(), []string{"--"}, command)
 	return syscall.Exec(s.Launcher, argv, []string{}) //nolint:gosec // bwrap, as Check found it
+}
+
+// recordRoot notes this process, which becomes the command's bwrap, as the
+// root of a tree to measure, and forgets the ones that have ended: their ids
+// are free to be reused by something that isn't the Sandbox's.
+func recordRoot(dir string) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil { //nolint:gosec // the Sandbox's own state, from the Factory's argv
+		return err
+	}
+	if entries, err := os.ReadDir(dir); err == nil {
+		for _, e := range entries {
+			if pid, err := strconv.Atoi(e.Name()); err != nil || errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) {
+				_ = os.Remove(filepath.Join(dir, e.Name())) //nolint:gosec // the Sandbox's own state, from the Factory's argv
+			}
+		}
+	}
+	return os.WriteFile(filepath.Join(dir, strconv.Itoa(os.Getpid())), nil, 0o600) //nolint:gosec // the Sandbox's own state, from the Factory's argv
 }
 
 // optionsFile is a file descriptor bwrap inherits, holding opts in the

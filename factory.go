@@ -146,6 +146,10 @@ func runFactory(values map[string]any, root, only string, view runView, stdout, 
 		if sandboxes != nil {
 			opts.Sandboxes = sandboxes.Create
 			opts.ClearSandboxes = func(ctx context.Context) error { return setupError(ctx, sandboxes.Connect(ctx)) }
+			opts.FreeMemory = sandboxes.FreeMemory
+			if len(sharedServices(values)) > 0 {
+				opts.SharedServices = sandboxes.StartShared
+			}
 		}
 		res = factory.Run(ctx, opts)
 		if sandboxes != nil {
@@ -175,6 +179,8 @@ type sandboxProvider interface {
 	Connect(ctx context.Context) error
 	Prepare(ctx context.Context) error
 	Create(ctx context.Context, req sandbox.Request) (sandbox.Sandbox, error)
+	StartShared(ctx context.Context, req sandbox.Request) (func(context.Context) error, error)
+	FreeMemory(ctx context.Context) (int64, error)
 	Close()
 }
 
@@ -205,7 +211,7 @@ func newSandboxes(values map[string]any, root, kind string, s *secrets, log *run
 		return container.New(container.Options{
 			Root: root, StateDir: state, RunID: log.ID(), RunArgs: runArgs(values), Env: env,
 			Egress: egressOptions, Version: versionString(), Log: logLine,
-			ComposeFile: composeFile(values), Services: serviceNames(values), EnvTemplates: serviceEnvTemplates(values),
+			ComposeFile: composeFile(values), Services: ownServices(values), Shared: sharedServices(values), EnvTemplates: serviceEnvTemplates(values),
 		})
 	case "native":
 		opts := native.Options{
@@ -215,7 +221,10 @@ func newSandboxes(values map[string]any, root, kind string, s *secrets, log *run
 		}
 		if names := serviceNames(values); len(names) > 0 {
 			opts.EnvTemplates = serviceEnvTemplates(values)
-			opts.Services = container.NewPublished(container.PublishedOptions{Root: root, StateDir: state, ComposeFile: composeFile(values), Services: names})
+			opts.Services = container.NewPublished(container.PublishedOptions{
+				Root: root, StateDir: state, ComposeFile: composeFile(values),
+				Services: ownServices(values), Shared: sharedServices(values),
+			})
 		}
 		return native.New(opts)
 	}
@@ -435,8 +444,7 @@ func composeFile(values map[string]any) string {
 	return stringAt(values, defaultComposeFile, "services", "compose_file")
 }
 
-// serviceNames are the Services the config names, sorted. Every one of them
-// is an own Service for now, even with `shared = true`.
+// serviceNames are the Services the config names, sorted.
 func serviceNames(values map[string]any) []string {
 	table, _ := valueAt(values, "services").(map[string]any)
 	var names []string
@@ -446,6 +454,21 @@ func serviceNames(values map[string]any) []string {
 		}
 	}
 	return names
+}
+
+// isShared reports whether the Service runs once per Run.
+func isShared(values map[string]any, name string) bool {
+	return boolAt(values, false, "services", name, "shared")
+}
+
+// ownServices are the Services each Sandbox gets a copy of, sorted.
+func ownServices(values map[string]any) []string {
+	return slices.DeleteFunc(serviceNames(values), func(name string) bool { return isShared(values, name) })
+}
+
+// sharedServices are the Services that run once per Run, sorted.
+func sharedServices(values map[string]any) []string {
+	return slices.DeleteFunc(serviceNames(values), func(name string) bool { return !isShared(values, name) })
 }
 
 // serviceEnvTemplates are the `env` templates of each Service that has any.

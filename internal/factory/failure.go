@@ -31,6 +31,9 @@ type failure struct {
 	protected []string
 	// verify is the Feedback command that failed, if that is why.
 	verify *verify.Failure
+	// drained means Ctrl-C came before the Ticket got its Sandbox: nothing
+	// is held against it.
+	drained bool
 }
 
 // factoryFailure is a failure of the Factory's own, not the Ticket's.

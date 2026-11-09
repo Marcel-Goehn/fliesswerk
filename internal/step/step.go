@@ -140,7 +140,7 @@ func (r Runner) Run(ctx context.Context, s harness.Step, dir string) harness.Out
 	var exitErr *exec.ExitError
 	switch {
 	case errors.As(waitErr, &exitErr):
-		exit = exitErr.ExitCode()
+		exit = exitCode(exitErr)
 	case waitErr != nil:
 		exit = -1
 	}
@@ -152,6 +152,14 @@ func (r Runner) Run(ctx context.Context, s harness.Step, dir string) harness.Out
 		out.Message += ": " + lastLine(stderr)
 	}
 	return out
+}
+
+// exitCode is how the process ended, a SIGKILL as a shell would report it.
+func exitCode(e *exec.ExitError) int {
+	if status, ok := e.Sys().(syscall.WaitStatus); ok && status.Signaled() && status.Signal() == syscall.SIGKILL {
+		return harness.ExitKilled
+	}
+	return e.ExitCode()
 }
 
 // watch waits until the Harness exits or must be killed. It returns why it

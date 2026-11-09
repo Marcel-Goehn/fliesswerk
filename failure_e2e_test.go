@@ -208,3 +208,18 @@ func TestRunRedactsAProjectSecretInTheFailureComment(t *testing.T) {
 		t.Errorf("the comment leaks the secret:\n%s", c)
 	}
 }
+
+func TestRunHandsBackATicketWhoseStepIsOOMKilledTwice(t *testing.T) {
+	bin := buildTestKraftwerk(t)
+	p := newRunProject(t, bin, cartIssues(), `{"sessions": [{"match": "Implement Ticket #2", "kill": true}]}`)
+
+	code := p.run(t)
+
+	if code != exitFailures {
+		t.Fatalf("exit code = %d, want %d\nstdout: %s\nstderr: %s", code, exitFailures, p.stdout, p.stderr)
+	}
+	p.handedBack(t, 2, "killed for lack of memory", "again after a retry")
+	if !strings.Contains(p.stdout, "retrying in a fresh session") {
+		t.Errorf("the first kill wasn't retried:\n%s", p.stdout)
+	}
+}

@@ -28,6 +28,10 @@ func (k OutcomeKind) String() string {
 	return "unknown"
 }
 
+// ExitKilled is the exit code of a command that was killed with SIGKILL, as
+// a shell or a container engine's client reports it.
+const ExitKilled = 137
+
 // Outcome is how a Step ended: exactly one of a report, no report, or an
 // error with its class. It also holds the Step's Usage.
 type Outcome struct {
@@ -77,6 +81,8 @@ func resolve(events []Event, exitCode int) Outcome {
 		return Outcome{Kind: Failed, Class: failure.Class, Message: failure.Text}
 	case out.Kind == Reported:
 		return out
+	case !terminal && exitCode == ExitKilled:
+		return Outcome{Kind: Failed, Class: OutOfMemory, Message: "killed before the end of the session, most likely for lack of memory"}
 	case !terminal && exitCode != 0:
 		return Outcome{Kind: Failed, Class: Other, Message: fmt.Sprintf("exited with code %d before the end of the session", exitCode)}
 	}

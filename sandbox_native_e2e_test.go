@@ -121,3 +121,54 @@ func capturedRunLogs(t *testing.T, project string) string {
 	}
 	return all.String()
 }
+
+func TestANativeRunReportsItsMemoryInTheSummaryAndToCheck(t *testing.T) {
+	if _, err := exec.LookPath("bwrap"); err != nil && runtime.GOOS == "linux" {
+		t.Skip("no bwrap; the native job installs it")
+	}
+	if _, err := native.Check(context.Background()); err != nil {
+		t.Skipf("no native Sandbox here: %v", err)
+	}
+	bin := buildTestKraftwerk(t)
+	script := `{"sessions": [` + approves + `, ` + implementsCart("Implement Ticket #2", `package cart\n`) + `]}`
+	p := newRunProject(t, bin, cartIssues(), script)
+	fake := t.TempDir()
+	p.scriptPath = filepath.Join(fake, "script.json")
+	writeFile(t, p.scriptPath, script)
+	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), `[sandbox]
+kind = "native"
+writable_paths = ["`+fake+`"]
+
+[sandbox.env]
+KWK_FAKE_HARNESS_SCRIPT = "`+p.scriptPath+`"
+`)
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := []string{fakeClaudeBinDir(t), filepath.Dir(git), "/bin"}
+	if runtime.GOOS == "linux" {
+		bwrap, err := exec.LookPath("bwrap")
+		if err != nil {
+			t.Fatal(err)
+		}
+		path = append(path, filepath.Dir(bwrap))
+	}
+	p.extraEnv = append(p.extraEnv, "HOME="+t.TempDir(), "PATH="+strings.Join(path, string(os.PathListSeparator)))
+
+	if code := p.run(t); code != 0 {
+		t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s\nrun logs:\n%s", code, p.stdout, p.stderr, capturedRunLogs(t, p.work))
+	}
+	for _, want := range []string{"Memory: peak estimate", "per Sandbox"} {
+		if !strings.Contains(p.stdout, want) {
+			t.Errorf("the Run's output lacks %q:\n%s", want, p.stdout)
+		}
+	}
+
+	if code := p.kwk(t, "check"); code != 0 {
+		t.Fatalf("check: exit code = %d\nstderr: %s", code, p.stderr)
+	}
+	if !strings.Contains(p.stdout, "kraftwerk check: memory: peak estimate") {
+		t.Errorf("check doesn't report the memory:\n%s", p.stdout)
+	}
+}

@@ -1,6 +1,6 @@
 # Services
 
-A Service is a supporting program, such as a database, that the Factory starts from your project's compose file. This guide covers own Services in container and native Sandboxes.
+A Service is a supporting program, such as a database, that the Factory starts from your project's compose file. This guide covers own and shared Services in container and native Sandboxes, and how memory decides how many Sandboxes run at once.
 
 ## Setting them up
 
@@ -40,6 +40,45 @@ Your compose file, your running containers and your volumes are never touched. T
 - renames named volumes and networks into the Factory's project
 
 Relative paths in the compose file resolve inside the Sandbox's worktree, next to the compose file.
+
+## Shared Services
+
+Mark a Service `shared = true` and one copy serves the whole Run:
+
+```toml
+[services.elasticsearch]
+shared = true
+```
+
+Use it for Services too heavy to run once per Sandbox, such as Elasticsearch, Kafka or Keycloak. Prefer own Services for everything else: with a shared Service, separating the data is up to your project, and an agent can still read or drop another Ticket's data.
+
+- The copy runs in Compose project `kraftwerk-<repo dir>-<hash>-shared`, from a Factory-owned worktree of `base_branch`, so its compose file and relative paths are those of the base branch.
+- It starts after the `run_start` Hook and is removed, volumes included, after the `run_end` Hook. A Service that fails to start stops the Run.
+- Every Sandbox reaches it the same way as an own Service, and it outlives each of them.
+
+Separate each Ticket's data with `KRAFTWERK_SANDBOX`, which every command in a Sandbox and every `sandbox_created` Hook gets. It names the Sandbox, such as `build-42`, and holds letters, digits and hyphens, so quote it where your database needs that. Create what the Ticket needs in the Hook:
+
+```toml
+[[hooks.sandbox_created]]
+run = 'curl -s -X PUT "http://elasticsearch:9200/app-$KRAFTWERK_SANDBOX"'
+```
+
+The verify of a merged result runs in a Sandbox of its own, `verify-42`, and the `sandbox_created` Hook doesn't run for it. Feedback commands that need the Ticket's data must create it themselves.
+
+An own and a shared Service can't depend on each other, because they are in different Compose projects. A helper that neither names may be a dependency of both, and then each side runs its own copy.
+
+## Memory
+
+`max_parallel` is an upper limit. Sandboxes in an Iteration start one after another, and each starts only when one Sandbox's estimated peak plus a 512 MB margin is free. There is nothing to configure.
+
+- The estimate is 2 GB until a Sandbox has been measured. After that it is the highest peak measured for one Sandbox with its own Services, kept per checkout and machine in `.kraftwerk/state/memory.json`.
+- Memory the running Sandboxes may still grow into up to the estimate doesn't count as free, because a Sandbox is at its smallest when it starts.
+- A shared Service counts once: it is already running, so it is part of what's no longer free, and never part of a Sandbox's peak.
+- Free means what the engine has left, or for a native Sandbox what the machine has available. On Linux the engine is also limited to what the machine has available.
+- A Ticket that doesn't fit waits in the same Iteration. At least one Sandbox always starts, with a warning if it doesn't fit.
+- A Step killed outright, most likely for lack of memory, raises the estimate by half and gets the normal single retry once there's room. A second kill hands the Ticket back with the `cannot_do_label`, with the peak and the available memory in the comment.
+
+The peak and the waits are in the Run's log and summary, and `kraftwerk check` shows them too.
 
 ## Reaching a Service from the agent
 
@@ -91,4 +130,5 @@ We recommend the container Sandbox on macOS: it gives you the names and the cont
 | A writable bind mount from an absolute path, `~` or outside the project | It is real data on your machine                   | Add `:ro`, or use a named volume or a path in the project  |
 | A volume with `driver_opts.device`                        | It is real data on your machine or network        | Use a volume without a device                              |
 | A `[services.<name>]` the file doesn't define             | There is nothing to start                         | Fix the name, or enable the Service's profile by default   |
+| `depends_on` between an own and a shared Service          | They are in different Compose projects            | Make both shared or neither                                |
 | With `kind = "native"`, a named Service with no TCP port under `ports:` | A native Sandbox reaches a Service only through a published port | Add `ports: ["127.0.0.1:<H>:<C>"]`            |

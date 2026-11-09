@@ -182,3 +182,169 @@ func TestARunStartRejectsAWritableAbsoluteBindMount(t *testing.T) {
 		t.Fatalf("Prepare: %v", err)
 	}
 }
+
+// sharedProject is a project whose database is shared, the Run's copy started
+// from a worktree of its own.
+func sharedProject(t *testing.T) (pr *project, worktrees []string, stop func(context.Context) error) {
+	t.Helper()
+	pr, worktrees = servicesProject(t, databaseCompose)
+	pr.p.opts.Services, pr.p.opts.Shared = nil, []string{"postgres"}
+	pr.prepare(t)
+	base := filepath.Join(pr.root, ".kraftwerk", "state", "worktrees", "shared-services")
+	gitIn(t, pr.root, "worktree", "add", "-q", "--detach", base)
+	writeFile(t, filepath.Join(base, "compose.yaml"), databaseCompose)
+	stop, err := pr.p.StartShared(context.Background(), sandbox.Request{Name: "shared", Worktree: base})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = stop(context.Background()) })
+	return pr, worktrees, stop
+}
+
+func TestTwoSandboxesShareOneCopyOfASharedService(t *testing.T) {
+	pr, worktrees, _ := sharedProject(t)
+	first := pr.openOn(t, "build-1", worktrees[0])
+	second := pr.openOn(t, "build-2", worktrees[1])
+
+	mustSh(t, first, psql("postgres", "create table seen_by_both (id int)"))
+	if got := mustSh(t, second, psql("postgres", "select count(*) from pg_tables where tablename = $$seen_by_both$$")); got != "1" {
+		t.Errorf("the second Sandbox doesn't see the first's table: %q", got)
+	}
+	if got := mustSh(t, second, psql("localhost", "select 1")); got != "1" {
+		t.Errorf("through localhost: %q", got)
+	}
+	project := composeProjectName(pr.root, pr.p.project, "shared")
+	if got := strings.Fields(pr.names(t, "ps", project)); len(got) != 1 {
+		t.Errorf("the shared project's containers: %q", got)
+	}
+	for _, name := range []string{"build-1", "build-2"} {
+		if got := pr.names(t, "ps", composeProjectName(pr.root, pr.p.project, name)); got != "" {
+			t.Errorf("%s has its own copy: %q", name, got)
+		}
+	}
+}
+
+func TestEverySandboxIsToldItsNameToSeparateItsData(t *testing.T) {
+	pr, worktrees, _ := sharedProject(t)
+	sb := pr.openOn(t, "build-1", worktrees[0])
+
+	if got := mustSh(t, sb, `printf %s "$KRAFTWERK_SANDBOX"`); got != "build-1" {
+		t.Errorf("KRAFTWERK_SANDBOX = %q", got)
+	}
+}
+
+func TestASharedServiceOutlivesASandboxAndGoesAtTheEndOfTheRun(t *testing.T) {
+	pr, worktrees, stop := sharedProject(t)
+	project := composeProjectName(pr.root, pr.p.project, "shared")
+	first := pr.openOn(t, "build-1", worktrees[0])
+	if err := first.Destroy(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := pr.names(t, "ps", project); got == "" {
+		t.Fatal("the shared Service went with the Sandbox")
+	}
+	second := pr.openOn(t, "build-2", worktrees[1])
+	if got := mustSh(t, second, psql("postgres", "select 1")); got != "1" {
+		t.Errorf("after the first Sandbox went: %q", got)
+	}
+
+	if err := second.Destroy(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"ps", "volume"} {
+		if got := pr.names(t, kind, project); got != "" {
+			t.Errorf("%s left: %q", kind, got)
+		}
+	}
+}
+
+func TestACrashedRunsSharedServiceIsRemovedByTheNextRun(t *testing.T) {
+	pr, _, _ := sharedProject(t)
+	project := composeProjectName(pr.root, pr.p.project, "shared")
+
+	next := pr.provider(t)
+	next.opts.ComposeFile, next.opts.Shared = "compose.yaml", []string{"postgres"}
+	if err := next.Connect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := pr.names(t, "ps", project); got != "" {
+		t.Errorf("left: %q", got)
+	}
+}
+
+func TestASandboxsMemoryCountsItsOwnServicesButNotSharedOnes(t *testing.T) {
+	pr, worktrees := servicesProject(t, databaseCompose)
+	pr.prepare(t)
+	withOwn := pr.openOn(t, "build-1", worktrees[0])
+	own, err := withOwn.MemoryUse(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if own == 0 {
+		t.Error("a Sandbox with a running database holds nothing")
+	}
+	free, err := pr.p.FreeMemory(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if free <= 0 {
+		t.Errorf("free memory = %d", free)
+	}
+}
+
+func TestASharedServicesMemoryIsNotTheSandboxs(t *testing.T) {
+	pr, worktrees, _ := sharedProject(t)
+	sb := pr.openOn(t, "build-1", worktrees[0])
+
+	use, err := sb.MemoryUse(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if limit := int64(20) << 20; use >= limit {
+		t.Errorf("the Sandbox holds %d bytes, want well under Postgres's", use)
+	}
+}
+
+func TestADependencyAcrossOwnAndSharedStopsTheRunStart(t *testing.T) {
+	compose := "services:\n  app:\n    image: docker.io/library/postgres:17-alpine\n    depends_on: [postgres]\n  postgres:\n    image: docker.io/library/postgres:17-alpine\n"
+	pr, _ := servicesProject(t, compose)
+	pr.p.opts.Services, pr.p.opts.Shared = []string{"app"}, []string{"postgres"}
+	ctx := context.Background()
+	if err := pr.p.Connect(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := pr.p.Prepare(ctx); err == nil || !strings.Contains(err.Error(), "depends_on") {
+		t.Fatalf("Prepare: %v", err)
+	}
+}
+
+func TestAHelperOfBothOwnAndSharedServicesIsOnTheSandboxsNetworkOnce(t *testing.T) {
+	const pg = "    image: docker.io/library/postgres:17-alpine\n    environment:\n      POSTGRES_HOST_AUTH_METHOD: trust\n"
+	compose := "services:\n  app:\n" + pg + "    depends_on: [helper]\n  search:\n" + pg + "    depends_on: [helper]\n  helper:\n" + pg
+	pr, worktrees := servicesProject(t, compose)
+	pr.p.opts.Services, pr.p.opts.Shared = []string{"app"}, []string{"search"}
+	pr.prepare(t)
+	base := filepath.Join(pr.root, ".kraftwerk", "state", "worktrees", "shared-services")
+	gitIn(t, pr.root, "worktree", "add", "-q", "--detach", base)
+	writeFile(t, filepath.Join(base, "compose.yaml"), compose)
+	stop, err := pr.p.StartShared(context.Background(), sandbox.Request{Name: "shared", Worktree: base})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = stop(context.Background()) })
+
+	sb := pr.openOn(t, "build-1", worktrees[0])
+
+	helpers := 0
+	for _, s := range sb.Services() {
+		if s.Name == "helper" {
+			helpers++
+		}
+	}
+	if helpers != 1 {
+		t.Errorf("the Sandbox lists the helper %d times, want its own copy once: %+v", helpers, sb.Services())
+	}
+}

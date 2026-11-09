@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/config"
+	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
+	"github.com/Marcel-Goehn/kraftwerk/internal/memory"
 	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox/container"
 	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox/native"
 )
@@ -113,14 +115,14 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 			return fail(err)
 		}
 		if names := serviceNames(values); len(names) > 0 {
-			if err := container.CheckServices(ctx, root, composeFile(values), names); err != nil {
+			if err := container.CheckServices(ctx, root, composeFile(values), ownServices(values), sharedServices(values)); err != nil {
 				return fail(err)
 			}
 			_, _ = fmt.Fprintln(stdout, "kraftwerk check: compose file ok")
 		}
 	case "native":
 		if names := serviceNames(values); len(names) > 0 {
-			if err := container.CheckPublishedServices(ctx, root, composeFile(values), names); err != nil {
+			if err := container.CheckPublishedServices(ctx, root, composeFile(values), ownServices(values), sharedServices(values)); err != nil {
 				return fail(err)
 			}
 			_, _ = fmt.Fprintln(stdout, "kraftwerk check: compose file ok")
@@ -128,6 +130,10 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		if _, err := native.Check(ctx); err != nil {
 			return fail(err)
 		}
+	}
+
+	if inSandbox(values) {
+		reportMemory(root, stdout, stderr)
 	}
 
 	tr, err := newTracker(values, s.trackerToken)
@@ -148,6 +154,21 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "warning: %s; your Runs skip it\n", claimLine(c))
 	}
 	return exitOK
+}
+
+// reportMemory says what a Run's memory admission would start from.
+func reportMemory(root string, stdout, stderr io.Writer) {
+	store, err := memory.Load(filepath.Join(root, factory.MemoryFile))
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "warning: %v\n", err)
+	}
+	how := "measured"
+	if !store.Measured() {
+		how = "not measured yet"
+	}
+	waits := store.LastRunWaits()
+	_, _ = fmt.Fprintf(stdout, "kraftwerk check: memory: peak estimate %d MB per Sandbox (%s), %d %s for memory in the last Run\n",
+		memory.MB(store.Estimate()), how, waits, pluralize(waits, "wait", "waits"))
 }
 
 // loadConfig parses the local flags (and any extra ones register adds),

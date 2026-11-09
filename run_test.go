@@ -293,3 +293,19 @@ func TestServiceEnvTemplatesAreReadPerService(t *testing.T) {
 		t.Errorf("got %v, want %v", got, want)
 	}
 }
+
+func TestServicesAreOwnUnlessMarkedShared(t *testing.T) {
+	values := map[string]any{"services": map[string]any{
+		"compose_file":  "compose.yaml",
+		"elasticsearch": map[string]any{"shared": true},
+		"postgres":      map[string]any{"shared": false},
+		"redis":         map[string]any{},
+	}}
+
+	if got, want := ownServices(values), []string{"postgres", "redis"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("own = %v, want %v", got, want)
+	}
+	if got, want := sharedServices(values), []string{"elasticsearch"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("shared = %v, want %v", got, want)
+	}
+}
