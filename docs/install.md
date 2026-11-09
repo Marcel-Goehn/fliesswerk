@@ -26,7 +26,7 @@ The script:
 4. adds `kwk` as a short name, unless a `kwk` is already on your `PATH`
 5. adds the directory to your `PATH` if needed: your shell's profile on Linux and macOS, your user `PATH` on Windows. Open a new terminal afterwards.
 
-Run the script again to upgrade. You can set these before running it:
+Run the script again to reinstall, or use [`kraftwerk update`](#updating). You can set these before running it:
 
 | Variable                   | Effect                                                 |
 | -------------------------- | ------------------------------------------------------ |
@@ -35,6 +35,34 @@ Run the script again to upgrade. You can set these before running it:
 | `KRAFTWERK_NO_MODIFY_PATH` | Leave your profile or user `PATH` alone                |
 
 A script download doesn't trigger the SmartScreen or Gatekeeper warnings below, because those apply to files a browser saved.
+
+## Updating
+
+`kraftwerk update` installs the newest release of the major version you're on, after checking its SHA-256 against the release's `checksums.txt`. An update within a major never breaks your config. Run inside a project, it also stays within that project's `factory` pin. On Windows the running `kraftwerk.exe` is renamed to `kraftwerk.exe.old` first, and the next update removes that file.
+
+`kraftwerk update --major` moves to the newest major version. Run `kraftwerk migrate` in each project afterwards.
+
+| Variable                 | Effect                                                                                         |
+| ------------------------ | ---------------------------------------------------------------------------------------------- |
+| `KRAFTWERK_DOWNLOAD_URL` | Download from a mirror of the GitHub releases URL                                              |
+| `KRAFTWERK_RELEASES_API` | Ask this URL for the release list, in the shape of GitHub's API, instead of GitHub             |
+| `KRAFTWERK_GITHUB_TOKEN` | A token for the release list, for machines that share an address and reach GitHub's rate limit |
+
+### The new-version notice
+
+`check`, `run` and `release` say when a newer release is out, on stderr. They ask GitHub at most once a day and never in CI. To turn it off, set this in `.kraftwerk/config.toml` or `config.local.toml`:
+
+```toml
+update_notice = false
+```
+
+### Pinning the version for a team
+
+`factory` in `.kraftwerk/config.toml` is a semver range the Factory's version must match, such as `"1"`, `"~1.2"` or `">=1.2 <2"`. A teammate on a version outside it gets a validation error that names the command to run.
+
+### Renamed and removed config keys
+
+A renamed or removed key keeps working within its major, with a deprecation warning. `kraftwerk migrate` rewrites `config.toml` and `config.local.toml`, keeps your comments and reports each change. If it can't rewrite a key by itself, for example one inside an inline table, it changes nothing and names the key to change by hand.
 
 ## Smart App Control
 

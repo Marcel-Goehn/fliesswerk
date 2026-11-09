@@ -135,6 +135,7 @@ func containsStar(v any) bool {
 var schema = table("Kraftwerk configuration.", map[string]*node{
 	"version":         {kind: kVersion, doc: "The config format version. Must be 1."},
 	"factory":         str("A semver range the Factory's version must match, e.g. \"1\"."),
+	"update_notice":   boolean("Say when a newer Kraftwerk is out, at most once a day and never in CI. Default true."),
 	"harness":         enum("The Harness every Step uses unless the Step sets its own.", harnessNames...),
 	"model":           str("The model every Step uses unless the Step sets its own."),
 	"effort":          str("The reasoning effort every Step uses unless the Step sets its own."),

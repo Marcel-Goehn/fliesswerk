@@ -1,5 +1,6 @@
 # The tag pipeline: the full CI suite, then GoReleaser's archives, attestations
-# and publishing, then a smoke test of what was published on all three OSes.
+# and publishing, then `kraftwerk update` from the previous release, then a
+# smoke test of what was published on all three OSes.
 #
 # The release stays a draft until it's attested, so if anything fails before
 # the "Publish" step, nothing is released. Delete the draft and the tag, or
@@ -31,6 +32,8 @@ jobs:
       contents: write
       id-token: write
       attestations: write
+    outputs:
+      previous: ${{ steps.previous.outputs.tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -54,12 +57,90 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release edit "$GITHUB_REF_NAME" --draft=false --repo "$GITHUB_REPOSITORY"
+      # Empty for a prerelease, which `update` never offers, for the very
+      # first release, and for a hotfix of an older minor, since `update` goes
+      # to the newest of the major instead.
+      - name: Find the previous release
+        id: previous
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          case "$TAG" in *-*) exit 0 ;; esac
+          tags=$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases --limit 100 --json tagName --jq '.[].tagName')
+          sorted=$(printf '%s\n%s\n' "$tags" "$TAG" | sort -Vu)
+          newest=$(printf '%s\n' "$sorted" | grep "^${TAG%%.*}\." | tail -n 1)
+          if [ "$newest" != "$TAG" ]; then exit 0; fi
+          previous=$(printf '%s\n' "$sorted" | grep -xF -B1 "$TAG" | head -n 1)
+          if [ "$previous" != "$TAG" ]; then
+            echo "tag=$previous" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Installs the previous release as a user would, and updates it to this one.
+  update:
+    name: update from the previous release (${{ matrix.os }})
+    needs: publish
+    if: ${{ needs.publish.outputs.previous != '' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    env:
+      KRAFTWERK_VERSION: ${{ needs.publish.outputs.previous }}
+      KRAFTWERK_NO_MODIFY_PATH: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the previous release (install.sh)
+        if: runner.os != 'Windows'
+        run: sh install.sh
+      - name: Install the previous release (install.ps1)
+        if: runner.os == 'Windows'
+        shell: powershell # Windows PowerShell 5.1, the one every Windows has
+        run: .\install.ps1
+      - name: kraftwerk update
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+          KRAFTWERK_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            bin="$LOCALAPPDATA/Programs/kraftwerk/kraftwerk.exe"
+          else
+            bin="$HOME/.local/bin/kraftwerk"
+          fi
+          # Any unknown flag prints the usage. The releases from before
+          # `update` existed have nothing to run here.
+          usage=$("$bin" --help 2>&1 || true)
+          case "$usage" in
+          *"kraftwerk update"*) ;;
+          *)
+            echo "$KRAFTWERK_VERSION has no update command, so there's nothing to test"
+            exit 0
+            ;;
+          esac
+          from=${KRAFTWERK_VERSION#v}
+          to=${TAG#v}
+          if [ "${from%%.*}" = "${to%%.*}" ]; then
+            "$bin" update
+          else
+            "$bin" update --major
+          fi
+          got=$("$bin" --version)
+          if [ "$got" != "kraftwerk $to" ]; then
+            echo "after the update, --version says: $got" >&2
+            exit 1
+          fi
 
   # Installs the release as a user would, then runs it. Go is only here for
   # the fakes `check` runs against: no real Harness in CI.
   smoke:
     name: smoke (${{ matrix.os }})
-    needs: publish
+    needs: [publish, update]
+    # Runs whatever `update` did: the release is published either way.
+    if: ${{ !cancelled() && needs.publish.result == 'success' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

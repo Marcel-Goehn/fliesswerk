@@ -730,6 +730,10 @@
       },
       "type": "object"
     },
+    "update_notice": {
+      "description": "Say when a newer Kraftwerk is out, at most once a day and never in CI. Default true.",
+      "type": "boolean"
+    },
     "verify": {
       "description": "Names from [commands] the Factory runs itself to check a change.",
       "items": {

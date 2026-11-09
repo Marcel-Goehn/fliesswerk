@@ -34,6 +34,9 @@ const usage = `Usage:
   kraftwerk release <N>           drop the claim on Spec or standalone Ticket N, so someone else's Run may take it
   kraftwerk prompts diff <step>   show how the built-in prompt of a Step changed since your file's version
   kraftwerk auth set <key>        store a secret, read from a hidden prompt, in your user-level credentials file
+  kraftwerk migrate               rewrite renamed or removed config keys, and report what changed
+  kraftwerk update                install the newest release of this major version
+  kraftwerk update --major        move to the newest major version; run kraftwerk migrate after it
   kraftwerk --version             print the version
 `
 
@@ -72,6 +75,12 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 	}
 	if len(args) > 0 && args[0] == "auth" {
 		return runAuth(args[1:], os.Stdin, stdout, stderr)
+	}
+	if len(args) > 0 && args[0] == "migrate" {
+		return runMigrate(args[1:], stdout, stderr)
+	}
+	if len(args) > 0 && args[0] == "update" {
+		return runUpdate(args[1:], stdout, stderr)
 	}
 	if len(args) > 0 {
 		_, _ = fmt.Fprintf(stderr, "kraftwerk: unknown argument %q\n", args[0])

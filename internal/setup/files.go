@@ -173,6 +173,7 @@ func configTOML(f Facts, a Answers, h Harness) string {
 		"# The model every Step uses, unless [steps.<name>] sets its own (they can also set harness and effort).", `model = "claude-opus-5-5"`,
 		"# The reasoning effort every Step uses; unset leaves the Harness's own default.", `# effort = "high"`,
 		"# A semver range the Factory's version must match.", `# factory = "1"`,
+		"# Say when a newer Kraftwerk is out, at most once a day and never in CI.", "# update_notice = false",
 		"# How many Tickets an Iteration works on at once.", "max_parallel = 1",
 		"# How many Iterations a Run may have.", "max_iterations = 10",
 		"# The Feedback commands the Factory runs itself to check a change.", "verify = "+quoteList(verify))

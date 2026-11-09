@@ -276,6 +276,7 @@ func loadConfig(cmd string, args []string, maxArgs int, stderr io.Writer, regist
 
 	root = projectRoot(cwd)
 	r := config.Load(root, lf.overrides(fs))
+	r.Diagnostics = append(r.Diagnostics, config.CheckFactory(r.Values, version)...)
 	for _, d := range r.Diagnostics {
 		_, _ = fmt.Fprintln(stderr, d.String())
 	}
@@ -283,6 +284,7 @@ func loadConfig(cmd string, args []string, maxArgs int, stderr io.Writer, regist
 		_, _ = fmt.Fprintf(stderr, "%s: the config is not valid; fix the errors above\n", cmd)
 		return nil, "", nil, exitConfigError, false
 	}
+	noticeNewVersion(r.Values, stderr)
 	return r.Values, root, rest, exitOK, true
 }
 

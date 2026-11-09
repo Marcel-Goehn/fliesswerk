@@ -132,6 +132,9 @@ func Load(root string, overrides []Override) Result {
 
 	merged := map[string]any{}
 	for _, l := range layers {
+		for _, c := range applyDeprecations(l.values) {
+			r.add(Warning, l.name, c.old, c.warning())
+		}
 		r.Diagnostics = append(r.Diagnostics, validateLayer(l.name, l.values)...)
 		mergeInto(merged, l.values)
 	}
