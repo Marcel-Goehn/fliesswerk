@@ -146,6 +146,24 @@ jobs:
           go test -tags integration -v -timeout 10m ./internal/sandbox/native/
           go test -tags integration -v -timeout 10m -run 'Native' .
 
+  # The native Sandbox on real Seatbelt.
+  native-macos:
+    name: native (Seatbelt)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: go generate (the proxy sidecar's root filesystems)
+        run: go generate ./internal/proxyimage
+      - name: go test (integration)
+        run: |
+          go test -tags integration -v -timeout 10m ./internal/sandbox/native/
+          go test -tags integration -v -timeout 10m -run 'Native' .
+
   semgrep:
     name: semgrep
     runs-on: ubuntu-latest
@@ -179,7 +197,7 @@ jobs:
   ci:
     name: ci
     if: ${{ always() }}
-    needs: [lint, build, test, container, native, semgrep, govulncheck]
+    needs: [lint, build, test, container, native, native-macos, semgrep, govulncheck]
     runs-on: ubuntu-latest
     steps:
       - name: All every-push checks passed

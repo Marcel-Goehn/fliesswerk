@@ -1,4 +1,4 @@
-//go:build integration && linux
+//go:build integration && (linux || darwin)
 
 package main
 
@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -26,7 +27,7 @@ const nativeProbeScript = `{"sessions": [` + approves + `, {"actions": [
 ], "report": {"outcome": "done", "summary": "Probed."}}]}`
 
 func TestARunClosesATicketInsideANativeSandbox(t *testing.T) {
-	if _, err := exec.LookPath("bwrap"); err != nil {
+	if _, err := exec.LookPath("bwrap"); err != nil && runtime.GOOS == "linux" {
 		t.Skip("no bwrap; the native job installs it")
 	}
 	bin := buildTestKraftwerk(t)
@@ -57,11 +58,15 @@ run = 'test ! -e "$REAL_HOME/.ssh/id_rsa"'
 	if err != nil {
 		t.Fatal(err)
 	}
-	bwrap, err := exec.LookPath("bwrap")
-	if err != nil {
-		t.Fatal(err)
+	path := []string{fakeClaudeBinDir(t), filepath.Dir(curl)}
+	if runtime.GOOS == "linux" {
+		bwrap, err := exec.LookPath("bwrap")
+		if err != nil {
+			t.Fatal(err)
+		}
+		path = append(path, filepath.Dir(bwrap))
 	}
-	p.extraEnv = append(p.extraEnv, "HOME="+home, "PATH="+strings.Join([]string{fakeClaudeBinDir(t), filepath.Dir(curl), filepath.Dir(bwrap)}, string(os.PathListSeparator)))
+	p.extraEnv = append(p.extraEnv, "HOME="+home, "PATH="+strings.Join(path, string(os.PathListSeparator)))
 
 	code := p.run(t)
 

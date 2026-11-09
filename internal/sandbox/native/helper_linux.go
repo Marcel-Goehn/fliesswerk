@@ -3,23 +3,18 @@
 package native
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"os/exec"
-	"slices"
 	"strconv"
 	"strings"
 	"syscall"
 
 	"golang.org/x/sys/unix"
 )
-
-// helperFailed is the exit code of a helper that couldn't run the command.
-const helperFailed = 125
 
 // RunHelper runs a hidden subcommand if args name one, and returns its exit
 // code.
@@ -40,20 +35,15 @@ func RunHelper(args []string) (code int, ok bool) {
 	return code, true
 }
 
+// killGroups has nothing to do: a command's PID namespace ends with it.
+func killGroups(string) {}
+
 // runExec becomes the command's bwrap. Options and env go through a memfd:
 // on bwrap's argv anyone on the machine could read a secret, and bwrap
 // closes it before the command starts.
 func runExec(args []string) error {
-	dash := slices.Index(args, "--")
-	if dash != 1 || len(args) < 3 {
-		return errors.New("usage: " + helperExec + " <plan> -- <command>")
-	}
-	data, err := os.ReadFile(args[0]) //nolint:gosec // the Factory's own file, from its own argv
+	s, command, err := loadPlan(args)
 	if err != nil {
-		return err
-	}
-	var s bwrapPlan
-	if err := json.Unmarshal(data, &s); err != nil {
 		return err
 	}
 	opts, err := s.options(os.Environ())
@@ -64,8 +54,8 @@ func runExec(args []string) error {
 	if err != nil {
 		return err
 	}
-	argv := append([]string{s.Bwrap, "--args", strconv.Itoa(fd), "--", insideSelf, helperInit, "--"}, args[dash+1:]...)
-	return syscall.Exec(s.Bwrap, argv, []string{}) //nolint:gosec // bwrap, as Check found it
+	argv := append([]string{s.Launcher, "--args", strconv.Itoa(fd), "--", insideSelf, helperInit, "--"}, command...)
+	return syscall.Exec(s.Launcher, argv, []string{}) //nolint:gosec // bwrap, as Check found it
 }
 
 // optionsFile is a file descriptor bwrap inherits, holding opts in the

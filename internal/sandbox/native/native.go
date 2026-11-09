@@ -1,7 +1,8 @@
-// Package native is the native Sandbox on Linux and WSL2: every command
-// runs on the user's machine, in a bubblewrap of its own. Reads are closed
-// but for the system and the toolchains on PATH, writes reach only the
-// worktree, and the one way out is the egress proxy.
+// Package native is the native Sandbox: every command runs on the user's
+// machine, in a bubblewrap of its own on Linux and WSL2 and under a Seatbelt
+// profile of its own on macOS. Reads are closed but for the system and the
+// toolchains on PATH, writes reach only the worktree, and the one way out is
+// the egress proxy.
 package native
 
 import (
@@ -12,6 +13,7 @@ import (
 	"fmt"
 	"io/fs"
 	"maps"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -48,16 +50,20 @@ type Options struct {
 
 // Provider creates the native Sandboxes of a Run.
 type Provider struct {
-	opts  Options
-	host  Host
-	bwrap string
+	opts Options
+	host Host
+	// launcher is bwrap, or sandbox-exec on macOS.
+	launcher string
 	// self is this binary, which a Sandbox runs as its first process.
 	self     string
 	identity []string
 	proxy    *egress.Proxy
-	// socketDir holds the proxy's socket. It lives outside the project:
-	// the path of a Unix socket is short, and a project's may not be.
+	// socketDir holds the proxy's socket under bwrap. It lives outside the
+	// project: the path of a Unix socket is short, and a project's may not be.
 	socketDir string
+	// proxyPort is the proxy's port on the host's loopback under Seatbelt,
+	// which has no loopback of the Sandbox's own to forward from.
+	proxyPort string
 
 	mu     sync.Mutex
 	denied map[string]bool
@@ -71,19 +77,20 @@ func New(opts Options) *Provider {
 // Connect proves the machine can build a Sandbox and clears what a crashed
 // Run of this checkout left behind.
 func (p *Provider) Connect(ctx context.Context) error {
-	bwrap, err := Check(ctx)
+	launcher, err := Check(ctx)
 	if err != nil {
 		return err
 	}
-	p.bwrap = bwrap
+	p.launcher = launcher
 	if err := forceRemove(filepath.Join(p.opts.StateDir, "sandboxes")); err != nil {
 		p.log("warning: cleaning up an earlier Run's Sandboxes: %v", err)
 	}
 	return nil
 }
 
-// Prepare starts the Run's egress proxy, on a Unix socket that is the only
-// thing connecting a Sandbox to it. Close ends what this starts.
+// Prepare starts the Run's egress proxy, on what is the only thing connecting
+// a Sandbox to it: a Unix socket under bwrap, and under Seatbelt the one
+// loopback port the profile allows. Close ends what this starts.
 func (p *Provider) Prepare(ctx context.Context) error {
 	p.host = CurrentHost()
 	if p.opts.Host != nil {
@@ -103,15 +110,23 @@ func (p *Provider) Prepare(ctx context.Context) error {
 	if err := p.opts.Egress.Validate(); err != nil {
 		return err
 	}
-	if p.socketDir, err = os.MkdirTemp("", "kwk-"); err != nil {
-		return err
-	}
 	o := p.opts.Egress
-	o.Socket, o.Log = filepath.Join(p.socketDir, socketName), p.logDenied
+	o.Log = p.logDenied
+	if !p.host.Mac {
+		if p.socketDir, err = os.MkdirTemp("", "kwk-"); err != nil {
+			return err
+		}
+		o.Socket = filepath.Join(p.socketDir, socketName)
+	}
 	if p.proxy, err = egress.Start(context.WithoutCancel(ctx), o); err != nil {
 		_ = os.RemoveAll(p.socketDir)
 		p.socketDir = ""
 		return err
+	}
+	if p.host.Mac {
+		if _, p.proxyPort, err = net.SplitHostPort(p.proxy.Addr()); err != nil {
+			return fmt.Errorf("finding the egress proxy's port: %w", err)
+		}
 	}
 	return nil
 }
@@ -157,13 +172,22 @@ func (p *Provider) Create(_ context.Context, req sandbox.Request) (sandbox.Sandb
 		return nil, err
 	}
 	state := filepath.Join(p.opts.StateDir, "sandboxes", unsafeName.ReplaceAllString(req.Name, "-"))
-	s := bwrapPlan{
+	s := sandboxPlan{
 		Git: git, Protected: req.Protected,
-		Bwrap: p.bwrap, Self: p.self, Socket: filepath.Join(p.socketDir, socketName),
+		Launcher: p.launcher, Self: p.self,
 		Worktree: req.Worktree, Rel: req.Rel,
 		Workdir: filepath.Join(req.Worktree, req.Rel),
 		Home:    filepath.Join(state, "home"), Tmp: filepath.Join(state, "tmp"),
 		UserHome: p.host.Home,
+	}
+	// Seatbelt can't put a directory at another path, so the agent is told
+	// where its private home and temp directory really are.
+	home, tmp, groupDir := p.host.Home, "/tmp", ""
+	if p.host.Mac {
+		s.ProxyPort = p.proxyPort
+		home, tmp, groupDir = s.Home, s.Tmp, filepath.Join(state, groupsDir)
+	} else {
+		s.Socket = filepath.Join(p.socketDir, socketName)
 	}
 	path, binds := toolchains(p.host)
 	s.Toolchains = binds
@@ -182,6 +206,11 @@ func (p *Provider) Create(_ context.Context, req sandbox.Request) (sandbox.Sandb
 			return nil, err
 		}
 	}
+	if p.host.Mac {
+		if err := linkAddedHomePaths(s.Home, p.host.Home, s.Added); err != nil {
+			return nil, err
+		}
+	}
 	file := filepath.Join(state, "plan.json")
 	data, err := json.Marshal(s)
 	if err != nil {
@@ -190,7 +219,7 @@ func (p *Provider) Create(_ context.Context, req sandbox.Request) (sandbox.Sandb
 	if err := os.WriteFile(file, data, 0o600); err != nil {
 		return nil, err
 	}
-	return &box{self: p.self, state: state, plan: file, env: p.baseEnv(path, s.UserHome)}, nil
+	return &box{self: p.self, state: state, plan: file, groupDir: groupDir, env: p.baseEnv(path, home, tmp)}, nil
 }
 
 // added are the configured paths, as CheckPaths has let them through.
@@ -211,11 +240,31 @@ func (p *Provider) added() []addedPath {
 	return added
 }
 
+// linkAddedHomePaths puts the configured paths under the real home where a
+// program looks for them, in the private home that is $HOME under Seatbelt.
+// Under bwrap they are simply mounted there.
+func linkAddedHomePaths(private, realHome string, added []addedPath) error {
+	for _, a := range added {
+		rel, ok := strings.CutPrefix(a.Target, realHome+"/")
+		link := filepath.Join(private, rel)
+		if !ok || !exists(a.Target) || exists(link) {
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(link), 0o700); err != nil {
+			return err
+		}
+		if err := os.Symlink(a.Target, link); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // baseEnv is what every command in a Sandbox gets. A commit needs no repack
 // of the git directory, which is read-only at the top.
-func (p *Provider) baseEnv(path []string, home string) map[string]string {
+func (p *Provider) baseEnv(path []string, home, tmp string) map[string]string {
 	env := map[string]string{
-		"HOME": home, "PATH": strings.Join(path, ":"), "TMPDIR": "/tmp",
+		"HOME": home, "PATH": strings.Join(path, ":"), "TMPDIR": tmp,
 		"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "gc.auto", "GIT_CONFIG_VALUE_0": "0",
 	}
 	for _, kv := range p.identity {
@@ -223,7 +272,7 @@ func (p *Provider) baseEnv(path []string, home string) map[string]string {
 		env[name] = value
 	}
 	maps.Copy(env, p.opts.Env)
-	proxy := "http://127.0.0.1:" + proxyPort
+	proxy := "http://127.0.0.1:" + cmp.Or(p.proxyPort, proxyPort)
 	for name, value := range map[string]string{"HTTP_PROXY": proxy, "HTTPS_PROXY": proxy, "NO_PROXY": "localhost,127.0.0.1,::1"} {
 		env[name], env[strings.ToLower(name)] = value, value
 	}
@@ -231,15 +280,17 @@ func (p *Provider) baseEnv(path []string, home string) map[string]string {
 }
 
 // box is one native Sandbox: a private home and /tmp, and a description of
-// the bwrap each command gets.
+// the bwrap or profile each command gets.
 type box struct {
 	self, state, plan string
-	env               map[string]string
+	// groupDir lists the process groups of its commands on macOS.
+	groupDir string
+	env      map[string]string
 }
 
-// Exec implements sandbox.Sandbox. The hidden helper builds the bwrap call:
-// it hands bwrap the env through a file descriptor, so that a value never
-// shows in a process's argv, and it looks at the worktree as it is now.
+// Exec implements sandbox.Sandbox. The hidden helper builds the bwrap call or
+// the profile: an env value never shows in a process's argv, and it looks at
+// the worktree as it is now.
 func (b *box) Exec(argv, env []string) (hostArgv, hostEnv []string) {
 	merged := maps.Clone(b.env)
 	for _, kv := range env {
@@ -254,13 +305,20 @@ func (b *box) Exec(argv, env []string) (hostArgv, hostEnv []string) {
 	return append([]string{b.self, helperExec, b.plan, "--"}, argv...), hostEnv
 }
 
-// KillAll implements sandbox.Sandbox. There is nothing to do: each command
-// has its own PID namespace, and the kernel ends everything in it when the
-// command or its bwrap ends.
-func (b *box) KillAll(context.Context) error { return nil }
+// KillAll implements sandbox.Sandbox. Under bwrap there is nothing to do:
+// each command has its own PID namespace, and the kernel ends everything in
+// it with the command. macOS has none, so the commands' process groups go;
+// a process that left its group with setsid survives, an accepted risk.
+func (b *box) KillAll(context.Context) error {
+	killGroups(b.groupDir)
+	return nil
+}
 
 // Destroy implements sandbox.Sandbox.
-func (b *box) Destroy(context.Context) error { return forceRemove(b.state) }
+func (b *box) Destroy(ctx context.Context) error {
+	_ = b.KillAll(ctx)
+	return forceRemove(b.state)
+}
 
 // forceRemove removes a tree the agent had the run of, where it may have
 // left directories without write permission.

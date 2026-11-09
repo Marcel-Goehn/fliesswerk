@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,11 +18,16 @@ type Host struct {
 	Path []string
 	// WSL reports whether this is Linux under WSL2.
 	WSL bool
+	// Mac reports whether this is macOS, where Seatbelt builds the Sandbox.
+	Mac bool
 }
 
 // CurrentHost is the machine this runs on.
 func CurrentHost() Host {
 	home, _ := os.UserHomeDir()
+	if runtime.GOOS == "darwin" {
+		return Host{Home: home, Path: filepath.SplitList(os.Getenv("PATH")), Mac: true}
+	}
 	runtimeDir := os.Getenv("XDG_RUNTIME_DIR")
 	if runtimeDir == "" {
 		runtimeDir = "/run/user/" + strconv.Itoa(os.Getuid())
@@ -38,9 +44,13 @@ func CurrentHost() Host {
 // places too many and too changeable to mask one by one.
 var tooBroad = []string{"/", "/run", "/var", "/var/run", "/run/user"}
 
+// tooBroadOnMac are the same places under the names macOS resolves them to.
+var tooBroadOnMac = []string{"/private", "/private/var", "/private/var/run"}
+
 // neverExposed are the container engines' sockets, the session and system
 // D-Bus, and the keychains: each hands the agent something outside the
-// Sandbox. Under WSL2 the Windows side counts too.
+// Sandbox. Under WSL2 the Windows side counts too, and on macOS its Keychains
+// and the engines that live there.
 func (h Host) neverExposed() []string {
 	never := []string{
 		"/run/docker.sock", "/var/run/docker.sock", "/run/podman", "/var/run/podman",
@@ -61,6 +71,14 @@ func (h Host) neverExposed() []string {
 	if h.WSL {
 		never = append(never, "/mnt", "/run/WSL")
 	}
+	if h.Mac {
+		never = append(never, "/private/var/run/docker.sock", "/private/var/run/podman", "/Library/Keychains")
+		if h.Home != "" {
+			for _, rel := range []string{"Library/Keychains", "Library/Containers/com.docker.docker", ".orbstack", ".lima", ".rd"} {
+				never = append(never, filepath.Join(h.Home, rel))
+			}
+		}
+	}
 	// Whichever way a path reaches them: /home is a symlink on some systems.
 	for _, p := range slices.Clone(never) {
 		never = append(never, realPath(p))
@@ -71,7 +89,7 @@ func (h Host) neverExposed() []string {
 
 // hidden reports whether p must stay out of every Sandbox.
 func (h Host) hidden(p string) bool {
-	return slices.Contains(tooBroad, p) || slices.ContainsFunc(h.neverExposed(), func(n string) bool { return within(p, n) })
+	return slices.Contains(tooBroad, p) || (h.Mac && slices.Contains(tooBroadOnMac, p)) || slices.ContainsFunc(h.neverExposed(), func(n string) bool { return within(p, n) })
 }
 
 // exposes reports whether binding p whole would show what must stay hidden.

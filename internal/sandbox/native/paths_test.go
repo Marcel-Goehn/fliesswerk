@@ -150,3 +150,33 @@ func TestAKeychainBehindASymlinkedHomeIsRefused(t *testing.T) {
 		oneContaining(t, refused, path, "refused")
 	}
 }
+
+func TestOnMacOSKeychainsAndEngineSocketsAreRefused(t *testing.T) {
+	h := testHost(t)
+	h.Mac = true
+	for _, path := range []string{
+		"~/Library/Keychains",
+		"~/Library/Keychains/login.keychain-db",
+		"/Library/Keychains/System.keychain",
+		"/private/var/run/docker.sock",
+		"~/.orbstack/run/docker.sock",
+		"~/.lima/default/sock",
+		"~/.rd/docker.sock",
+		"~/Library/Containers/com.docker.docker/Data/docker.raw.sock",
+		"/private",
+		"/private/var",
+		"/private/var/run",
+	} {
+		t.Run(path, func(t *testing.T) {
+			refused, _ := CheckPaths([]string{path}, nil, h)
+			oneContaining(t, refused, path, "refused")
+		})
+	}
+}
+
+func TestOffMacOSItsPathsAreOrdinary(t *testing.T) {
+	refused, _ := CheckPaths([]string{"~/Library/Keychains", "/private"}, nil, testHost(t))
+	if len(refused) != 0 {
+		t.Fatalf("refused: %q", refused)
+	}
+}

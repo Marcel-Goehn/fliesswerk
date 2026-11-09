@@ -1,6 +1,8 @@
 package native
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -30,13 +32,42 @@ const (
 	helperInit = "__sandbox-init"
 )
 
+// helperFailed is the exit code of a helper that couldn't run the command.
+const helperFailed = 125
+
 // systemRoots are what every program needs, read-only.
 var systemRoots = []string{"/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32", "/etc"}
 
-// bwrapPlan is what the helper needs to build a command's bwrap call. It holds
-// no secret, and it lies outside everything a Sandbox can see.
-type bwrapPlan struct {
-	Bwrap, Self, Socket string
+// groupsDir holds a Sandbox's command process groups on macOS.
+const groupsDir = "groups"
+
+// macSystemRoots are what every program needs on macOS, read-only, under the
+// names Seatbelt matches: it sees a path with its symlinks followed. /bin/sh
+// looks in /private/var/select for the shell it is, and the command line
+// tools in /usr/bin find their real selves through xcode_select_link. Not
+// /System as a whole: /System/Volumes/Data is the user's disk by another name.
+var macSystemRoots = []string{
+	"/usr", "/bin", "/sbin", "/private/etc",
+	"/System/Library", "/System/Cryptexes", "/System/Volumes/Preboot",
+	"/private/var/select", "/private/var/db/timezone", "/private/var/db/xcode_select_link",
+	"/Library/Apple", "/Library/Developer/CommandLineTools", "/Library/Frameworks",
+}
+
+// gitCommitDirs are what a commit writes in the git directory, and
+// gitControlFiles the files in a worktree's admin directory that say where
+// the git directory is.
+var (
+	gitCommitDirs   = []string{"objects", "refs", "logs"}
+	gitControlFiles = []string{"commondir", "gitdir", "config.worktree"}
+)
+
+// sandboxPlan is what the helper needs to build a command's bwrap call or
+// Seatbelt profile. It holds no secret, and it lies outside everything a
+// Sandbox can see.
+type sandboxPlan struct {
+	// Launcher is bwrap or sandbox-exec. Socket is the egress proxy's under
+	// bwrap, and ProxyPort its port on the host's loopback under Seatbelt.
+	Launcher, Self, Socket, ProxyPort string
 	// Worktree is the worktree, Rel the project root in it and Workdir
 	// where commands start.
 	Worktree, Rel, Workdir string
@@ -63,7 +94,7 @@ type addedPath struct {
 
 // options are the bwrap options of one command, as things stand now. Later
 // mounts go on top of earlier ones, so what must hold comes last.
-func (s bwrapPlan) options(env []string) ([]string, error) {
+func (s sandboxPlan) options(env []string) ([]string, error) {
 	opts := []string{
 		"--unshare-user", "--unshare-ipc", "--unshare-pid", "--unshare-net", "--unshare-uts", "--unshare-cgroup-try",
 		"--die-with-parent", "--new-session", "--clearenv",
@@ -115,7 +146,7 @@ func (s bwrapPlan) options(env []string) ([]string, error) {
 // masks cover what must stay hidden inside an added path, such as a
 // keychain when the home root was added. CheckPaths lets such a path through
 // because each of these can be covered.
-func (s bwrapPlan) masks() []string {
+func (s sandboxPlan) masks() []string {
 	var opts []string
 	for _, a := range s.Added {
 		for _, never := range s.Never {
@@ -140,14 +171,14 @@ func (s bwrapPlan) masks() []string {
 // read-only as a whole: its configs, hooks and other worktrees' pointers
 // all tell the host what to execute. Only what a commit writes is opened up
 // again, minus the files that say where the git directory is.
-func (s bwrapPlan) gitMounts() []string {
+func (s sandboxPlan) gitMounts() []string {
 	opts := []string{"--ro-bind", filepath.Join(s.Worktree, ".git"), filepath.Join(s.Worktree, ".git"), "--ro-bind", s.Git.Common, s.Git.Common}
-	for _, dir := range []string{"objects", "refs", "logs"} {
+	for _, dir := range gitCommitDirs {
 		p := filepath.Join(s.Git.Common, dir)
 		opts = append(opts, "--bind", p, p)
 	}
 	opts = append(opts, "--bind", s.Git.Admin, s.Git.Admin)
-	for _, file := range []string{"commondir", "gitdir", "config.worktree"} {
+	for _, file := range gitControlFiles {
 		p := filepath.Join(s.Git.Admin, file)
 		opts = append(opts, "--ro-bind", p, p)
 	}
@@ -161,10 +192,26 @@ func (s bwrapPlan) gitMounts() []string {
 // it, out of the worktree, and show the agent where it leads. A symlink, or
 // a path that doesn't exist yet, can still be written; the check after each
 // committing Step rejects that.
-func (s bwrapPlan) protectedMounts() ([]string, error) {
-	var pins, readOnly []string
+func (s sandboxPlan) protectedMounts() ([]string, error) {
+	pins, protected, err := s.protectedPaths()
+	if err != nil {
+		return nil, err
+	}
+	var opts []string
+	for _, dir := range pins {
+		opts = append(opts, "--bind", dir, dir)
+	}
+	for _, p := range protected {
+		opts = append(opts, "--ro-bind", p, p)
+	}
+	return opts, nil
+}
+
+// protectedPaths are the Protected paths that exist now, and, sorted so that
+// a directory precedes its own, the directories to pin above them.
+func (s sandboxPlan) protectedPaths() (pins, protected []string, err error) {
 	root := filepath.Join(s.Worktree, s.Rel)
-	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -187,25 +234,32 @@ func (s bwrapPlan) protectedMounts() ([]string, error) {
 		for dir := filepath.Dir(p); dir != s.Worktree; dir = filepath.Dir(dir) {
 			pins = append(pins, dir)
 		}
-		readOnly = append(readOnly, p)
+		protected = append(protected, p)
 		if d.IsDir() {
 			return filepath.SkipDir
 		}
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("looking for Protected paths: %w", err)
+		return nil, nil, fmt.Errorf("looking for Protected paths: %w", err)
 	}
-	// A mount covers what is under it; sorted, a directory precedes its own.
 	slices.Sort(pins)
-	var opts []string
-	for _, dir := range slices.Compact(pins) {
-		opts = append(opts, "--bind", dir, dir)
+	return slices.Compact(pins), protected, nil
+}
+
+// loadPlan reads a helper's arguments: a plan, and the command to run.
+func loadPlan(args []string) (sandboxPlan, []string, error) {
+	dash := slices.Index(args, "--")
+	if dash != 1 || len(args) < 3 {
+		return sandboxPlan{}, nil, errors.New("usage: " + helperExec + " <plan> -- <command>")
 	}
-	for _, p := range readOnly {
-		opts = append(opts, "--ro-bind", p, p)
+	data, err := os.ReadFile(args[0]) //nolint:gosec // the Factory's own file, from its own argv
+	if err != nil {
+		return sandboxPlan{}, nil, err
 	}
-	return opts, nil
+	var s sandboxPlan
+	err = json.Unmarshal(data, &s)
+	return s, args[dash+1:], err
 }
 
 func exists(p string) bool {
@@ -213,9 +267,13 @@ func exists(p string) bool {
 	return err == nil
 }
 
-// underSystemRoot reports whether a Sandbox has p anyway.
-func underSystemRoot(p string) bool {
-	return slices.ContainsFunc(systemRoots, func(root string) bool { return within(p, realPath(root)) })
+// underSystemRoot reports whether a Sandbox on h has p anyway.
+func underSystemRoot(h Host, p string) bool {
+	roots := systemRoots
+	if h.Mac {
+		roots = macSystemRoots
+	}
+	return slices.ContainsFunc(roots, func(root string) bool { return within(p, realPath(root)) })
 }
 
 // toolchains are the directories of PATH a Sandbox keeps, in order, and the
@@ -231,7 +289,7 @@ func toolchains(h Host) (path, binds []string) {
 			continue
 		}
 		path = append(path, dir)
-		if !underSystemRoot(real) {
+		if !underSystemRoot(h, real) {
 			binds = append(binds, dir)
 		}
 		entries, err := os.ReadDir(real)
@@ -243,7 +301,7 @@ func toolchains(h Host) (path, binds []string) {
 				continue
 			}
 			target, err := filepath.EvalSymlinks(filepath.Join(real, e.Name()))
-			if err != nil || underSystemRoot(target) || within(target, real) || h.exposes(target) {
+			if err != nil || underSystemRoot(h, target) || within(target, real) || h.exposes(target) {
 				continue
 			}
 			bind := toolchainRoot(real, target, home)

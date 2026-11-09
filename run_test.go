@@ -204,6 +204,9 @@ func TestRunDryRun(t *testing.T) {
 }
 
 func TestARunThatCannotBuildANativeSandboxStopsWithTheFix(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("macOS ships what the Sandbox needs; its version check has its own test")
+	}
 	bin := buildKraftwerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": dryRunProject})
 	log := filepath.Join(t.TempDir(), "gh.log")
