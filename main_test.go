@@ -11,16 +11,35 @@ import (
 	"testing"
 )
 
-// buildKraftwerk compiles the kraftwerk binary into a temp dir, passing
-// ldflags through to `go build`, and returns its path.
-func buildKraftwerk(t *testing.T, ldflags string) string {
+var (
+	builtMu sync.Mutex
+	built   = map[string]string{}
+)
+
+// builtKraftwerk compiles kraftwerk once per test binary for each set of
+// flags, because linking it for every test takes minutes on Windows, and
+// returns the shared result.
+func builtKraftwerk(t *testing.T, tags, ldflags string) string {
 	t.Helper()
+	builtMu.Lock()
+	defer builtMu.Unlock()
+	key := tags + "\x00" + ldflags
+	if bin, ok := built[key]; ok {
+		return bin
+	}
+	dir, err := os.MkdirTemp("", "kraftwerk-build")
+	if err != nil {
+		t.Fatal(err)
+	}
 	name := "kraftwerk"
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
-	bin := filepath.Join(t.TempDir(), name)
+	bin := filepath.Join(dir, name)
 	args := []string{"build", "-o", bin}
+	if tags != "" {
+		args = append(args, "-tags", tags)
+	}
 	if ldflags != "" {
 		args = append(args, "-ldflags", ldflags)
 	}
@@ -29,7 +48,30 @@ func buildKraftwerk(t *testing.T, ldflags string) string {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
+	built[key] = bin
 	return bin
+}
+
+// ownCopy puts a copy of the binary in a directory of the test's own, where
+// the test may replace it.
+func ownCopy(t *testing.T, shared string) string {
+	t.Helper()
+	data, err := os.ReadFile(shared) //nolint:gosec // the binary this test binary built
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(t.TempDir(), filepath.Base(shared))
+	if err := os.WriteFile(bin, data, 0o700); err != nil { //nolint:gosec // an executable the test runs
+		t.Fatal(err)
+	}
+	return bin
+}
+
+// buildKraftwerk gives the test a kraftwerk binary built with ldflags passed
+// through to `go build`, and returns its path.
+func buildKraftwerk(t *testing.T, ldflags string) string {
+	t.Helper()
+	return ownCopy(t, builtKraftwerk(t, "", ldflags))
 }
 
 func runKraftwerk(t *testing.T, bin string, args ...string) (stdout, stderr string, code int) {

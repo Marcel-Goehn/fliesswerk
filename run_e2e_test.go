@@ -49,21 +49,12 @@ func fakeClaudeBinDir(t *testing.T) string {
 	return fakeClaudeDir
 }
 
-// buildTestKraftwerk compiles kraftwerk with the test-only `kwkfake` tag,
-// which lets $KWK_FAKE_TRACKER stand in for the Tracker.
+// buildTestKraftwerk gives the test a kraftwerk binary built with the
+// test-only `kwkfake` tag, which lets $KWK_FAKE_TRACKER stand in for the
+// Tracker.
 func buildTestKraftwerk(t *testing.T) string {
 	t.Helper()
-	name := "kraftwerk"
-	if runtime.GOOS == "windows" {
-		name += ".exe"
-	}
-	bin := filepath.Join(t.TempDir(), name)
-	cmd := exec.Command("go", "build", "-tags", "kwkfake", "-o", bin, ".")
-	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("go build: %v\n%s", err, out)
-	}
-	return bin
+	return ownCopy(t, builtKraftwerk(t, "kwkfake", ""))
 }
 
 func gitIn(t *testing.T, dir string, args ...string) string {
