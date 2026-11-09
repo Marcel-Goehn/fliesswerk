@@ -19,8 +19,17 @@ type Sandbox interface {
 	// KillAll kills every process left in the Sandbox: ending the host
 	// command doesn't end what it started inside.
 	KillAll(ctx context.Context) error
+	// Services are the Services the Sandbox can reach, none if it has none.
+	Services() []Service
 	// Destroy removes the Sandbox and everything created for it.
 	Destroy(ctx context.Context) error
+}
+
+// Service is a Service a Sandbox can reach.
+type Service struct {
+	Name string
+	// Addresses are where to reach it from inside the Sandbox.
+	Addresses []string
 }
 
 // Request says what a new Sandbox is for.

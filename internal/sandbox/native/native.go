@@ -317,6 +317,9 @@ func (b *box) KillAll(context.Context) error {
 	return nil
 }
 
+// Services implements sandbox.Sandbox: a native Sandbox has none yet.
+func (b *box) Services() []sandbox.Service { return nil }
+
 // Destroy implements sandbox.Sandbox.
 func (b *box) Destroy(ctx context.Context) error {
 	_ = b.KillAll(ctx)

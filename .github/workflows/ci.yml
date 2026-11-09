@@ -121,6 +121,10 @@ jobs:
           go-version-file: go.mod
       - name: go generate (the proxy sidecar's root filesystems)
         run: go generate ./internal/proxyimage
+      # The oldest podman-compose the Factory accepts.
+      - name: Install podman-compose
+        if: matrix.engine == 'podman'
+        run: pipx install podman-compose==1.4.0
       - name: go test (integration)
         run: go test -tags integration -p 1 -timeout 20m ./internal/sandbox/container/ .
 

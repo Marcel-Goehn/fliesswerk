@@ -7,6 +7,7 @@ import (
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/git"
 	"github.com/Marcel-Goehn/kraftwerk/internal/prompt"
+	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
 	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
 )
@@ -175,5 +176,30 @@ func TestUnknownPlaceholdersAreListedOnce(t *testing.T) {
 	want := []string{"{{commands.test}}", "{{ standards }}"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("Unknown = %q, want %q", got, want)
+	}
+}
+
+func TestEveryStepIsToldWhichServicesItCanReach(t *testing.T) {
+	c := standalone()
+	c.Services = []sandbox.Service{
+		{Name: "postgres", Addresses: []string{"postgres:5432", "localhost:5432"}},
+		{Name: "worker", Addresses: []string{"worker"}},
+	}
+	for name, p := range map[string]string{
+		"implement": prompt.Implement("", c, prompt.Recent{}, nil),
+		"review":    prompt.Review("", c, "abc"),
+		"merge":     prompt.Merge("", c, prompt.Merging{SpecBranch: "s", Files: []string{"a"}}),
+	} {
+		for _, want := range []string{"# Services", "- postgres: `postgres:5432`, `localhost:5432`", "- worker: `worker`", "KRAFTWERK_SERVICE_<NAME>_HOST"} {
+			if !strings.Contains(p, want) {
+				t.Errorf("%s doesn't say %q:\n%s", name, want, p)
+			}
+		}
+	}
+}
+
+func TestAProjectWithoutServicesGetsNoServicesSection(t *testing.T) {
+	if p := prompt.Implement("", standalone(), prompt.Recent{}, nil); strings.Contains(p, "# Services") {
+		t.Errorf("the prompt has a Services section:\n%s", p)
 	}
 }

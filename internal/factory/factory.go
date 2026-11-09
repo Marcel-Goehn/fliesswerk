@@ -757,6 +757,7 @@ func (r *run) build(ctx context.Context, b build) (summary string, failed *failu
 	}
 	defer closeSandbox()
 	b.sandbox = sb
+	b.prompt.Services = servicesOf(sb)
 	if failed := r.sandboxCreated(ctx, b); failed != nil {
 		return "", failed, nil
 	}
@@ -791,6 +792,14 @@ func (r *run) verify(ctx context.Context, b build) *verify.Failure {
 		r.tlogf(b.tk, "verify:   %s", strings.TrimRight(l, "\r\n"))
 	}
 	return f
+}
+
+// servicesOf is what a Step in sb can reach, nothing without a Sandbox.
+func servicesOf(sb sandbox.Sandbox) []sandbox.Service {
+	if sb == nil {
+		return nil
+	}
+	return sb.Services()
 }
 
 // sandboxDestroyTimeout bounds removing a Sandbox.

@@ -16,6 +16,7 @@ import (
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness/claudecode"
+	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
 	"github.com/Marcel-Goehn/kraftwerk/internal/step"
 )
 
@@ -413,6 +414,8 @@ func (p *passThrough) KillAll(context.Context) error {
 	p.kills.Add(1)
 	return nil
 }
+
+func (p *passThrough) Services() []sandbox.Service { return nil }
 
 func (p *passThrough) Destroy(context.Context) error { return nil }
 

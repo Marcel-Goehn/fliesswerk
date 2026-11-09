@@ -21,7 +21,8 @@ import (
 // recordedSandbox notes the commands it is asked to run. Each just passes,
 // or fails if it says `exit 1`, through a git call that does so on every OS.
 type recordedSandbox struct {
-	req sandbox.Request
+	req      sandbox.Request
+	services []sandbox.Service
 
 	mu        sync.Mutex
 	lines     []string
@@ -48,6 +49,8 @@ func (s *recordedSandbox) KillAll(context.Context) error {
 	return nil
 }
 
+func (s *recordedSandbox) Services() []sandbox.Service { return s.services }
+
 func (s *recordedSandbox) Destroy(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -60,12 +63,17 @@ func (s *recordedSandbox) Destroy(ctx context.Context) error {
 type sandboxes struct {
 	mu   sync.Mutex
 	made []*recordedSandbox
+	// services, if set, says what each Sandbox can reach, by its name.
+	services func(name string) []sandbox.Service
 }
 
 func (m *sandboxes) create(_ context.Context, req sandbox.Request) (sandbox.Sandbox, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	s := &recordedSandbox{req: req}
+	if m.services != nil {
+		s.services = m.services(req.Name)
+	}
 	m.made = append(m.made, s)
 	return s, nil
 }
@@ -293,5 +301,53 @@ func TestAGitDirectoryPlantedInTheProjectIsNeverUsedByTheHost(t *testing.T) {
 	}
 	if len(res.Failed) != 1 || res.Failed[0].Kind != factory.KindProtectedPath {
 		t.Errorf("Failed = %+v, want a rejected Protected path", res.Failed)
+	}
+}
+
+func TestEachStepIsToldTheServicesOfTheSandboxItRunsIn(t *testing.T) {
+	var m sandboxes
+	m.services = func(name string) []sandbox.Service {
+		return []sandbox.Service{{Name: "postgres", Addresses: []string{"addr-of-" + name}}}
+	}
+	prompts := map[string]string{}
+	var c *conflict
+	resolve := resolves(t, "from both\n")
+	c = newConflict(t, func(ctx context.Context, s factory.Step) harness.Outcome {
+		prompts[s.Name] = s.Prompt
+		return resolve(ctx, s)
+	})
+	c.opts.Sandboxes = m.create
+
+	if res := factory.Run(context.Background(), c.opts); res.Stopped != nil || len(res.Failed) != 0 {
+		t.Fatalf("result = %+v, want no failures", res)
+	}
+	if p := prompts[factory.Merge]; !strings.Contains(p, "addr-of-merge-3") {
+		t.Errorf("the merge prompt doesn't name its own Sandbox's Service:\n%s", p)
+	}
+}
+
+func TestImplementAndReviewAreToldTheirSandboxesServices(t *testing.T) {
+	f := newFixture(t)
+	tr := fake.New(ready, cartSpec()...)
+	var m sandboxes
+	m.services = func(string) []sandbox.Service {
+		return []sandbox.Service{{Name: "postgres", Addresses: []string{"postgres:5432"}}}
+	}
+	var got []string
+	commit := commits(map[string]string{"cart.go": "package cart\n"}, "Added the cart.")
+	opts := options(f, tr, func(ctx context.Context, s factory.Step) harness.Outcome {
+		got = append(got, s.Name)
+		if !strings.Contains(s.Prompt, "postgres:5432") {
+			t.Errorf("the %s prompt doesn't list the Service:\n%s", s.Name, s.Prompt)
+		}
+		return commit(ctx, s)
+	})
+	opts.Sandboxes = m.create
+
+	if res := factory.Run(context.Background(), opts); res.Stopped != nil || len(res.Failed) != 0 {
+		t.Fatalf("result = %+v, want no failures", res)
+	}
+	if !slices.Contains(got, factory.Implement) {
+		t.Errorf("Steps run: %q", got)
 	}
 }

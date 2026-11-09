@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/git"
+	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
 	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
 )
@@ -33,6 +34,8 @@ type Context struct {
 	// Standards is the Coding standards file, "" for none. Only review
 	// gets it.
 	Standards string
+	// Services are the Services the Step's Sandbox can reach.
+	Services []sandbox.Service
 }
 
 // Recent is what implement is told about the commits before its own.
@@ -244,10 +247,27 @@ func onBranch(c Context) string {
 	return fmt.Sprintf("You are on the branch `%s`, in a worktree made for this Ticket. Commit your work here. Don't push, switch branches, rebase or rewrite existing commits.", c.Branch)
 }
 
+// services writes where the Step can reach its Sandbox's Services.
+func services(b *strings.Builder, c Context) {
+	if len(c.Services) == 0 {
+		return
+	}
+	b.WriteString("# Services\n\nThese Services run for this Sandbox alone, with fresh data, and are ready now:\n\n")
+	for _, s := range c.Services {
+		quoted := make([]string, len(s.Addresses))
+		for i, a := range s.Addresses {
+			quoted[i] = "`" + a + "`"
+		}
+		fmt.Fprintf(b, "- %s: %s\n", s.Name, strings.Join(quoted, ", "))
+	}
+	b.WriteString("\nEach one's host and first port are also in `KRAFTWERK_SERVICE_<NAME>_HOST` and `KRAFTWERK_SERVICE_<NAME>_PORT`.\n\n")
+}
+
 // bottom writes the fixed bottom's reminder and Rules; closes says when
 // the Factory closes the Ticket, and whereRule is the Rule on where the
 // Step works.
 func bottom(b *strings.Builder, c Context, closes, whereRule string) {
+	services(b, c)
 	quoted := make([]string, len(c.Protected))
 	for i, p := range c.Protected {
 		quoted[i] = "`" + p + "`"

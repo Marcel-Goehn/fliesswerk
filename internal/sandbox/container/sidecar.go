@@ -24,10 +24,11 @@ const closeTimeout = time.Minute
 var proxyVars = []string{"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy"}
 
 // proxyEnv points a Sandbox's programs at the sidecar, by address: Podman's
-// internal networks have no DNS. A Sandbox's own localhost stays direct.
-func proxyEnv(ip string) []string {
+// internal networks have no DNS. A Sandbox's own localhost and its Services
+// stay direct: the proxy would refuse them.
+func proxyEnv(ip string, serviceHosts []string) []string {
 	proxy := "http://" + net.JoinHostPort(ip, sidecarPort)
-	direct := "localhost,127.0.0.1,::1"
+	direct := strings.Join(append([]string{"localhost", "127.0.0.1", "::1"}, serviceHosts...), ",")
 	return []string{
 		"HTTP_PROXY=" + proxy, "HTTPS_PROXY=" + proxy, "NO_PROXY=" + direct,
 		"http_proxy=" + proxy, "https_proxy=" + proxy, "no_proxy=" + direct,
@@ -148,14 +149,19 @@ func (p *Provider) attachSidecar(ctx context.Context, network string) (string, e
 	if _, err := p.engine.run(ctx, "network", "connect", network, p.sidecar); err != nil {
 		return "", fmt.Errorf("connecting the proxy sidecar: %w", err)
 	}
+	return p.addressOn(ctx, p.sidecar, network)
+}
+
+// addressOn is a container's address on a network.
+func (p *Provider) addressOn(ctx context.Context, container, network string) (string, error) {
 	format := `{{(index .NetworkSettings.Networks "` + network + `").IPAddress}}`
-	out, err := p.engine.run(ctx, "container", "inspect", "--format", format, p.sidecar)
+	out, err := p.engine.run(ctx, "container", "inspect", "--format", format, container)
 	if err != nil {
-		return "", fmt.Errorf("finding the proxy sidecar: %w", err)
+		return "", fmt.Errorf("finding %s: %w", container, err)
 	}
 	ip := strings.TrimSpace(out)
 	if ip == "" {
-		return "", fmt.Errorf("the proxy sidecar has no address on %s; is it still running? (`%s logs %s`)", network, p.engine.Binary, p.sidecar)
+		return "", fmt.Errorf("%s has no address on %s; is it still running? (`%s logs %s`)", container, network, p.engine.Binary, container)
 	}
 	return ip, nil
 }

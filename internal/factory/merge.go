@@ -222,6 +222,7 @@ func (r *run) resolve(ctx context.Context, w *ticketWork, tip, message string, c
 	}
 	c := b.prompt
 	c.Spec = r.withClosed(c.Spec)
+	c.Services = servicesOf(sb)
 	m := prompt.Merging{SpecBranch: w.specBranch, Files: conflict.Files, Merged: others}
 	r.line(tk, runlog.Line{Step: Merge, Text: fmt.Sprintf("started on %v", conflict)})
 	out, failed, stop := r.runStep(ctx, Step{Name: Merge, Ticket: tk, Dir: stepDir, Sandbox: sb, Prompt: prompt.Merge(r.part(Merge), c, m), Log: r.stepLog(tk, Merge)})

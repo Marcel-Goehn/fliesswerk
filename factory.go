@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -204,6 +205,7 @@ func newSandboxes(values map[string]any, root, kind string, s *secrets, log *run
 		return container.New(container.Options{
 			Root: root, StateDir: state, RunID: log.ID(), RunArgs: runArgs(values), Env: env,
 			Egress: egressOptions, Version: versionString(), Log: logLine,
+			ComposeFile: composeFile(values), Services: serviceNames(values),
 		})
 	case "native":
 		return native.New(native.Options{
@@ -414,16 +416,31 @@ func stepSetting(values map[string]any, stepName, key, def string) string {
 // .kraftwerk/: the compose file, the standards file and protected_paths.
 func protectedPaths(values map[string]any) []string {
 	var paths []string
-	services, _ := valueAt(values, "services").(map[string]any)
-	if compose := stringAt(values, "", "services", "compose_file"); compose != "" {
-		paths = append(paths, compose)
-	} else if len(services) > 0 {
-		paths = append(paths, defaultComposeFile)
+	if services, _ := valueAt(values, "services").(map[string]any); len(services) > 0 {
+		paths = append(paths, composeFile(values))
 	}
 	if standards := stringAt(values, "", "standards"); standards != "" {
 		paths = append(paths, standards)
 	}
 	return append(paths, stringsOf(valueAt(values, "protected_paths"))...)
+}
+
+// composeFile is the compose file Services come from.
+func composeFile(values map[string]any) string {
+	return stringAt(values, defaultComposeFile, "services", "compose_file")
+}
+
+// serviceNames are the Services the config names, sorted. Every one of them
+// is an own Service for now, even with `shared = true`.
+func serviceNames(values map[string]any) []string {
+	table, _ := valueAt(values, "services").(map[string]any)
+	var names []string
+	for _, name := range slices.Sorted(maps.Keys(table)) {
+		if _, isService := table[name].(map[string]any); isService {
+			names = append(names, name)
+		}
+	}
+	return names
 }
 
 // verifyCommands are the Feedback commands `verify` names, in its order.

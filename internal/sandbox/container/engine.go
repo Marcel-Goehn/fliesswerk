@@ -93,7 +93,15 @@ const (
 type cli func(ctx context.Context, argv ...string) (string, error)
 
 func runCLI(ctx context.Context, argv ...string) (string, error) {
+	return runCLIWith(ctx, nil, argv...)
+}
+
+// runCLIWith is runCLI with env added to the host's.
+func runCLIWith(ctx context.Context, env []string, argv ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...) //nolint:gosec // the Factory's own engine call
+	if env != nil {
+		cmd.Env = append(os.Environ(), env...)
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {

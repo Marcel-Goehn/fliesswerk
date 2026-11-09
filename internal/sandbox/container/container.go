@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -48,6 +49,10 @@ type Options struct {
 	Egress egress.Options
 	// Version is the Factory's, which tags the sidecar's image.
 	Version string
+	// ComposeFile is the compose file relative to the project root, and
+	// Services the Services to start from it, none for a project without.
+	ComposeFile string
+	Services    []string
 	// Log gets a line about what the Provider does.
 	Log func(string)
 }
@@ -56,7 +61,9 @@ type Options struct {
 type Provider struct {
 	opts   Options
 	engine Engine
-	image  string
+	// compose is the Run's compose tool, set only when there are Services.
+	compose composeTool
+	image   string
 	// proxyImage is the sidecar's image, and sidecar the name of the Run's
 	// sidecar and of its normal network, "" until it is started.
 	proxyImage, sidecar string
@@ -73,8 +80,8 @@ func New(opts Options) *Provider {
 	return &Provider{opts: opts, project: hex.EncodeToString(sum[:])[:12]}
 }
 
-// Connect resolves the engine and clears what a crashed Run of this
-// checkout left on it.
+// Connect resolves the engine and its compose tool, and clears what a
+// crashed Run of this checkout left on it.
 func (p *Provider) Connect(ctx context.Context) error {
 	engine, err := Resolve(ctx)
 	if err != nil {
@@ -82,13 +89,24 @@ func (p *Provider) Connect(ctx context.Context) error {
 	}
 	p.engine = engine
 	p.log("Container engine: %s", engine)
+	if len(p.opts.Services) > 0 {
+		if p.compose, err = resolveCompose(ctx, engine, runCLI, exec.LookPath); err != nil {
+			return err
+		}
+	}
 	p.cleanUp(ctx)
 	return nil
 }
 
-// Prepare makes sure the image is current and starts the Run's proxy
-// sidecar. The Provider must be connected, and Close ends what this starts.
+// Prepare rejects a compose file the Factory can't use, makes sure the
+// image is current and starts the Run's proxy sidecar. The Provider must be
+// connected, and Close ends what this starts.
 func (p *Provider) Prepare(ctx context.Context) error {
+	if len(p.opts.Services) > 0 {
+		if _, err := p.compose.validate(ctx, p.opts.Root, p.opts.ComposeFile, p.opts.Services); err != nil {
+			return err
+		}
+	}
 	p.identity = sandbox.CommitIdentity(ctx, p.opts.Root)
 	if err := p.ensureImage(ctx); err != nil {
 		return err
@@ -113,6 +131,12 @@ func (p *Provider) log(format string, a ...any) {
 func (p *Provider) cleanUp(ctx context.Context) {
 	filter := "label=" + labelProject + "=" + p.project
 	warn := func(err error) { p.log("warning: cleaning up an earlier Run's Sandboxes: %v", err) }
+	var stackErr error
+	if len(p.opts.Services) > 0 {
+		if stackErr = p.downLeftStacks(ctx); stackErr != nil {
+			warn(stackErr)
+		}
+	}
 	out, err := p.engine.run(ctx, "ps", "-a", "--filter", filter, "--format", "{{.Names}}")
 	if err != nil {
 		warn(err)
@@ -130,6 +154,9 @@ func (p *Provider) cleanUp(ctx context.Context) {
 		if _, err := p.engine.run(ctx, "network", "rm", name); err != nil {
 			warn(err)
 		}
+	}
+	if stackErr != nil {
+		return // the records say what is still to remove
 	}
 	if err := os.RemoveAll(filepath.Join(p.opts.StateDir, "sandboxes")); err != nil {
 		warn(err)
@@ -166,7 +193,8 @@ func (p *Provider) ensureImage(ctx context.Context) error {
 var unsafeName = regexp.MustCompile(`[^a-zA-Z0-9_.-]`)
 
 // Create creates and starts a Sandbox holding the worktree, on a new
-// internal network that only the proxy sidecar is on as well.
+// internal network that only the proxy sidecar and the Sandbox's own
+// Services are on as well. The Services are ready when it returns.
 func (p *Provider) Create(ctx context.Context, req sandbox.Request) (sandbox.Sandbox, error) {
 	name := unsafeName.ReplaceAllString("kraftwerk-"+p.opts.RunID+"-"+req.Name, "-")
 	b := &box{
@@ -184,16 +212,24 @@ func (p *Provider) Create(ctx context.Context, req sandbox.Request) (sandbox.San
 		return nil, fmt.Errorf("creating the Sandbox's network: %w", err)
 	}
 	start := func() error {
+		services, err := p.startServices(ctx, b, req)
+		if err != nil {
+			return err
+		}
 		ip, err := p.attachSidecar(ctx, name)
 		if err != nil {
 			return err
 		}
-		b.env = append(b.env, proxyEnv(ip)...)
-		return b.start(ctx, p.createArgs(name, b.workdir, labels, mounts))
+		b.env = slices.Concat(b.env, proxyEnv(ip, serviceHosts(services)), serviceEnv(services))
+		b.services = addresses(services)
+		if err := b.start(ctx, p.createArgs(name, b.workdir, labels, mounts, services)); err != nil {
+			return err
+		}
+		return p.startForwarder(ctx, b, labels, services)
 	}
 	if err := start(); err != nil {
 		// A kill of the Run mustn't leave half a Sandbox behind.
-		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), killTimeout)
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), closeTimeout)
 		defer cancel()
 		return nil, errors.Join(err, b.Destroy(cleanup))
 	}
@@ -214,7 +250,7 @@ func networkHardening(e Engine) []string {
 // createArgs is the `create` call of a Sandbox. It has no env at all: what
 // a command needs is delivered to that command. The first process only
 // keeps the container alive, whatever the image's entrypoint.
-func (p *Provider) createArgs(name, workdir string, labels []string, mounts []mount) []string {
+func (p *Provider) createArgs(name, workdir string, labels []string, mounts []mount, services []runningService) []string {
 	args := []string{"create", "--name", name, "--network", name, "--workdir", workdir, "--entrypoint", "sleep"}
 	args = append(args, labels...)
 	for _, m := range mounts {
@@ -222,6 +258,7 @@ func (p *Provider) createArgs(name, workdir string, labels []string, mounts []mo
 	}
 	args = append(args, userArgs(p.engine, os.Getuid(), os.Getgid())...)
 	args = append(args, noHostProxy(p.engine)...)
+	args = append(args, hostArgs(services)...)
 	args = append(args, p.opts.RunArgs...)
 	return append(args, p.image, "infinity")
 }
@@ -320,6 +357,13 @@ type box struct {
 	// state is the Sandbox's directory in the runtime state.
 	state string
 	env   []string
+	// forwarder is the Service forwarder's container, "" for none.
+	forwarder string
+	// stack is the Sandbox's Compose project, nil for none, and services
+	// what the Step is told it can reach.
+	compose  composeTool
+	stack    *composeStack
+	services []sandbox.Service
 }
 
 // start creates and starts the container, and makes its home.
@@ -374,11 +418,22 @@ func (b *box) KillAll(ctx context.Context) error {
 	return err
 }
 
-// Destroy implements sandbox.Sandbox.
+// Services implements sandbox.Sandbox.
+func (b *box) Services() []sandbox.Service { return b.services }
+
+// Destroy implements sandbox.Sandbox. The Services go before the network
+// they are on.
 func (b *box) Destroy(ctx context.Context) error {
+	var forwardErr, stackErr error
+	if b.forwarder != "" {
+		forwardErr = b.engine.remove(ctx, b.forwarder)
+	}
 	rmErr := b.engine.remove(ctx, b.name)
+	if b.stack != nil {
+		stackErr = b.compose.down(ctx, *b.stack)
+	}
 	// A network with the sidecar on it can't go; if this fails, so does that.
 	_, _ = b.engine.run(ctx, "network", "disconnect", "--force", b.name, b.sidecar)
 	_, netErr := b.engine.run(ctx, "network", "rm", b.name)
-	return errors.Join(rmErr, netErr, os.RemoveAll(b.state))
+	return errors.Join(forwardErr, rmErr, stackErr, netErr, os.RemoveAll(b.state))
 }
