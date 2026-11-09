@@ -15,3 +15,7 @@ Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 ### Domain docs
 
 Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### Test seams
+
+A Spec's or Ticket's testing section is the user's confirmation of test seams; ask only when both are silent.
