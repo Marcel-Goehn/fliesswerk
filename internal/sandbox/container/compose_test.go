@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -296,11 +297,12 @@ func recordingTool(binary string, podmanCompose bool, calls *[][]string) compose
 func TestDockerComposeGetsTheWaitAndProjectDirectoryFlags(t *testing.T) {
 	var calls [][]string
 	tool := recordingTool("dc", false, &calls)
-	s := composeStack{Project: "kw-1", File: "/wt/deploy/compose.yaml", Override: "/state/o.yaml"}
+	dir, file := filepath.FromSlash("/wt/deploy"), filepath.FromSlash("/wt/deploy/compose.yaml")
+	s := composeStack{Project: "kw-1", File: file, Override: "/state/o.yaml"}
 	if err := tool.up(context.Background(), s, []string{"db"}); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"dc", "-p", "kw-1", "--project-directory", "/wt/deploy", "-f", "/wt/deploy/compose.yaml", "-f", "/state/o.yaml", "up", "--wait", "db"}
+	want := []string{"dc", "-p", "kw-1", "--project-directory", dir, "-f", file, "-f", "/state/o.yaml", "up", "--wait", "db"}
 	if !slices.Equal(calls[0], want) {
 		t.Errorf("up = %q, want %q", calls[0], want)
 	}
