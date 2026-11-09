@@ -131,6 +131,48 @@ var shellFiles = []string{
 	".zshrc", ".zshenv", ".zprofile", ".zlogin", ".zlogout", ".config/fish",
 }
 
+// trustStorePaths are where the OSes keep certificates, beyond what a
+// Sandbox has anyway. /Library/Keychains, where macOS keeps the System
+// keychain, stays closed: there the OS verifies through trustd.
+var (
+	trustStorePaths = []string{
+		"/etc/ssl", "/etc/pki", "/etc/ca-certificates",
+		"/usr/share/ca-certificates", "/usr/local/share/ca-certificates",
+		"/var/lib/ca-certificates",
+	}
+	macTrustStorePaths = []string{
+		"/private/etc/ssl", "/System/Library/Keychains", "/System/Library/Security",
+		"/Library/Security/Trust Settings",
+		"/opt/homebrew/etc/ca-certificates", "/opt/homebrew/etc/openssl@3",
+		"/usr/local/etc/ca-certificates", "/usr/local/etc/openssl@3",
+	}
+)
+
+// trustStore are the trust-store paths to open on h, of those that exist.
+func trustStore(h Host) []string {
+	paths := trustStorePaths
+	if h.Mac {
+		paths = macTrustStorePaths
+	}
+	var open []string
+	for _, p := range paths {
+		if exists(p) && !underSystemRoot(h, realPath(p)) && !h.exposes(realPath(p)) {
+			open = append(open, p)
+		}
+	}
+	return open
+}
+
+// CheckCACerts refuses a `ca_certs` file no Sandbox may see.
+func CheckCACerts(paths []string, h Host) (refused []string) {
+	for _, p := range paths {
+		if h.hidden(p) || h.hidden(realPath(p)) {
+			refused = append(refused, fmt.Sprintf("[network] ca_certs: %q is refused: it would expose a container engine's socket, D-Bus, a keychain or (under WSL2) the Windows side", p))
+		}
+	}
+	return refused
+}
+
 // CheckPaths checks `sandbox.read_only_paths` and `sandbox.writable_paths`.
 // refused are the paths no Sandbox may have, and warnings the writable ones
 // that let the agent reach past the Sandbox, which stay the user's call.

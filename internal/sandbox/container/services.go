@@ -57,7 +57,7 @@ func CheckServices(ctx context.Context, root, composeFile string, own, shared []
 // them and the Run's shared Services to its network. The stack is on record
 // before anything starts, so that a failure part way still gets cleaned up.
 func (p *Provider) startServices(ctx context.Context, b *box, req sandbox.Request) ([]runningService, error) {
-	if len(p.opts.Services) == 0 && p.shared == nil {
+	if req.NoServices || (len(p.opts.Services) == 0 && p.shared == nil) {
 		return nil, nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, servicesTimeout)

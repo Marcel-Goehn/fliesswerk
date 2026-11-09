@@ -102,7 +102,7 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
-	refused, warnings := checkSandboxConfig(values, s)
+	refused, warnings := checkSandboxConfig(values, root, s)
 	for _, w := range warnings {
 		_, _ = fmt.Fprintf(stderr, "warning: %s\n", w)
 	}
@@ -134,6 +134,9 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 
 	if inSandbox(values) {
 		reportMemory(root, stdout, stderr)
+		if err := checkTrust(ctx, values, root, s, stdout, stderr); err != nil {
+			return fail(err)
+		}
 	}
 
 	tr, err := newTracker(values, s.trackerToken)

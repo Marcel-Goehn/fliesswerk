@@ -76,7 +76,7 @@ func runFactory(values map[string]any, root, only string, view runView, stdout, 
 	if !ok {
 		return code
 	}
-	refused, sandboxWarnings := checkSandboxConfig(values, s)
+	refused, sandboxWarnings := checkSandboxConfig(values, root, s)
 	if len(refused) > 0 {
 		for _, r := range refused {
 			_, _ = fmt.Fprintf(stderr, "error: %s\n", r)
@@ -133,7 +133,13 @@ func runFactory(values map[string]any, root, only string, view runView, stdout, 
 	} else {
 		opts := factoryOptions(values, root, only, tracker.Redacted(tr, s.redactor.String), s, prompts, log)
 		opts.Drain = drain
-		sandboxes := newSandboxes(values, root, kind, s, log)
+		sandboxes := newSandboxes(values, root, kind, s, log.ID(), func(line string) {
+			kind := runlog.Event
+			if strings.HasPrefix(line, "warning:") {
+				kind = runlog.Warning
+			}
+			log.Write(runlog.Line{Kind: kind, Text: line})
+		})
 		opts.Preflight = func(ctx context.Context) error {
 			if err := preflight(ctx, tr, s); err != nil {
 				return err
@@ -141,7 +147,14 @@ func runFactory(values map[string]any, root, only string, view runView, stdout, 
 			if sandboxes == nil {
 				return nil
 			}
-			return setupError(ctx, sandboxes.Prepare(ctx))
+			if err := sandboxes.Prepare(ctx); err != nil {
+				return setupError(ctx, err)
+			}
+			warning, err := probeInterception(ctx, sandboxes, values, root, s)
+			if warning != "" {
+				log.Write(runlog.Line{Kind: runlog.Warning, Text: "warning: " + warning})
+			}
+			return setupError(ctx, err)
 		}
 		if sandboxes != nil {
 			opts.Sandboxes = sandboxes.Create
@@ -185,7 +198,8 @@ type sandboxProvider interface {
 }
 
 // newSandboxes is what creates a Run's Sandboxes, nil for `kind = "none"`.
-func newSandboxes(values map[string]any, root, kind string, s *secrets, log *runlog.Log) sandboxProvider {
+// logLine gets a line about what they do.
+func newSandboxes(values map[string]any, root, kind string, s *secrets, runID string, logLine func(string)) sandboxProvider {
 	env := map[string]string{}
 	table, _ := valueAt(values, "sandbox", "env").(map[string]any)
 	for k, v := range table {
@@ -199,23 +213,16 @@ func newSandboxes(values map[string]any, root, kind string, s *secrets, log *run
 	}
 	state := filepath.Join(root, factory.StateDir)
 	egressOptions := egress.OptionsFrom(values, endpoints)
-	logLine := func(line string) {
-		kind := runlog.Event
-		if strings.HasPrefix(line, "warning:") {
-			kind = runlog.Warning
-		}
-		log.Write(runlog.Line{Kind: kind, Text: line})
-	}
 	switch kind {
 	case "container":
 		return container.New(container.Options{
-			Root: root, StateDir: state, RunID: log.ID(), RunArgs: runArgs(values), Env: env,
-			Egress: egressOptions, Version: versionString(), Log: logLine,
+			Root: root, StateDir: state, RunID: runID, RunArgs: runArgs(values), Env: env,
+			Egress: egressOptions, CACerts: caCerts(values), Version: versionString(), Log: logLine,
 			ComposeFile: composeFile(values), Services: ownServices(values), Shared: sharedServices(values), EnvTemplates: serviceEnvTemplates(values),
 		})
 	case "native":
 		opts := native.Options{
-			Root: root, StateDir: state, Env: env, Egress: egressOptions,
+			Root: root, StateDir: state, Env: env, Egress: egressOptions, CACerts: caCerts(values),
 			ReadOnly: readOnlyPaths(values), Writable: writablePaths(values),
 			HomeSeed: theHarness.Describe().HomeSeed, Log: logLine,
 		}
@@ -233,14 +240,28 @@ func newSandboxes(values map[string]any, root, kind string, s *secrets, log *run
 
 // checkSandboxConfig checks the settings of the Run's Sandbox kind. refused
 // stop the Run; warnings stay the user's call.
-func checkSandboxConfig(values map[string]any, s *secrets) (refused, warnings []string) {
+func checkSandboxConfig(values map[string]any, root string, s *secrets) (refused, warnings []string) {
+	if !inSandbox(values) {
+		return nil, nil
+	}
+	ca, err := sandbox.LoadCACerts(root, caCerts(values))
+	if err != nil {
+		refused = append(refused, err.Error())
+	}
+	var more []string
 	switch stringAt(values, defaultSandbox, "sandbox", "kind") {
 	case "container":
-		return container.CheckRunArgs(runArgs(values), s.credentialEnv())
+		more, warnings = container.CheckRunArgs(runArgs(values), s.credentialEnv())
 	case "native":
-		return native.CheckPaths(readOnlyPaths(values), writablePaths(values), native.CurrentHost())
+		more, warnings = native.CheckPaths(readOnlyPaths(values), writablePaths(values), native.CurrentHost())
+		more = append(more, native.CheckCACerts(ca.Paths, native.CurrentHost())...)
 	}
-	return nil, nil
+	return append(refused, more...), warnings
+}
+
+// caCerts is `[network] ca_certs`.
+func caCerts(values map[string]any) []string {
+	return stringsOf(valueAt(values, "network", "ca_certs"))
 }
 
 // runArgs is `sandbox.run_args`.

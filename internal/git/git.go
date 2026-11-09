@@ -204,6 +204,13 @@ func (r Repo) AddDetachedWorktree(ctx context.Context, path, rev string) error {
 	return err
 }
 
+// AddEmptyWorktree makes a new worktree at path for rev, on no branch and with
+// no files checked out, for what only needs a worktree to exist.
+func (r Repo) AddEmptyWorktree(ctx context.Context, path, rev string) error {
+	_, err := r.Run(ctx, "worktree", "add", "--quiet", "--detach", "--no-checkout", path, rev)
+	return err
+}
+
 // RemoveWorktree removes the worktree at path, with whatever it holds.
 func (r Repo) RemoveWorktree(ctx context.Context, path string) error {
 	_, err := r.Run(ctx, "worktree", "remove", "--force", path)

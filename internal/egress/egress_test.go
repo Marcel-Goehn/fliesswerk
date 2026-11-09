@@ -585,3 +585,17 @@ func TestStoppingCutsOpenTunnels(t *testing.T) {
 		}
 	})
 }
+
+func TestRouteIsTheProxyAConnectionWouldGoThrough(t *testing.T) {
+	route, err := egress.Options{UpstreamProxy: "http://proxy.corp:8080"}.Route()
+	if err != nil {
+		t.Fatal(err)
+	}
+	via, err := route(&url.URL{Scheme: "https", Host: "api.example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if via == nil || via.Host != "proxy.corp:8080" {
+		t.Errorf("via = %v, want proxy.corp:8080", via)
+	}
+}

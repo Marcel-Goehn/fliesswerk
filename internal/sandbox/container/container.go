@@ -31,6 +31,8 @@ const (
 	gitDir = factoryDir + "/git"
 	// homeDir is the agent's home, writable whichever user it runs as.
 	homeDir = "/tmp/kraftwerk-home"
+	// caDir holds the CA files of a Sandbox with `ca_certs`.
+	caDir = factoryDir + "/ca"
 )
 
 // killTimeout bounds clearing a Sandbox.
@@ -47,6 +49,8 @@ type Options struct {
 	Env map[string]string
 	// Egress is what the proxy sidecar lets through.
 	Egress egress.Options
+	// CACerts is `[network] ca_certs`.
+	CACerts []string
 	// Version is the Factory's, which tags the sidecar's image.
 	Version string
 	// ComposeFile is the compose file relative to the project root, Services
@@ -77,6 +81,8 @@ type Provider struct {
 	identity []string
 	// shared are the Run's shared Services, nil until they run.
 	shared *sharedServices
+	// ca is what CACerts names.
+	ca sandbox.CACerts
 }
 
 // New is a Provider that still has to be prepared.
@@ -113,6 +119,10 @@ func (p *Provider) Connect(ctx context.Context) error {
 // image is current and starts the Run's proxy sidecar. The Provider must be
 // connected, and Close ends what this starts.
 func (p *Provider) Prepare(ctx context.Context) error {
+	var err error
+	if p.ca, err = sandbox.LoadCACerts(p.opts.Root, p.opts.CACerts); err != nil {
+		return err
+	}
 	if p.hasServices() {
 		if _, err := p.compose.validate(ctx, p.opts.Root, p.opts.ComposeFile, p.opts.Services, p.opts.Shared); err != nil {
 			return err
@@ -179,17 +189,17 @@ func (p *Provider) cleanUp(ctx context.Context) {
 	}
 }
 
-// ensureImage builds the image if none exists for this Containerfile. The
-// tag holds the file's hash, so a changed file is a new image. The build
-// context is empty: nothing of the project, least of all `.env` or a
-// worktree, can end up in an image.
+// ensureImage builds the image if none exists for this Containerfile and
+// these `ca_certs`. The tag holds their hash, so a change to either is a new
+// image. The build context is empty: nothing of the project, least of all
+// `.env` or a worktree, can end up in an image.
 func (p *Provider) ensureImage(ctx context.Context) error {
 	file := filepath.Join(p.opts.Root, ".kraftwerk", "Containerfile")
 	data, err := os.ReadFile(file) //nolint:gosec // the project's own Containerfile
 	if err != nil {
 		return fmt.Errorf("the container Sandbox needs .kraftwerk/Containerfile: %w", err)
 	}
-	sum := sha256.Sum256(data)
+	sum := sha256.Sum256(append(data, p.ca.PEM...))
 	p.image = "kraftwerk-" + p.project + ":" + hex.EncodeToString(sum[:])[:12]
 	if _, err := p.engine.run(ctx, "image", "inspect", p.image); err == nil {
 		return nil
@@ -199,11 +209,44 @@ func (p *Provider) ensureImage(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = os.RemoveAll(empty) }()
+	args := []string{"build", "--tag", p.image, "--file", file, "--label", labelProject + "=" + p.project}
+	args = append(args, buildProxyArgs(p.opts.Egress.UpstreamProxy)...)
+	if p.ca.Configured() {
+		secret := filepath.Join(empty + "-ca.pem")
+		if err := os.WriteFile(secret, p.ca.PEM, 0o600); err != nil {
+			return err
+		}
+		defer func() { _ = os.Remove(secret) }()
+		args = append(args, "--secret", "id="+caSecret+",src="+secret)
+	}
 	p.log("Building the Sandbox image from .kraftwerk/Containerfile")
-	if _, err := p.engine.run(ctx, "build", "--tag", p.image, "--file", file, "--label", labelProject+"="+p.project, empty); err != nil {
+	if _, err := p.engine.run(ctx, append(args, empty)...); err != nil {
 		return fmt.Errorf("building the Sandbox image from .kraftwerk/Containerfile: %w", err)
 	}
 	return nil
+}
+
+// caSecret is the build secret `ca_certs` go in as.
+const caSecret = "kraftwerk-ca" //nolint:gosec // the name of a build secret, not one
+
+// buildProxyArgs send a build through the corporate proxy, not the egress
+// proxy, which doesn't exist yet. The host's variables go by name: the engine
+// client reads their values from its env, and a login in one stays out of
+// every argv. An `upstream_proxy` replaces them, and holds no login.
+func buildProxyArgs(upstream string) []string {
+	var args []string
+	if upstream != "" {
+		for _, name := range []string{"HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"} {
+			args = append(args, "--build-arg", name+"="+upstream)
+		}
+		return args
+	}
+	for _, name := range proxyVars {
+		if _, ok := os.LookupEnv(name); ok {
+			args = append(args, "--build-arg", name)
+		}
+	}
+	return args
 }
 
 var unsafeName = regexp.MustCompile(`[^a-zA-Z0-9_.-]`)
@@ -239,6 +282,9 @@ func (p *Provider) Create(ctx context.Context, req sandbox.Request) (sandbox.San
 		b.env = slices.Concat(b.env, proxyEnv(ip, serviceHosts(services)), serviceEnv(services, p.opts.EnvTemplates))
 		b.services = addresses(services)
 		if err := b.start(ctx, p.createArgs(name, b.workdir, labels, mounts, services)); err != nil {
+			return err
+		}
+		if err := p.installCA(ctx, b); err != nil {
 			return err
 		}
 		return p.startForwarder(ctx, b, labels, services)
@@ -343,7 +389,48 @@ func (p *Provider) mounts(worktree, state string) ([]mount, error) {
 	for _, file := range []string{"commondir", "gitdir", "config.worktree"} {
 		mounts = append(mounts, mount{source: filepath.Join(admin, file), target: own + "/" + file, readOnly: true})
 	}
+	if p.ca.Configured() {
+		// Filled in once the Sandbox can say what its system list is.
+		if err := os.MkdirAll(caStateDir(state), 0o755); err != nil { //nolint:gosec // readable by the Sandbox's user; public certificates
+			return nil, err
+		}
+		mounts = append(mounts, mount{source: caStateDir(state), target: caDir, readOnly: true})
+	}
 	return mounts, nil
+}
+
+// caStateDir is where a Sandbox's CA files are on the host.
+func caStateDir(state string) string { return filepath.Join(state, "ca") }
+
+// systemCAScript prints the Sandbox's system CA list, nothing if it has
+// none.
+func systemCAScript() string {
+	return "for f in " + strings.Join(sandbox.SystemCAFiles, " ") + `; do if [ -s "$f" ]; then exec cat "$f"; fi; done`
+}
+
+// installCA builds the Sandbox's combined CA file from the system list its
+// image has, and points its programs at it. They win over `[sandbox.env]`.
+func (p *Provider) installCA(ctx context.Context, b *box) error {
+	if !p.ca.Configured() {
+		return nil
+	}
+	system, err := b.engine.run(ctx, "exec", b.name, "/bin/sh", "-c", systemCAScript())
+	if err != nil {
+		return fmt.Errorf("reading the Sandbox's system CA list: %w", err)
+	}
+	if strings.TrimSpace(system) == "" {
+		return errors.New("the Sandbox image has no system CA list for [network] ca_certs to add to; install `ca-certificates` in .kraftwerk/Containerfile")
+	}
+	if err := p.ca.Install(caStateDir(b.state), []byte(system)); err != nil {
+		return err
+	}
+	vars := sandbox.CAEnv(caDir)
+	b.env = slices.DeleteFunc(b.env, func(kv string) bool {
+		name, _, _ := strings.Cut(kv, "=")
+		return slices.ContainsFunc(vars, func(v string) bool { return strings.HasPrefix(v, name+"=") })
+	})
+	b.env = append(b.env, vars...)
+	return nil
 }
 
 // baseEnv is what every command in a Sandbox gets.

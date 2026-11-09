@@ -92,6 +92,9 @@ type Request struct {
 	// Protected are the project's Protected paths, as patterns relative to
 	// the project root.
 	Protected []string
+	// NoServices leaves the Sandbox without its own Services, for one that
+	// only exists to ask something.
+	NoServices bool
 }
 
 // Shell is the host command that runs line with the Sandbox's shell, or

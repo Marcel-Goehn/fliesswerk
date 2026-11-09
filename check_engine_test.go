@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -190,5 +191,41 @@ func TestSummaryCarriesTheMemoryOfTheRun(t *testing.T) {
 	}
 	if got := s.Text(); !strings.Contains(got, "Memory: peak estimate 3072 MB, 4 waits") {
 		t.Errorf("the summary lacks the memory:\n%s", got)
+	}
+}
+
+func TestCheckRefusesACACertsFileItCannotUse(t *testing.T) {
+	bin := buildKraftwerk(t, "")
+	root := projectDir(t, map[string]string{"config.toml": "version = 1\n[network]\nca_certs = [\"missing.pem\"]\n"})
+
+	_, stderr, code := runEnv(t, bin, root, ghEnv(t, "ok"), "check")
+
+	if code != exitConfigError || !strings.Contains(stderr, "ca_certs") || !strings.Contains(stderr, "missing.pem") {
+		t.Fatalf("exit code = %d, stderr: %s", code, stderr)
+	}
+}
+
+func TestCheckLeavesARunningRunAloneAndSaysItSkippedTheTrustCheck(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake docker is a shell script")
+	}
+	srv, _ := fakeGateway(t, "good-token")
+	bin := buildKraftwerk(t, "")
+	root := projectDir(t, map[string]string{"config.toml": "version = 1\n", "config.local.toml": gatewayConfig(srv.URL)})
+	lock := filepath.Join(root, factory.StateDir, "lock")
+	if err := os.MkdirAll(filepath.Dir(lock), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(lock, []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	home := configHome(t)
+	authSet(t, bin, home, "gw", "good-token")
+	env := withFakeDocker(t, append(ghEnv(t, "ok"), home...), "linux x86_64")
+
+	_, stderr, code := runEnv(t, bin, root, env, "check")
+
+	if code != exitOK || !strings.Contains(stderr, "a Run is in progress") {
+		t.Fatalf("exit code = %d, stderr: %s", code, stderr)
 	}
 }

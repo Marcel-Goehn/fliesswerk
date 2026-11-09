@@ -73,7 +73,7 @@ func (p *Provider) StartShared(ctx context.Context, req sandbox.Request) (func(c
 // startServices brings up the Sandbox's own Services and opens the way to them
 // and the Run's shared ones, by the means of the host's Sandbox.
 func (p *Provider) startServices(ctx context.Context, b *box, s *sandboxPlan, req sandbox.Request) error {
-	if p.opts.Services == nil {
+	if p.opts.Services == nil || req.NoServices {
 		return nil
 	}
 	p.log("Starting the Services of %s", req.Name)

@@ -71,6 +71,12 @@ func (s sandboxPlan) seatbeltProfile() (string, error) {
 	for _, p := range s.Toolchains {
 		r.read(p)
 	}
+	for _, p := range slices.Concat(s.TrustStore, s.CACerts) {
+		r.read(p)
+	}
+	if s.CADir != "" {
+		r.read(s.CADir)
+	}
 	for _, a := range s.Added {
 		r.read(a.Target)
 		verb := "deny"

@@ -41,6 +41,8 @@ type Options struct {
 	Env map[string]string
 	// Egress is what the egress proxy lets through.
 	Egress egress.Options
+	// CACerts is `[network] ca_certs`.
+	CACerts []string
 	// ReadOnly and Writable are the checked `sandbox.read_only_paths` and
 	// `sandbox.writable_paths`.
 	ReadOnly, Writable []string
@@ -74,6 +76,8 @@ type Provider struct {
 	proxyPort string
 	// shared are the Run's shared Services, none until they run.
 	shared []sandbox.PublishedService
+	// ca is what CACerts names.
+	ca sandbox.CACerts
 
 	mu     sync.Mutex
 	denied map[string]bool
@@ -113,6 +117,10 @@ func (p *Provider) Connect(ctx context.Context) error {
 // socket under bwrap, and under Seatbelt the one loopback port the profile
 // allows. The Provider must be connected, and Close ends what this starts.
 func (p *Provider) Prepare(ctx context.Context) error {
+	var err error
+	if p.ca, err = sandbox.LoadCACerts(p.opts.Root, p.opts.CACerts); err != nil {
+		return err
+	}
 	if p.opts.Services != nil {
 		if err := p.opts.Services.Validate(ctx); err != nil {
 			return err
@@ -222,6 +230,7 @@ func (p *Provider) Create(ctx context.Context, req sandbox.Request) (sandbox.San
 	}
 	s.Toolchains = binds
 	s.Added, s.Never = p.added(), p.host.neverExposed()
+	s.TrustStore = trustStore(p.host)
 	for _, dir := range []string{s.Home, s.Tmp} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return nil, err
@@ -244,6 +253,9 @@ func (p *Provider) Create(ctx context.Context, req sandbox.Request) (sandbox.San
 	b := &box{self: p.self, state: state, plan: filepath.Join(state, "plan.json"), groupDir: groupDir, env: p.baseEnv(path, home, tmp), ownServices: p.opts.Services}
 	b.setEnv([]string{"KRAFTWERK_SANDBOX=" + req.Name})
 	start := func() error {
+		if err := p.installCA(b, &s); err != nil {
+			return err
+		}
 		if err := p.startServices(ctx, b, &s, req); err != nil {
 			return err
 		}
@@ -260,6 +272,42 @@ func (p *Provider) Create(ctx context.Context, req sandbox.Request) (sandbox.San
 		return nil, errors.Join(err, b.Destroy(cleanup))
 	}
 	return b, nil
+}
+
+// installCA builds the Sandbox's combined CA file from the host's system list
+// and points its programs at it. They win over `[sandbox.env]`.
+func (p *Provider) installCA(b *box, s *sandboxPlan) error {
+	if !p.ca.Configured() {
+		return nil
+	}
+	system, err := hostSystemCA()
+	if err != nil {
+		return err
+	}
+	dir := filepath.Join(b.state, "ca")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	if err := p.ca.Install(dir, system); err != nil {
+		return err
+	}
+	s.CADir, s.CACerts = dir, p.ca.Paths
+	inside := insideCADir
+	if p.host.Mac { // Seatbelt can't put a directory at another path
+		inside = dir
+	}
+	b.setEnv(sandbox.CAEnv(inside))
+	return nil
+}
+
+// hostSystemCA is the list of roots this machine's programs use.
+func hostSystemCA() ([]byte, error) {
+	for _, file := range sandbox.SystemCAFiles {
+		if data, err := os.ReadFile(file); err == nil && len(data) > 0 { //nolint:gosec // a fixed list of system files
+			return data, nil
+		}
+	}
+	return nil, errors.New("this machine has no system CA list for [network] ca_certs to add to; install `ca-certificates`")
 }
 
 // added are the configured paths, as CheckPaths has let them through.

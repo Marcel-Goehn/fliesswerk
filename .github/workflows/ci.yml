@@ -99,6 +99,10 @@ jobs:
       - name: go generate (the proxy sidecar's root filesystems)
         run: go generate ./internal/proxyimage
       - name: go test
+        # Proves on each OS that the platform verifier returns the root, which
+        # `check` names when it finds TLS interception.
+        env:
+          KRAFTWERK_TEST_ANCHOR: "1"
         run: go test ./...
 
   # The container Sandbox on real engines: both are on the runner, and

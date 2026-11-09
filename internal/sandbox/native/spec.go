@@ -19,6 +19,7 @@ const (
 	insideDir    = "/run/kraftwerk"
 	insideSelf   = insideDir + "/kraftwerk"
 	insideSocket = insideDir + "/" + socketName
+	insideCADir  = insideDir + "/ca"
 	// proxyPort is where a Sandbox's programs find the egress proxy, on the
 	// Sandbox's own loopback.
 	proxyPort = "3128"
@@ -79,6 +80,12 @@ type sandboxPlan struct {
 	Home, Tmp, UserHome string
 	// Toolchains are read-only paths PATH needs besides the system roots.
 	Toolchains []string
+	// TrustStore are the OS's certificate stores besides the system roots,
+	// and CACerts the files of `ca_certs`, all read-only where they are.
+	TrustStore, CACerts []string
+	// CADir holds the Sandbox's CA files, "" for none. It is at insideCADir
+	// under bwrap, and at its own path under Seatbelt.
+	CADir string
 	// Added are `read_only_paths` and `writable_paths`.
 	Added []addedPath
 	// Never are the paths no Sandbox may see, as Host.neverExposed.
@@ -153,6 +160,9 @@ func (s sandboxPlan) options(env []string) ([]string, error) {
 	for _, p := range s.Toolchains {
 		opts = append(opts, "--ro-bind", p, p)
 	}
+	for _, p := range slices.Concat(s.TrustStore, s.CACerts) {
+		opts = append(opts, "--ro-bind-try", p, p)
+	}
 	for _, a := range s.Added {
 		flag := "--ro-bind-try"
 		if a.Writable {
@@ -166,6 +176,9 @@ func (s sandboxPlan) options(env []string) ([]string, error) {
 		"--bind", s.Socket, insideSocket,
 		"--bind", s.Worktree, s.Worktree,
 	)
+	if s.CADir != "" {
+		opts = append(opts, "--ro-bind", s.CADir, insideCADir)
+	}
 	opts = append(opts, s.serviceMounts()...)
 	opts = append(opts, s.gitMounts()...)
 	protected, err := s.protectedMounts()

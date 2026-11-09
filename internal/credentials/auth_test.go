@@ -188,3 +188,30 @@ func (base redirect) RoundTrip(req *http.Request) (*http.Response, error) {
 	out.URL.Scheme, out.URL.Host, out.Host = u.Scheme, u.Host, req.URL.Host
 	return http.DefaultTransport.RoundTrip(out)
 }
+
+func TestTLSEndpointKeepsAGatewaysPortAndSkipsPlainHTTP(t *testing.T) {
+	tests := []struct {
+		name  string
+		table map[string]any
+		want  string
+	}{
+		{"the Harness's own host", map[string]any{"method": "api_key", "secret": map[string]any{"stored": "k"}}, "api.anthropic.com"},
+		{"a gateway on its own port", map[string]any{"method": "gateway", "base_url": "https://llm.corp.example:8443/v1", "secret": map[string]any{"stored": "k"}}, "llm.corp.example:8443"},
+		{"a gateway without TLS", map[string]any{"method": "gateway", "base_url": "http://llm.corp.example", "secret": map[string]any{"stored": "k"}}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := project(t, ".env\n")
+			if err := credentials.Store(r.Store, "k", "a-secret"); err != nil {
+				t.Fatal(err)
+			}
+			a, err := credentials.ResolveAuth(context.Background(), r, claude, tt.table)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := a.TLSEndpoint(); got != tt.want {
+				t.Errorf("TLSEndpoint = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

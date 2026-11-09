@@ -147,6 +147,23 @@ func ResolveAuth(ctx context.Context, r Resolver, desc harness.Description, tabl
 	return a, nil
 }
 
+// TLSEndpoint is the host, with a port if it has its own, where the method's
+// Harness talks TLS, "" if it doesn't. A test call to that host says more than
+// Endpoints can: a gateway's scheme and port.
+func (a *Auth) TLSEndpoint() string {
+	if len(a.Endpoints) == 0 {
+		return ""
+	}
+	u, err := url.Parse(a.test.URL)
+	if err != nil || u.Hostname() != a.Endpoints[0] {
+		return a.Endpoints[0]
+	}
+	if u.Scheme != "https" {
+		return ""
+	}
+	return u.Host
+}
+
 // Test makes the method's one free test call and says, in plain words,
 // what to fix if the credential doesn't work.
 func (a *Auth) Test(ctx context.Context, client *http.Client) error {

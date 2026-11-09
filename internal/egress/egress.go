@@ -78,6 +78,12 @@ func (o Options) Validate() error {
 	return nil
 }
 
+// Route says which upstream proxy a connection to a URL goes through, nil for
+// none: what the proxy itself would do, for what the host asks on its own.
+func (o Options) Route() (func(*url.URL) (*url.URL, error), error) {
+	return newRoute(o.UpstreamProxy)
+}
+
 // canonical is the form hosts are compared in: DNS names ignore case, and a
 // trailing dot only spells out the root.
 func canonical(host string) string {
