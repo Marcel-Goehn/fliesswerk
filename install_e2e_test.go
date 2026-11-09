@@ -471,7 +471,9 @@ func (p *psInstall) run(t *testing.T, release *fakeRelease, extra ...string) int
 	for _, kv := range os.Environ() {
 		name, _, _ := strings.Cut(kv, "=")
 		upper := strings.ToUpper(name)
-		if upper != "PATH" && !strings.HasPrefix(upper, "PROCESSOR_ARCHITE") && !strings.HasPrefix(upper, "KRAFTWERK_") {
+		// PSMODULEPATH goes too: inherited from PowerShell 7, as on CI, it
+		// hides Windows PowerShell's own modules, and with them Get-FileHash.
+		if upper != "PATH" && upper != "PSMODULEPATH" && !strings.HasPrefix(upper, "PROCESSOR_ARCHITE") && !strings.HasPrefix(upper, "KRAFTWERK_") {
 			cmd.Env = append(cmd.Env, kv)
 		}
 	}
