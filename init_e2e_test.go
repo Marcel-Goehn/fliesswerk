@@ -52,6 +52,7 @@ func (p *runProject) initEnv(t *testing.T, bins ...string) []string {
 	}
 	path := strings.Join([]string{tools, fakeClaudeBinDir(t), gitBinDir(t)}, string(os.PathListSeparator))
 	env := append(baseEnv(path), gitIdentity()...)
+	env = append(env, "KRAFTWERK_ENGINE=") // CI picks one, and these have neither
 	return append(env, "KWK_FAKE_TRACKER="+p.trackerPath, "KWK_FAKE_HARNESS_SCRIPT="+p.scriptPath, "XDG_CONFIG_HOME="+t.TempDir())
 }
 
