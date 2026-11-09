@@ -6,7 +6,8 @@
 # each new push to an open PR. Pushes to a feature branch without a PR don't
 # run it, and `main` takes no direct pushes. The `ci` job at the end is the
 # single check the "Require PR" ruleset on `main` requires (set up in the
-# GitHub UI); add new CI jobs to its `needs`.
+# GitHub UI); add new CI jobs to its `needs`. A tag runs all of it too, as the
+# first stage of .github/workflows/release.yml.
 #
 # Severity policy: findings of high severity or above fail the job, lower
 # ones only warn.
@@ -28,6 +29,7 @@ on:
     branches: [develop]
   pull_request:
     branches: [develop, main]
+  workflow_call:
 
 permissions:
   contents: read

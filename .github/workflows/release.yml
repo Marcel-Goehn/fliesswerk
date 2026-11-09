@@ -1,0 +1,93 @@
+# The tag pipeline: the full CI suite, then GoReleaser's archives, attestations
+# and publishing, then a smoke test of what was published on all three OSes.
+#
+# The release stays a draft until it's attested, so if anything fails before
+# the "Publish" step, nothing is released. Delete the draft and the tag, or
+# re-run the workflow, which replaces the draft.
+#
+# Every third-party Action is pinned by commit SHA; Dependabot keeps those
+# current. Bump GoReleaser's own `version` by hand.
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+jobs:
+  suite:
+    name: suite
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  publish:
+    name: publish
+    needs: suite
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # GoReleaser writes the changelog from the history
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: GoReleaser (uploads a draft)
+        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          version: v2.20.0
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Attest the archives
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: dist/checksums.txt
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false --repo "$GITHUB_REPOSITORY"
+
+  # Installs the release as a user would, then runs it. Go is only here for
+  # the fakes `check` runs against: no real Harness in CI.
+  smoke:
+    name: smoke (${{ matrix.os }})
+    needs: publish
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    env:
+      KRAFTWERK_VERSION: ${{ github.ref_name }}
+      KRAFTWERK_SMOKE_TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Install (install.sh)
+        if: runner.os != 'Windows'
+        run: |
+          sh install.sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Install (install.ps1)
+        if: runner.os == 'Windows'
+        shell: powershell # Windows PowerShell 5.1, the one every Windows has
+        run: |
+          .\install.ps1
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\kraftwerk'
+          $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+          if (($userPath -split ';') -notcontains $dir) { throw "$dir isn't on the user PATH: $userPath" }
+          Add-Content -LiteralPath $env:GITHUB_PATH -Value $dir
+      - name: kraftwerk --version and kraftwerk check on a fixture
+        run: go test -tags smoke -run TestPublishedRelease -count=1 .
