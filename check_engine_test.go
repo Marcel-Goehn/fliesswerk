@@ -127,3 +127,20 @@ func TestCheckEnforcesTheComposeRules(t *testing.T) {
 		}
 	})
 }
+
+func TestCheckRefusesAServiceANativeSandboxCouldNotReach(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake docker is a shell script")
+	}
+	bin := buildKraftwerk(t, "")
+	root := projectDir(t, map[string]string{"config.toml": "version = 1\n[sandbox]\nkind = \"native\"\n[services.db]\nshared = false\n"})
+
+	_, stderr, code := runEnv(t, bin, root, withFakeCompose(t, ghEnv(t, "ok"), "2.40.0", `{"services": {"db": {"image": "postgres", "expose": ["5432"]}}}`), "check")
+
+	if code != exitConfigError {
+		t.Fatalf("exit code = %d, want %d; stderr: %s", code, exitConfigError, stderr)
+	}
+	if !strings.Contains(stderr, "db") || !strings.Contains(stderr, `ports: ["127.0.0.1:<H>:<C>"]`) {
+		t.Errorf("stderr doesn't name the fix: %s", stderr)
+	}
+}

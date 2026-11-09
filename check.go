@@ -119,6 +119,12 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 			_, _ = fmt.Fprintln(stdout, "kraftwerk check: compose file ok")
 		}
 	case "native":
+		if names := serviceNames(values); len(names) > 0 {
+			if err := container.CheckPublishedServices(ctx, root, composeFile(values), names); err != nil {
+				return fail(err)
+			}
+			_, _ = fmt.Fprintln(stdout, "kraftwerk check: compose file ok")
+		}
 		if _, err := native.Check(ctx); err != nil {
 			return fail(err)
 		}

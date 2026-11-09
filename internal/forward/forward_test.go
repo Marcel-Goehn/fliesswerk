@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -112,5 +113,43 @@ func TestParseRuleReadsListenAndTarget(t *testing.T) {
 	}
 	if _, err := forward.ParseRule("127.0.0.1:5432"); err == nil {
 		t.Error("a rule with no target was accepted")
+	}
+}
+
+func TestAUnixSocketCarriesAConnectionBothWays(t *testing.T) {
+	socket := filepath.Join(t.TempDir(), "s")
+	listen, target := freeAddr(t), echoUntilEOF(t)
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	// As in a native Sandbox: TCP to a socket, and from the socket on to TCP.
+	server, err := forward.Start(ctx, []forward.Rule{
+		{Listen: "unix:" + socket, Target: target},
+		{Listen: listen, Target: "unix:" + socket},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c, err := net.Dial("tcp", listen) // no retry: Start returns listening
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Close() }()
+	if _, err := c.Write([]byte("hello")); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.(*net.TCPConn).CloseWrite(); err != nil {
+		t.Fatal(err)
+	}
+	_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	got, err := io.ReadAll(c)
+	if err != nil || string(got) != "echo: hello" {
+		t.Errorf("got %q, %v", got, err)
+	}
+
+	stop()
+	server.Wait()
+	if _, err := net.Dial("tcp", listen); err == nil {
+		t.Error("still listening after its context ended")
 	}
 }

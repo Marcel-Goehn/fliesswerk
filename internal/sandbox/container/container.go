@@ -53,6 +53,8 @@ type Options struct {
 	// Services the Services to start from it, none for a project without.
 	ComposeFile string
 	Services    []string
+	// EnvTemplates are each Service's `env` templates, by Service.
+	EnvTemplates map[string]map[string]string
 	// Log gets a line about what the Provider does.
 	Log func(string)
 }
@@ -76,8 +78,14 @@ type Provider struct {
 
 // New is a Provider that still has to be prepared.
 func New(opts Options) *Provider {
-	sum := sha256.Sum256([]byte(opts.Root))
-	return &Provider{opts: opts, project: hex.EncodeToString(sum[:])[:12]}
+	return &Provider{opts: opts, project: projectHash(opts.Root)}
+}
+
+// projectHash tells a checkout's containers and Compose projects from those
+// of others on the same engine.
+func projectHash(root string) string {
+	sum := sha256.Sum256([]byte(root))
+	return hex.EncodeToString(sum[:])[:12]
 }
 
 // Connect resolves the engine and its compose tool, and clears what a
@@ -133,7 +141,7 @@ func (p *Provider) cleanUp(ctx context.Context) {
 	warn := func(err error) { p.log("warning: cleaning up an earlier Run's Sandboxes: %v", err) }
 	var stackErr error
 	if len(p.opts.Services) > 0 {
-		if stackErr = p.downLeftStacks(ctx); stackErr != nil {
+		if stackErr = downRecorded(ctx, p.compose, p.opts.StateDir); stackErr != nil {
 			warn(stackErr)
 		}
 	}
@@ -220,7 +228,7 @@ func (p *Provider) Create(ctx context.Context, req sandbox.Request) (sandbox.San
 		if err != nil {
 			return err
 		}
-		b.env = slices.Concat(b.env, proxyEnv(ip, serviceHosts(services)), serviceEnv(services))
+		b.env = slices.Concat(b.env, proxyEnv(ip, serviceHosts(services)), serviceEnv(services, p.opts.EnvTemplates))
 		b.services = addresses(services)
 		if err := b.start(ctx, p.createArgs(name, b.workdir, labels, mounts, services)); err != nil {
 			return err

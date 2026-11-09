@@ -3,16 +3,18 @@
 package native
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
 
+	"github.com/Marcel-Goehn/kraftwerk/internal/forward"
 	"golang.org/x/sys/unix"
 )
 
@@ -54,7 +56,7 @@ func runExec(args []string) error {
 	if err != nil {
 		return err
 	}
-	argv := append([]string{s.Launcher, "--args", strconv.Itoa(fd), "--", insideSelf, helperInit, "--"}, command...)
+	argv := slices.Concat([]string{s.Launcher, "--args", strconv.Itoa(fd), "--", insideSelf, helperInit}, s.initRules(), []string{"--"}, command)
 	return syscall.Exec(s.Launcher, argv, []string{}) //nolint:gosec // bwrap, as Check found it
 }
 
@@ -80,20 +82,29 @@ func optionsFile(opts []string) (int, error) {
 }
 
 // runInit is the Sandbox's first process of its own: it carries the proxy
-// port on the Sandbox's loopback over to the socket, and runs the command.
+// port and the Services' ports on the Sandbox's loopback over to their
+// sockets, and runs the command. Its arguments are forward rules, then "--"
+// and the command.
 func runInit(args []string) (int, error) {
-	if len(args) < 2 || args[0] != "--" {
-		return 0, errors.New("usage: " + helperInit + " -- <command>")
+	dash := slices.Index(args, "--")
+	if dash < 0 || len(args) < dash+2 {
+		return 0, errors.New("usage: " + helperInit + " [listen=target ...] -- <command>")
 	}
-	l, err := net.Listen("tcp", "127.0.0.1:"+proxyPort)
-	if err != nil {
-		return 0, fmt.Errorf("the forwarder to the egress proxy can't listen: %w", err)
+	rules := []forward.Rule{{Listen: "127.0.0.1:" + proxyPort, Target: forward.Unix(insideSocket)}}
+	for _, arg := range args[:dash] {
+		rule, err := forward.ParseRule(arg)
+		if err != nil {
+			return 0, err
+		}
+		rules = append(rules, rule)
 	}
-	go forward(l)
+	if _, err := forward.Start(context.Background(), rules); err != nil {
+		return 0, fmt.Errorf("the forwarders can't listen: %w", err)
+	}
 
-	cmd := exec.Command(args[1], args[2:]...) //nolint:gosec // the command the Sandbox is for
+	cmd := exec.Command(args[dash+1], args[dash+2:]...) //nolint:gosec // the command the Sandbox is for
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	err = cmd.Run()
+	err := cmd.Run()
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) {
 		return 0, err
@@ -102,31 +113,4 @@ func runInit(args []string) (int, error) {
 		return 128 + int(status.Signal()), nil
 	}
 	return exit.ExitCode(), nil
-}
-
-// forward relays every connection to the egress proxy's socket.
-func forward(l net.Listener) {
-	for {
-		client, err := l.Accept()
-		if err != nil {
-			return
-		}
-		go func() {
-			defer func() { _ = client.Close() }()
-			proxy, err := net.Dial("unix", insideSocket)
-			if err != nil {
-				return
-			}
-			defer func() { _ = proxy.Close() }()
-			done := make(chan struct{})
-			go func() {
-				_, _ = io.Copy(proxy, client)
-				_ = proxy.(*net.UnixConn).CloseWrite()
-				close(done)
-			}()
-			_, _ = io.Copy(client, proxy)
-			_ = client.(*net.TCPConn).CloseWrite()
-			<-done
-		}()
-	}
 }

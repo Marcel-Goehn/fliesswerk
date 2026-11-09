@@ -205,14 +205,19 @@ func newSandboxes(values map[string]any, root, kind string, s *secrets, log *run
 		return container.New(container.Options{
 			Root: root, StateDir: state, RunID: log.ID(), RunArgs: runArgs(values), Env: env,
 			Egress: egressOptions, Version: versionString(), Log: logLine,
-			ComposeFile: composeFile(values), Services: serviceNames(values),
+			ComposeFile: composeFile(values), Services: serviceNames(values), EnvTemplates: serviceEnvTemplates(values),
 		})
 	case "native":
-		return native.New(native.Options{
+		opts := native.Options{
 			Root: root, StateDir: state, Env: env, Egress: egressOptions,
 			ReadOnly: readOnlyPaths(values), Writable: writablePaths(values),
 			HomeSeed: theHarness.Describe().HomeSeed, Log: logLine,
-		})
+		}
+		if names := serviceNames(values); len(names) > 0 {
+			opts.EnvTemplates = serviceEnvTemplates(values)
+			opts.Services = container.NewPublished(container.PublishedOptions{Root: root, StateDir: state, ComposeFile: composeFile(values), Services: names})
+		}
+		return native.New(opts)
 	}
 	return nil
 }
@@ -441,6 +446,25 @@ func serviceNames(values map[string]any) []string {
 		}
 	}
 	return names
+}
+
+// serviceEnvTemplates are the `env` templates of each Service that has any.
+func serviceEnvTemplates(values map[string]any) map[string]map[string]string {
+	templates := map[string]map[string]string{}
+	for _, name := range serviceNames(values) {
+		table, _ := valueAt(values, "services", name, "env").(map[string]any)
+		for variable, v := range table {
+			value, ok := v.(string)
+			if !ok {
+				continue
+			}
+			if templates[name] == nil {
+				templates[name] = map[string]string{}
+			}
+			templates[name][variable] = value
+		}
+	}
+	return templates
 }
 
 // verifyCommands are the Feedback commands `verify` names, in its order.

@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Marcel-Goehn/kraftwerk/internal/forward"
 	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
 )
 
@@ -86,6 +87,43 @@ type sandboxPlan struct {
 	Git sandbox.GitDirs
 	// Protected are the Protected paths, relative to the project root.
 	Protected []string
+	// Forwards are the Service ports under bwrap, and Hosts the file with
+	// their names. ServicePorts are the published ports under Seatbelt.
+	Forwards     []serviceForward
+	Hosts        string
+	ServicePorts []int
+}
+
+// serviceForward is one Service port under bwrap: a Factory-side socket,
+// mounted at Inside, and the addresses on the Sandbox's loopback that lead to
+// it.
+type serviceForward struct {
+	Socket, Inside string
+	Listen         []string
+}
+
+// initRules are the rules the Sandbox's first process forwards its Services
+// by.
+func (s sandboxPlan) initRules() []string {
+	var rules []string
+	for _, f := range s.Forwards {
+		for _, listen := range f.Listen {
+			rules = append(rules, listen+"="+forward.Unix(f.Inside))
+		}
+	}
+	return rules
+}
+
+// serviceMounts put a command's Service sockets and names in place.
+func (s sandboxPlan) serviceMounts() []string {
+	var opts []string
+	for _, f := range s.Forwards {
+		opts = append(opts, "--bind", f.Socket, f.Inside)
+	}
+	if s.Hosts != "" {
+		opts = append(opts, "--ro-bind", s.Hosts, "/etc/hosts")
+	}
+	return opts
 }
 
 // addedPath is a configured path, which may not exist on this machine.
@@ -128,6 +166,7 @@ func (s sandboxPlan) options(env []string) ([]string, error) {
 		"--bind", s.Socket, insideSocket,
 		"--bind", s.Worktree, s.Worktree,
 	)
+	opts = append(opts, s.serviceMounts()...)
 	opts = append(opts, s.gitMounts()...)
 	protected, err := s.protectedMounts()
 	if err != nil {

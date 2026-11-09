@@ -8,9 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -69,19 +67,8 @@ func (p *Provider) startServices(ctx context.Context, b *box, req sandbox.Reques
 	if err != nil {
 		return nil, err
 	}
-	stack := composeStack{
-		Project:  composeProjectName(p.opts.Root, p.project, req.Name),
-		File:     filepath.Join(root, p.opts.ComposeFile),
-		Override: filepath.Join(b.state, overrideFile),
-	}
-	if err := os.WriteFile(stack.Override, []byte(cp.override(p.opts.Services, stack.Project)), 0o600); err != nil {
-		return nil, err
-	}
-	record, err := json.Marshal(stack)
+	stack, err := writeStack(cp, p.opts.Services, composeProjectName(p.opts.Root, p.project, req.Name), filepath.Join(root, p.opts.ComposeFile), b.state)
 	if err != nil {
-		return nil, err
-	}
-	if err := os.WriteFile(filepath.Join(b.state, stackFile), record, 0o600); err != nil {
 		return nil, err
 	}
 	b.compose, b.stack = p.compose, &stack
@@ -105,13 +92,27 @@ func (p *Provider) startServices(ctx context.Context, b *box, req sandbox.Reques
 	return services, nil
 }
 
+// writeStack writes a Sandbox's compose override and puts its Compose project
+// on record in the Sandbox's directory of the runtime state.
+func writeStack(cp composeProject, services []string, project, file, state string) (composeStack, error) {
+	stack := composeStack{Project: project, File: file, Override: filepath.Join(state, overrideFile)}
+	if err := os.WriteFile(stack.Override, []byte(cp.override(services, project)), 0o600); err != nil {
+		return composeStack{}, err
+	}
+	record, err := json.Marshal(stack)
+	if err != nil {
+		return composeStack{}, err
+	}
+	if err := os.WriteFile(filepath.Join(state, stackFile), record, 0o600); err != nil {
+		return composeStack{}, err
+	}
+	return stack, nil
+}
+
 // connectService puts a Service container on the Sandbox's network. Its old
 // container_name stays a name the project's code can use.
 func (p *Provider) connectService(ctx context.Context, network string, c composeContainer, spec composeService) (runningService, error) {
-	s := runningService{name: c.Service, aliases: []string{c.Service}}
-	if spec.ContainerName != "" && spec.ContainerName != c.Service {
-		s.aliases = append(s.aliases, spec.ContainerName)
-	}
+	s := runningService{name: c.Service, aliases: spec.aliases(c.Service)}
 	args := []string{"network", "connect"}
 	for _, alias := range s.aliases {
 		args = append(args, "--alias", alias)
@@ -164,17 +165,16 @@ func serviceHosts(services []runningService) []string {
 	return hosts
 }
 
-var nonEnvChars = regexp.MustCompile(`[^A-Z0-9]`)
-
-// serviceEnv are the variables naming each Service's address.
-func serviceEnv(services []runningService) []string {
+// serviceEnv are the variables naming each Service's address, and its
+// `env` templates filled in.
+func serviceEnv(services []runningService, templates map[string]map[string]string) []string {
 	var env []string
 	for _, s := range services {
-		prefix := "KRAFTWERK_SERVICE_" + nonEnvChars.ReplaceAllString(strings.ToUpper(s.name), "_")
-		env = append(env, prefix+"_HOST="+s.name)
+		port := 0
 		if len(s.ports) > 0 {
-			env = append(env, prefix+"_PORT="+strconv.Itoa(s.ports[0]))
+			port = s.ports[0]
 		}
+		env = append(env, sandbox.ServiceEnv(s.name, s.name, port, templates[s.name])...)
 	}
 	return env
 }
@@ -253,10 +253,9 @@ func addresses(services []runningService) []sandbox.Service {
 	return out
 }
 
-// downLeftStacks removes the Compose projects a crashed Run's Sandboxes
-// left, from their records in the runtime state.
-func (p *Provider) downLeftStacks(ctx context.Context) error {
-	records, err := filepath.Glob(filepath.Join(p.opts.StateDir, "sandboxes", "*", stackFile))
+// downRecorded removes every Compose project on record in the runtime state.
+func downRecorded(ctx context.Context, tool composeTool, stateDir string) error {
+	records, err := filepath.Glob(filepath.Join(stateDir, "sandboxes", "*", stackFile))
 	if err != nil {
 		return err
 	}
@@ -272,7 +271,7 @@ func (p *Provider) downLeftStacks(ctx context.Context) error {
 			errs = append(errs, err)
 			continue
 		}
-		errs = append(errs, p.compose.down(ctx, stack))
+		errs = append(errs, tool.down(ctx, stack))
 	}
 	return errors.Join(errs...)
 }

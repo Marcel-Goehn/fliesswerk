@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"strings"
@@ -275,5 +276,20 @@ func TestARefusedRunArgStopsTheRunBeforeItStarts(t *testing.T) {
 		if _, err := os.Stat(log); err == nil {
 			t.Fatalf("%s: gh ran although the Run can't start", arg)
 		}
+	}
+}
+
+func TestServiceEnvTemplatesAreReadPerService(t *testing.T) {
+	values := map[string]any{"services": map[string]any{
+		"compose_file": "compose.yaml",
+		"postgres":     map[string]any{"env": map[string]any{"DATABASE_URL": "postgres://{host}:{port}/app"}},
+		"redis":        map[string]any{"shared": false},
+	}}
+
+	got := serviceEnvTemplates(values)
+
+	want := map[string]map[string]string{"postgres": {"DATABASE_URL": "postgres://{host}:{port}/app"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
 	}
 }

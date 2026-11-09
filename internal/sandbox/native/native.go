@@ -20,11 +20,15 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/egress"
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
 	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
 )
+
+// destroyTimeout bounds removing a Sandbox that failed part way.
+const destroyTimeout = time.Minute
 
 // proxyVars are the variables that point a program at a proxy.
 var proxyVars = []string{"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy"}
@@ -42,6 +46,10 @@ type Options struct {
 	ReadOnly, Writable []string
 	// HomeSeed are the Harness's files for the private home.
 	HomeSeed []harness.HomeFile
+	// Services run the project's Services, nil for a project without, and
+	// EnvTemplates are each one's `env` templates.
+	Services     Services
+	EnvTemplates map[string]map[string]string
 	// Log gets a line about what the Provider does.
 	Log func(string)
 	// Host is the machine; the zero value means the one this runs on.
@@ -82,16 +90,32 @@ func (p *Provider) Connect(ctx context.Context) error {
 		return err
 	}
 	p.launcher = launcher
+	if p.opts.Services != nil {
+		if err := p.opts.Services.Connect(ctx); err != nil {
+			return err
+		}
+		// A Service left running is only found through its record.
+		if err := p.opts.Services.DownLeft(ctx); err != nil {
+			p.log("warning: cleaning up an earlier Run's Services: %v", err)
+			return nil
+		}
+	}
 	if err := forceRemove(filepath.Join(p.opts.StateDir, "sandboxes")); err != nil {
 		p.log("warning: cleaning up an earlier Run's Sandboxes: %v", err)
 	}
 	return nil
 }
 
-// Prepare starts the Run's egress proxy, on what is the only thing connecting
-// a Sandbox to it: a Unix socket under bwrap, and under Seatbelt the one
-// loopback port the profile allows. Close ends what this starts.
+// Prepare rejects Services a Sandbox couldn't reach and starts the Run's
+// egress proxy, on what is the only thing connecting a Sandbox to it: a Unix
+// socket under bwrap, and under Seatbelt the one loopback port the profile
+// allows. The Provider must be connected, and Close ends what this starts.
 func (p *Provider) Prepare(ctx context.Context) error {
+	if p.opts.Services != nil {
+		if err := p.opts.Services.Validate(ctx); err != nil {
+			return err
+		}
+	}
 	p.host = CurrentHost()
 	if p.opts.Host != nil {
 		p.host = *p.opts.Host
@@ -164,9 +188,10 @@ func (p *Provider) log(format string, a ...any) {
 
 var unsafeName = regexp.MustCompile(`[^a-zA-Z0-9_.-]`)
 
-// Create makes a Sandbox's private home and /tmp. They last as long as the
-// Sandbox, so that what a Hook installs is there for the Steps.
-func (p *Provider) Create(_ context.Context, req sandbox.Request) (sandbox.Sandbox, error) {
+// Create makes a Sandbox's private home and /tmp, which last as long as the
+// Sandbox so that what a Hook installs is there for the Steps, and starts its
+// Services, which are ready when it returns.
+func (p *Provider) Create(ctx context.Context, req sandbox.Request) (sandbox.Sandbox, error) {
 	git, err := sandbox.WorktreeGit(req.Worktree)
 	if err != nil {
 		return nil, err
@@ -214,15 +239,24 @@ func (p *Provider) Create(_ context.Context, req sandbox.Request) (sandbox.Sandb
 			return nil, err
 		}
 	}
-	file := filepath.Join(state, "plan.json")
-	data, err := json.Marshal(s)
-	if err != nil {
-		return nil, err
+	b := &box{self: p.self, state: state, plan: filepath.Join(state, "plan.json"), groupDir: groupDir, env: p.baseEnv(path, home, tmp)}
+	start := func() error {
+		if err := p.startServices(ctx, b, &s, req); err != nil {
+			return err
+		}
+		data, err := json.Marshal(s)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(b.plan, data, 0o600)
 	}
-	if err := os.WriteFile(file, data, 0o600); err != nil {
-		return nil, err
+	if err := start(); err != nil {
+		// A kill of the Run mustn't leave half a Sandbox behind.
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), destroyTimeout)
+		defer cancel()
+		return nil, errors.Join(err, b.Destroy(cleanup))
 	}
-	return &box{self: p.self, state: state, plan: file, groupDir: groupDir, env: p.baseEnv(path, home, tmp)}, nil
+	return b, nil
 }
 
 // added are the configured paths, as CheckPaths has let them through.
@@ -289,6 +323,10 @@ type box struct {
 	// groupDir lists the process groups of its commands on macOS.
 	groupDir string
 	env      map[string]string
+	// services is what the Step is told it can reach, and stopServices ends
+	// them and their forwarders, nil for none.
+	services     []sandbox.Service
+	stopServices func(context.Context) error
 }
 
 // Exec implements sandbox.Sandbox. The hidden helper builds the bwrap call or
@@ -317,12 +355,18 @@ func (b *box) KillAll(context.Context) error {
 	return nil
 }
 
-// Services implements sandbox.Sandbox: a native Sandbox has none yet.
-func (b *box) Services() []sandbox.Service { return nil }
+// Services implements sandbox.Sandbox.
+func (b *box) Services() []sandbox.Service { return b.services }
 
-// Destroy implements sandbox.Sandbox.
+// Destroy implements sandbox.Sandbox. Services that couldn't be removed keep
+// the Sandbox's state: its record is how the next Run finds them.
 func (b *box) Destroy(ctx context.Context) error {
 	_ = b.KillAll(ctx)
+	if b.stopServices != nil {
+		if err := b.stopServices(ctx); err != nil {
+			return err
+		}
+	}
 	return forceRemove(b.state)
 }
 

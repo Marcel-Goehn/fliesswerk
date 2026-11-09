@@ -6,6 +6,7 @@ import (
 	"maps"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -60,6 +61,9 @@ func (s sandboxPlan) seatbeltProfile() (string, error) {
 	r := seatbeltRules{ancestors: map[string]bool{}}
 	r.WriteString(seatbeltBase)
 	r.rule("allow network-outbound (remote ip %s)", "localhost:"+s.ProxyPort)
+	for _, port := range s.ServicePorts {
+		r.rule("allow network-outbound (remote ip %s)", "localhost:"+strconv.Itoa(port))
+	}
 
 	for _, root := range macSystemRoots {
 		r.read(root)

@@ -377,6 +377,15 @@ type composeService struct {
 	DependsOn     any    `yaml:"depends_on"`
 }
 
+// aliases are the names the Service called name answers to, name first. Its
+// old container_name stays a name the project's code can use.
+func (s composeService) aliases(name string) []string {
+	if s.ContainerName != "" && s.ContainerName != name {
+		return []string{name, s.ContainerName}
+	}
+	return []string{name}
+}
+
 // composeProject is a compose file as the tool resolved it.
 type composeProject struct {
 	Services map[string]composeService   `yaml:"services"`

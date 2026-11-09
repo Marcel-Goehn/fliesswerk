@@ -1,6 +1,6 @@
 # Services
 
-A Service is a supporting program, such as a database, that the Factory starts from your project's compose file. This guide covers own Services in container Sandboxes.
+A Service is a supporting program, such as a database, that the Factory starts from your project's compose file. This guide covers own Services in container and native Sandboxes.
 
 ## Setting them up
 
@@ -53,6 +53,34 @@ For a Service `postgres` on port 5432, every command in the Sandbox can use:
 
 The agent's prompt lists the same addresses. If two Services listen on the same port, the first by name keeps `localhost:<port>`, and the other is reachable by name only.
 
+Set addresses your code reads with `env` templates, which get the Service's host and first port in every Sandbox:
+
+```toml
+[services.postgres]
+env = { DATABASE_URL = "postgres://app@{host}:{port}/app" }
+```
+
+## Native Sandboxes
+
+A native Sandbox still runs its Services in Docker or Podman, so it needs one of the compose tools above. It reaches a Service through a port published on your machine, and only the Services named in `.kraftwerk/config.toml`. A Service they `depends_on` runs, but the Sandbox can't reach it.
+
+Every Service you name needs a TCP port under `ports:`. `expose:` or the image's `EXPOSE` isn't enough:
+
+```yaml
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+```
+
+The Factory still replaces the host side with a random port, so yours stays free.
+
+**On Linux and WSL2 (bwrap)** it works as in a container Sandbox: `postgres:5432`, `localhost:5432` and the variables. The one exception is a container port below 1024, which a bwrap Sandbox can't listen on. It's at `<service>:<published port>` instead, and the prompt, the variables and `{port}` all give that port.
+
+**On macOS (Seatbelt)** a Sandbox has no network of its own, so there are no Service names and no container ports. Commands reach `127.0.0.1:<published port>`, a random number that differs per Sandbox. Anything your code reads must come from `env` templates or `KRAFTWERK_SERVICE_<NAME>_HOST` and `_PORT`: a port hard-coded in the project can't work.
+
+We recommend the container Sandbox on macOS: it gives you the names and the container ports, so your project's addresses work as written.
+
 ## What `check` rejects
 
 `kraftwerk check` and the start of a Run stop on these, for the Services that would start:
@@ -63,3 +91,4 @@ The agent's prompt lists the same addresses. If two Services listen on the same 
 | A writable bind mount from an absolute path, `~` or outside the project | It is real data on your machine                   | Add `:ro`, or use a named volume or a path in the project  |
 | A volume with `driver_opts.device`                        | It is real data on your machine or network        | Use a volume without a device                              |
 | A `[services.<name>]` the file doesn't define             | There is nothing to start                         | Fix the name, or enable the Service's profile by default   |
+| With `kind = "native"`, a named Service with no TCP port under `ports:` | A native Sandbox reaches a Service only through a published port | Add `ports: ["127.0.0.1:<H>:<C>"]`            |

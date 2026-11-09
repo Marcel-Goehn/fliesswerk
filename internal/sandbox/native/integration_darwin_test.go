@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
 )
 
 func TestTheRealTmpIsClosed(t *testing.T) {
@@ -191,4 +193,26 @@ func TestAppleGitWorksInTheSandbox(t *testing.T) {
 	if out, ok := sh(sb, "/usr/bin/git --version"); !ok || !strings.Contains(out, "git version") {
 		t.Errorf("/usr/bin/git: %s\nwhat Seatbelt denied:\n%s", out, denials())
 	}
+}
+
+func TestAPublishedPortIsReachableAndNoOtherLocalhostPortIs(t *testing.T) {
+	port := listener(t, "db")
+	other := unpublishedPort(t)
+	pr := newProject(t, nil, func(o *Options) {
+		o.Services = &fakeServices{running: []sandbox.PublishedService{{Name: "db", Aliases: []string{"db"}, Ports: []sandbox.PublishedPort{{Container: 5432, Host: port}}}}}
+		o.EnvTemplates = map[string]map[string]string{"db": {"DATABASE_URL": "postgres://{host}:{port}/app"}}
+	})
+	sb := pr.open(t)
+	address := "127.0.0.1:" + strconv.Itoa(port)
+
+	if got, ok := sh(sb, fetch(address)); !ok || got != "db" {
+		t.Errorf("%s: %q\nwhat Seatbelt denied:\n%s", address, got, denials())
+	}
+	if got := mustSh(t, sb, `printf '%s %s %s' "$KRAFTWERK_SERVICE_DB_HOST" "$KRAFTWERK_SERVICE_DB_PORT" "$DATABASE_URL"`); got != "127.0.0.1 "+strconv.Itoa(port)+" postgres://"+address+"/app" {
+		t.Errorf("the variables say %q", got)
+	}
+	if listed := sb.Services(); len(listed) != 1 || listed[0].Addresses[0] != address {
+		t.Errorf("Services() = %+v", listed)
+	}
+	mustFail(t, sb, "curl -s --noproxy '*' --max-time 3 http://127.0.0.1:"+strconv.Itoa(other)+"/")
 }
