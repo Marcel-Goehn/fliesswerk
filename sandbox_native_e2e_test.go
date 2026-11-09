@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -65,6 +66,8 @@ run = 'test ! -e "$REAL_HOME/.ssh/id_rsa"'
 			t.Fatal(err)
 		}
 		path = append(path, filepath.Dir(bwrap))
+	} else {
+		path = append(path, "/bin") // where macOS keeps sh
 	}
 	p.extraEnv = append(p.extraEnv, "HOME="+home, "PATH="+strings.Join(path, string(os.PathListSeparator)))
 
@@ -81,7 +84,7 @@ run = 'test ! -e "$REAL_HOME/.ssh/id_rsa"'
 		return
 	}
 	if code != 0 {
-		t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+		t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s\nrun logs:\n%s", code, p.stdout, p.stderr, capturedRunLogs(t, p.work))
 	}
 	branch := "kraftwerk/spec-1-spec-shopping-cart"
 	for file, want := range map[string]string{"net.txt": "cut", "home.txt": "closed", "protected.txt": "refused"} {
@@ -95,4 +98,26 @@ run = 'test ! -e "$REAL_HOME/.ssh/id_rsa"'
 		}
 	}
 	t.Errorf("#2 wasn't closed; writes: %+v", p.writes(t))
+}
+
+// capturedRunLogs is what a Run logged, which is where a failing command inside the
+// Sandbox said why. The project is gone once the test is.
+func capturedRunLogs(t *testing.T, project string) string {
+	t.Helper()
+	var all strings.Builder
+	err := filepath.WalkDir(filepath.Join(project, ".kraftwerk", "logs"), func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		data, err := os.ReadFile(path) //nolint:gosec // a log of the test's own Run
+		if err != nil {
+			return err
+		}
+		all.WriteString("--- " + path + "\n" + string(data) + "\n")
+		return nil
+	})
+	if err != nil {
+		t.Logf("reading the Run's logs: %v", err)
+	}
+	return all.String()
 }

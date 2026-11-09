@@ -190,6 +190,9 @@ func (p *Provider) Create(_ context.Context, req sandbox.Request) (sandbox.Sandb
 		s.Socket = filepath.Join(p.socketDir, socketName)
 	}
 	path, binds := toolchains(p.host)
+	if p.host.Mac {
+		path, binds = preferXcodeTools(path, binds, developerDir())
+	}
 	s.Toolchains = binds
 	s.Added, s.Never = p.added(), p.host.neverExposed()
 	for _, dir := range []string{s.Home, s.Tmp} {

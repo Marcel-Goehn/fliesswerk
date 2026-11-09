@@ -167,3 +167,28 @@ func TestAnAddedHomePathIsFoundThroughTheHome(t *testing.T) {
 	}
 	mustFail(t, sb, `touch "$HOME/.tool/new"`)
 }
+
+// denials are the Seatbelt denials macOS logged in the last two minutes.
+func denials() string {
+	out, _ := exec.Command("/usr/bin/log", "show", "--last", "2m", "--style", "compact", "--predicate", `eventMessage CONTAINS "deny(1)"`).CombinedOutput()
+	const keep = 8000
+	if len(out) > keep {
+		out = out[len(out)-keep:]
+	}
+	return string(out)
+}
+
+func TestAppleGitWorksInTheSandbox(t *testing.T) {
+	if err := exec.Command("/usr/bin/git", "--version").Run(); err != nil {
+		t.Skipf("/usr/bin/git doesn't work outside the Sandbox either: %v", err)
+	}
+	t.Setenv("PATH", "/usr/bin:/bin")
+	sb := newProject(t, nil, nil).open(t)
+
+	if out, ok := sh(sb, "git --version"); !ok || !strings.HasPrefix(out, "git version") {
+		t.Errorf("git, as a Harness finds it: %s\nwhat Seatbelt denied:\n%s", out, denials())
+	}
+	if out, ok := sh(sb, "/usr/bin/git --version"); !ok || !strings.Contains(out, "git version") {
+		t.Errorf("/usr/bin/git: %s\nwhat Seatbelt denied:\n%s", out, denials())
+	}
+}
