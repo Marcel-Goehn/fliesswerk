@@ -107,7 +107,7 @@ func TestStartReadsBackThePortsOfTheConfiguredServicesAndStopRemovesThem(t *test
 			t.Error(err)
 		}
 	}
-	if !f.called("-f /work/shop/tree/compose.yaml") || !f.called("up --wait db") {
+	if !f.called("-f "+filepath.Join("/work/shop/tree", "compose.yaml")) || !f.called("up --wait db") {
 		t.Errorf("calls: %q", f.calls)
 	}
 	if err := stop(context.Background()); err != nil {

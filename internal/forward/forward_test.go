@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -117,7 +118,12 @@ func TestParseRuleReadsListenAndTarget(t *testing.T) {
 }
 
 func TestAUnixSocketCarriesAConnectionBothWays(t *testing.T) {
-	socket := filepath.Join(t.TempDir(), "s")
+	dir, err := os.MkdirTemp("", "kwk-") // t.TempDir() is too long for a socket's path on macOS
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	socket := filepath.Join(dir, "s")
 	listen, target := freeAddr(t), echoUntilEOF(t)
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
