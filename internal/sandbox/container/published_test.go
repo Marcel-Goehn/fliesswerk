@@ -251,7 +251,7 @@ func TestSharedServicesRunInTheProjectNamedShared(t *testing.T) {
 	if !f.called(want) || !f.called("up --wait search") {
 		t.Errorf("calls = %q, want `up --wait search` in the project %q", f.calls, want)
 	}
-	if !f.called("/worktrees/shared-services/compose.yaml") {
+	if !f.called(filepath.FromSlash("/worktrees/shared-services/compose.yaml")) {
 		t.Errorf("calls = %q, want the compose file of the shared worktree", f.calls)
 	}
 	if len(running) != 1 || running[0].Ports[0].Host != 40001 {

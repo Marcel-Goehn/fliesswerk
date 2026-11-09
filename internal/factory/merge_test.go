@@ -275,7 +275,7 @@ func TestSandboxCreatedRunsInTheMergeStepsWorktreeBeforeTheStep(t *testing.T) {
 	// can't share a file, since cmd.exe's >> holds it open exclusively. It is
 	// ignored, so that it doesn't count against the merge's clean tree.
 	write(t, filepath.Join(c.f.work, ".git", "info", "exclude"), "hook-ran\n")
-	c.opts.Hooks.SandboxCreated = []hook.Entry{{Where: hook.Sandbox, Commands: []string{"git rev-parse --show-toplevel > hook-ran"}}}
+	c.opts.Hooks.SandboxCreated = []hook.Entry{{Where: hook.Sandbox, Commands: []string{"git rev-parse --show-toplevel > hook-ran"}, Env: os.Environ()}}
 
 	res := factory.Run(context.Background(), c.opts)
 
