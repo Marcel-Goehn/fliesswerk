@@ -182,10 +182,13 @@ func TestAppleGitWorksInTheSandbox(t *testing.T) {
 	if err := exec.Command("/usr/bin/git", "--version").Run(); err != nil {
 		t.Skipf("/usr/bin/git doesn't work outside the Sandbox either: %v", err)
 	}
+	t.Setenv("PATH", "/usr/bin:/bin")
 	sb := newProject(t, nil, nil).open(t)
 
-	out, ok := sh(sb, "/usr/bin/git --version")
-	if !ok || !strings.HasPrefix(out, "git version") {
+	if out, ok := sh(sb, "git --version"); !ok || !strings.HasPrefix(out, "git version") {
+		t.Errorf("git, as a Harness finds it: %s\nwhat Seatbelt denied:\n%s", out, denials())
+	}
+	if out, ok := sh(sb, "/usr/bin/git --version"); !ok || !strings.Contains(out, "git version") {
 		t.Errorf("/usr/bin/git: %s\nwhat Seatbelt denied:\n%s", out, denials())
 	}
 }

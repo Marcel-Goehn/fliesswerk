@@ -190,6 +190,9 @@ func (p *Provider) Create(_ context.Context, req sandbox.Request) (sandbox.Sandb
 		s.Socket = filepath.Join(p.socketDir, socketName)
 	}
 	path, binds := toolchains(p.host)
+	if p.host.Mac {
+		path, binds = preferXcodeTools(path, binds, developerDir())
+	}
 	s.Toolchains = binds
 	s.Added, s.Never = p.added(), p.host.neverExposed()
 	for _, dir := range []string{s.Home, s.Tmp} {
@@ -266,11 +269,6 @@ func (p *Provider) baseEnv(path []string, home, tmp string) map[string]string {
 	env := map[string]string{
 		"HOME": home, "PATH": strings.Join(path, ":"), "TMPDIR": tmp,
 		"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "gc.auto", "GIT_CONFIG_VALUE_0": "0",
-	}
-	if p.host.Mac {
-		// Apple's git would put xcrun's cache in the real user temp directory,
-		// whatever TMPDIR says, and complain on every command that it can't.
-		env["xcrun_nocache"] = "1"
 	}
 	for _, kv := range p.identity {
 		name, value, _ := strings.Cut(kv, "=")

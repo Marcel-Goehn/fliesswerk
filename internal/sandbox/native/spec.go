@@ -317,6 +317,33 @@ func toolchains(h Host) (path, binds []string) {
 	return slices.Compact(path), slices.Compact(binds)
 }
 
+// developerDir is the Xcode or command line tools macOS has selected, "" if
+// there are none.
+func developerDir() string {
+	const selected = "/var/db/xcode_select_link"
+	if dir := realPath(selected); dir != selected {
+		return dir
+	}
+	for _, dir := range []string{"/Applications/Xcode.app/Contents/Developer", "/Library/Developer/CommandLineTools"} {
+		if exists(dir) {
+			return dir
+		}
+	}
+	return ""
+}
+
+// preferXcodeTools puts the real tools ahead of Apple's shims in /usr/bin. A
+// shim keeps a cache in the real user temp directory, whatever TMPDIR says,
+// and without it runs xcodebuild on every call and complains. The cache can't
+// be opened up: the host's own tools trust what is in it.
+func preferXcodeTools(path, binds []string, developer string) (newPath, newBinds []string) {
+	shims := slices.Index(path, "/usr/bin")
+	if developer == "" || shims < 0 {
+		return path, binds
+	}
+	return slices.Insert(slices.Clone(path), shims, filepath.Join(developer, "usr", "bin")), append(binds, developer)
+}
+
 // toolchainRoot is what to bind so that target, reached by a symlink in
 // dir, works: the two's common directory, if that is one toolchain's. Right
 // under the home, or at the top, it is a place everything shares (~/.local
