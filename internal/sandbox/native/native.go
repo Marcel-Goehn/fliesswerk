@@ -267,6 +267,11 @@ func (p *Provider) baseEnv(path []string, home, tmp string) map[string]string {
 		"HOME": home, "PATH": strings.Join(path, ":"), "TMPDIR": tmp,
 		"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "gc.auto", "GIT_CONFIG_VALUE_0": "0",
 	}
+	if p.host.Mac {
+		// Apple's git would put xcrun's cache in the real user temp directory,
+		// whatever TMPDIR says, and complain on every command that it can't.
+		env["xcrun_nocache"] = "1"
+	}
 	for _, kv := range p.identity {
 		name, value, _ := strings.Cut(kv, "=")
 		env[name] = value

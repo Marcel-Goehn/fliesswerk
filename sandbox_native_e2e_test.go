@@ -66,6 +66,8 @@ run = 'test ! -e "$REAL_HOME/.ssh/id_rsa"'
 			t.Fatal(err)
 		}
 		path = append(path, filepath.Dir(bwrap))
+	} else {
+		path = append(path, "/bin") // where macOS keeps sh
 	}
 	p.extraEnv = append(p.extraEnv, "HOME="+home, "PATH="+strings.Join(path, string(os.PathListSeparator)))
 

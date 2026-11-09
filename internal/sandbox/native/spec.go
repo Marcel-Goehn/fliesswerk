@@ -44,13 +44,15 @@ const groupsDir = "groups"
 // macSystemRoots are what every program needs on macOS, read-only, under the
 // names Seatbelt matches: it sees a path with its symlinks followed. /bin/sh
 // looks in /private/var/select for the shell it is, and the command line
-// tools in /usr/bin find their real selves through xcode_select_link. Not
+// tools in /usr/bin find their real selves through xcode_select_link and
+// refuse to run unless Xcode's plist says its license was agreed to. Not
 // /System as a whole: /System/Volumes/Data is the user's disk by another name.
 var macSystemRoots = []string{
 	"/usr", "/bin", "/sbin", "/private/etc",
 	"/System/Library", "/System/Cryptexes", "/System/Volumes/Preboot",
 	"/private/var/select", "/private/var/db/timezone", "/private/var/db/xcode_select_link",
 	"/Library/Apple", "/Library/Developer/CommandLineTools", "/Library/Frameworks",
+	"/Library/Preferences/com.apple.dt.Xcode.plist",
 }
 
 // gitCommitDirs are what a commit writes in the git directory, and
