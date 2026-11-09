@@ -1,6 +1,9 @@
 package main
 
 import (
+	"encoding/pem"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -205,11 +208,20 @@ func TestCheckRefusesACACertsFileItCannotUse(t *testing.T) {
 	}
 }
 
+// The gateway has to speak TLS, or there is nothing to check; and Go only
+// lets SSL_CERT_FILE decide what the host trusts on Linux.
 func TestCheckLeavesARunningRunAloneAndSaysItSkippedTheTrustCheck(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the fake docker is a shell script")
+	if runtime.GOOS != "linux" {
+		t.Skip("the host's trust is set through SSL_CERT_FILE")
 	}
-	srv, _ := fakeGateway(t, "good-token")
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data": []}`))
+	}))
+	t.Cleanup(srv.Close)
+	trusted := filepath.Join(t.TempDir(), "gateway.pem")
+	if err := os.WriteFile(trusted, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	bin := buildKraftwerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n", "config.local.toml": gatewayConfig(srv.URL)})
 	lock := filepath.Join(root, factory.StateDir, "lock")
@@ -221,7 +233,7 @@ func TestCheckLeavesARunningRunAloneAndSaysItSkippedTheTrustCheck(t *testing.T) 
 	}
 	home := configHome(t)
 	authSet(t, bin, home, "gw", "good-token")
-	env := withFakeDocker(t, append(ghEnv(t, "ok"), home...), "linux x86_64")
+	env := withFakeDocker(t, append(append(ghEnv(t, "ok"), home...), "SSL_CERT_FILE="+trusted), "linux x86_64")
 
 	_, stderr, code := runEnv(t, bin, root, env, "check")
 

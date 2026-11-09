@@ -125,13 +125,17 @@ func TestChangingTheCACertsRebuildsTheImage(t *testing.T) {
 
 const interceptedHost = "intercepted.example"
 
+// curlImage has curl already: a build's own network isn't something a test
+// can count on.
+const curlImage = "FROM docker.io/curlimages/curl:latest\n"
+
 // behindInterceptor is a Sandbox whose only way out leads through an
 // intercepting proxy. The proxy goes on the sidecar's own network, so its name
 // is only known once the sidecar is up, and the sidecar is told the name.
 func behindInterceptor(t *testing.T, ca *catest.CA, caCerts ...string) sandbox.Sandbox {
 	t.Helper()
 	pr := newProject(t)
-	writeFile(t, filepath.Join(pr.root, ".kraftwerk", "Containerfile"), baseImage+"RUN apk add --no-cache curl\n")
+	writeFile(t, filepath.Join(pr.root, ".kraftwerk", "Containerfile"), curlImage)
 	name := "kw-mitm-" + pr.p.opts.RunID
 	pr.p.opts.CACerts = caCerts
 	pr.p.opts.Egress = egress.Options{Allow: []string{interceptedHost}, UpstreamProxy: "http://" + name + ":3129"}

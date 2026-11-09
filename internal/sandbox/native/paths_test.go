@@ -180,3 +180,8 @@ func TestOffMacOSItsPathsAreOrdinary(t *testing.T) {
 		t.Fatalf("refused: %q", refused)
 	}
 }
+
+func TestACACertsFileInAHiddenPlaceIsRefused(t *testing.T) {
+	refused := CheckCACerts([]string{"/run/user/1000/corp.pem", "/etc/corp.pem"}, testHost(t))
+	oneContaining(t, refused, "ca_certs", "/run/user/1000/corp.pem")
+}
