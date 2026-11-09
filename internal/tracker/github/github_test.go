@@ -307,6 +307,13 @@ func TestChecks(t *testing.T) {
 		}
 	})
 
+	t.Run("a repository the login can't read names tracker.repo", func(t *testing.T) {
+		err := run("linux", versionRunner(string(version), map[string]error{"api repos/" + repo + " --silent": errors.New("HTTP 404")}))
+		if err == nil || !strings.Contains(err.Error(), repo) || !strings.Contains(err.Error(), "tracker.repo") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+
 	t.Run("gh not logged in names gh auth login and tracker.token", func(t *testing.T) {
 		err := run("linux", versionRunner(string(version), map[string]error{"auth status": errors.New("exit status 1")}))
 		if err == nil || !strings.Contains(err.Error(), "gh auth login") || !strings.Contains(err.Error(), "tracker.token") {

@@ -2,6 +2,7 @@ package claudecode_test
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
@@ -23,6 +24,24 @@ func TestDescribeBinaryAndVersion(t *testing.T) {
 	}
 	if _, err := d.ParseVersion("command not found"); err == nil {
 		t.Errorf("ParseVersion accepted output without a version")
+	}
+}
+
+func TestCheckVersionWantsTheMinimum(t *testing.T) {
+	d := claudecode.ClaudeCode{}.Describe()
+
+	if err := d.CheckVersion("2.1.319 (Claude Code)\n"); err != nil {
+		t.Errorf("the minimum itself: %v", err)
+	}
+	if err := d.CheckVersion("2.10.0 (Claude Code)\n"); err != nil {
+		t.Errorf("a newer one, compared as numbers: %v", err)
+	}
+	err := d.CheckVersion("2.1.9 (Claude Code)\n")
+	if err == nil || !strings.Contains(err.Error(), "2.1.9") || !strings.Contains(err.Error(), d.MinVersion) {
+		t.Errorf("an older one: %v", err)
+	}
+	if err := d.CheckVersion("command not found"); err == nil {
+		t.Error("output without a version passed")
 	}
 }
 

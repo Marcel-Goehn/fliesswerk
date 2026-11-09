@@ -100,3 +100,104 @@ func assertNothingLeft(t *testing.T, root string) {
 		}
 	}
 }
+
+// A database that says when it is ready, for the live probe to find.
+const checkCompose = `services:
+  postgres:
+    image: docker.io/library/postgres:17-alpine
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+`
+
+// checkContainerConfig is a container Sandbox with the fake Harness in it, a
+// Service, a host to reach and commands to run; extra adds to [commands].
+func checkContainerConfig(t *testing.T, extra string) string {
+	t.Helper()
+	return `[sandbox]
+kind = "container"
+run_args = ["--mount", "type=bind,source=` + filepath.Join(fakeClaudeBinDir(t), "claude") + `,target=/usr/local/bin/claude,readonly"]
+
+[sandbox.network]
+allow = ["github.com"]
+
+[services]
+compose_file = "compose.yaml"
+
+[services.postgres]
+shared = false
+
+[commands]
+inside = '` + inAContainer + `'
+` + extra + `
+[[hooks.sandbox_created]]
+run = '` + inAContainer + `'
+`
+}
+
+func TestCheckProvesAContainerSandboxAndRunsItsCommands(t *testing.T) {
+	bin := buildTestKraftwerk(t)
+	p := newRunProject(t, bin, cartIssues(), `{"sessions": []}`)
+	writeFile(t, filepath.Join(p.work, ".kraftwerk", "Containerfile"), "FROM docker.io/curlimages/curl:latest\n")
+	writeFile(t, filepath.Join(p.work, "compose.yaml"), checkCompose)
+	gitIn(t, p.work, "add", ".")
+	gitIn(t, p.work, "commit", "-q", "-m", "Add the Containerfile and the Service")
+	gitIn(t, p.work, "push", "-q", "origin", "main")
+	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), checkContainerConfig(t, ""))
+	// Podman and Docker need more than the tests' minimal PATH offers.
+	p.extraEnv = append(p.extraEnv, "PATH="+fakeClaudeBinDir(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	if code := p.kwk(t, "check", "--commands"); code != exitOK {
+		t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+	}
+	mustContain(t, "stdout", p.stdout,
+		"the Service postgres is reachable at",
+		"direct connections are blocked",
+		"github.com is reachable through the egress proxy",
+		"claude ok",
+		"sandbox_created: `"+inAContainer+"` worked",
+		"`inside` passes on main",
+	)
+	assertNoCheckLeftBehind(t)
+
+	if code := p.kwk(t, "check"); code != exitOK {
+		t.Fatalf("second check: exit code = %d\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+	}
+	mustContain(t, "stdout", p.stdout, "is present")
+
+	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), checkContainerConfig(t, "broken = 'echo nope && exit 3'\n"))
+	code := p.kwk(t, "check", "--commands")
+	if code != exitConfigError {
+		t.Fatalf("exit code = %d, want %d\nstdout: %s\nstderr: %s", code, exitConfigError, p.stdout, p.stderr)
+	}
+	mustContain(t, "stderr", p.stderr, "`broken` is already failing on main", "nope")
+	mustContain(t, "stdout", p.stdout, "`inside` passes on main")
+	assertNoCheckLeftBehind(t)
+}
+
+// assertNoCheckLeftBehind checks that `check` left nothing on the engine.
+func assertNoCheckLeftBehind(t *testing.T) {
+	t.Helper()
+	ctx := context.Background()
+	engine, err := container.Resolve(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range [][]string{{"ps", "-a"}, {"network", "ls"}} {
+		args := append(append([]string{engine.Binary}, kind...), "--filter", "name=kraftwerk-check-", "--format", "{{.Names}}")
+		if kind[0] == "network" {
+			args[len(args)-1] = "{{.Name}}"
+		}
+		out, err := exec.CommandContext(ctx, args[0], args[1:]...).CombinedOutput() //nolint:gosec // the test's own engine call
+		if err != nil {
+			t.Fatalf("%v: %v\n%s", args, err, out)
+		}
+		if got := strings.TrimSpace(string(out)); got != "" {
+			t.Errorf("%s left: %s", kind[0], got)
+		}
+	}
+}

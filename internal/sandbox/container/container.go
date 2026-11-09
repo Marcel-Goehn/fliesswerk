@@ -207,6 +207,7 @@ func (p *Provider) ensureImage(ctx context.Context) error {
 	sum := sha256.Sum256(append(data, p.ca.PEM...))
 	p.image = "kraftwerk-" + p.project + ":" + hex.EncodeToString(sum[:])[:12]
 	if _, err := p.engine.run(ctx, "image", "inspect", p.image); err == nil {
+		p.log("The Sandbox image %s is present", p.image)
 		return nil
 	}
 	empty, err := os.MkdirTemp("", "kraftwerk-build")

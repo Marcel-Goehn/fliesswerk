@@ -599,3 +599,54 @@ func TestRouteIsTheProxyAConnectionWouldGoThrough(t *testing.T) {
 		t.Errorf("via = %v, want proxy.corp:8080", via)
 	}
 }
+
+func TestLoopbackUpstreamFindsAProxyOnThisMachine(t *testing.T) {
+	for _, c := range []struct {
+		name, upstream, want string
+	}{
+		{"an address", "http://127.0.0.1:3128", "127.0.0.1:3128"},
+		{"another loopback address", "http://127.8.8.8:3128", "127.8.8.8:3128"},
+		{"a name", "http://LOCALHOST:9000", "LOCALHOST:9000"},
+		{"IPv6", "http://[::1]:3128", "[::1]:3128"},
+		{"a proxy elsewhere", "http://proxy.corp:8080", ""},
+		{"a proxy on another private address", "http://10.0.0.5:8080", ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := egress.Options{UpstreamProxy: c.upstream}.LoopbackUpstream()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != c.want {
+				t.Errorf("LoopbackUpstream = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+func TestLoopbackUpstreamReadsTheHostsVariables(t *testing.T) {
+	t.Setenv("HTTPS_PROXY", "http://localhost:3128")
+	t.Setenv("HTTP_PROXY", "")
+	t.Setenv("NO_PROXY", "")
+
+	got, err := egress.Options{}.LoopbackUpstream()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "localhost:3128" {
+		t.Errorf("LoopbackUpstream = %q", got)
+	}
+}
+
+func TestLoopbackUpstreamNeverRepeatsALogin(t *testing.T) {
+	t.Setenv("HTTPS_PROXY", "http://me:hunter2@127.0.0.1:3128")
+	t.Setenv("HTTP_PROXY", "")
+	t.Setenv("NO_PROXY", "")
+
+	got, err := egress.Options{}.LoopbackUpstream()
+	if err == nil {
+		t.Fatalf("LoopbackUpstream = %q, want an error for a proxy with a login", got)
+	}
+	if strings.Contains(err.Error(), "hunter2") {
+		t.Errorf("the error repeats the login: %v", err)
+	}
+}

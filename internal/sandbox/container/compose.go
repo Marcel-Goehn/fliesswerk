@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcel-Goehn/kraftwerk/internal/version"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -44,7 +45,7 @@ type composeTool struct {
 // podman-compose is called directly, by path, and told the connection.
 func resolveCompose(ctx context.Context, e Engine, run cli, look func(string) (string, error)) (composeTool, error) {
 	tool := composeTool{engine: e, run: runCLIWith}
-	var version, want, name string
+	var have, want, name string
 	if e.Binary == docker {
 		name, want = "Docker Compose", minDockerCompose
 		tool.argv = e.argv("compose")
@@ -52,51 +53,32 @@ func resolveCompose(ctx context.Context, e Engine, run cli, look func(string) (s
 		if err != nil {
 			return composeTool{}, fmt.Errorf("the project's Services need %s %s or newer, and `docker compose` didn't answer: %w", name, want, err)
 		}
-		version = out
+		have = out
 	} else {
 		name, want = "podman-compose", minPodmanCompose
 		found, err := look("podman-compose")
 		if err != nil {
-			return composeTool{}, fmt.Errorf("the project's Services need %s %s or newer on the PATH: %w", name, want, err)
+			return composeTool{}, fmt.Errorf("the project's Services need %s %s or newer on the PATH: %w. %s", name, want, err, composeInstall)
 		}
 		out, err := run(ctx, found, "version", "--short")
 		if err != nil {
-			return composeTool{}, fmt.Errorf("the project's Services need %s %s or newer, and it didn't answer: %w", name, want, err)
+			return composeTool{}, fmt.Errorf("the project's Services need %s %s or newer, and it didn't answer: %w. %s", name, want, err, composeInstall)
 		}
-		version = out
+		have = out
 		tool.argv, tool.podmanCompose = []string{found}, true
 		if e.Connection != "" {
 			tool.env = []string{"CONTAINER_CONNECTION=" + e.Connection}
 		}
 	}
-	version = strings.TrimSpace(version)
-	if !versionAtLeast(version, want) {
-		return composeTool{}, fmt.Errorf("the project's Services need %s %s or newer; this is %s", name, want, version)
+	have = strings.TrimSpace(have)
+	if !version.AtLeast(have, want) {
+		return composeTool{}, fmt.Errorf("the project's Services need %s %s or newer; this is %s. %s", name, want, have, composeInstall)
 	}
 	return tool, nil
 }
 
-// versionAtLeast compares dotted versions, ignoring a leading v and any
-// suffix such as +ds1. A version it can't read isn't enough.
-func versionAtLeast(got, want string) bool {
-	numbers := func(v string) []int {
-		v = strings.TrimPrefix(v, "v")
-		if i := strings.IndexFunc(v, func(r rune) bool { return r != '.' && (r < '0' || r > '9') }); i >= 0 {
-			v = v[:i]
-		}
-		var out []int
-		for part := range strings.SplitSeq(v, ".") {
-			n, err := strconv.Atoi(part)
-			if err != nil {
-				return nil
-			}
-			out = append(out, n)
-		}
-		return out
-	}
-	g := numbers(got)
-	return g != nil && slices.Compare(g, numbers(want)) >= 0
-}
+// composeInstall says how to get a compose tool the Factory can use.
+const composeInstall = "For Docker, see https://docs.docker.com/compose/install/; for Podman, `pipx install podman-compose`"
 
 // composeStack is one Sandbox's Compose project. It is written to the
 // runtime state, so that a later Run can remove what a crashed one left.

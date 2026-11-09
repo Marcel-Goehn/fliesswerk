@@ -43,11 +43,6 @@ func behindTheInterceptor(t *testing.T, bin string, ca *catest.CA, extraConfig s
 	}
 	local := gatewayConfig("https://intercepted.example") + "[sandbox]\nkind = \"native\"\n" + strings.ReplaceAll(extraConfig, "CA_FILE", caFile)
 	root = projectDir(t, map[string]string{"config.toml": "version = 1\n", "config.local.toml": local})
-	commit := exec.Command("git", "-c", "user.name=T", "-c", "user.email=t@example.com", "commit", "-q", "--allow-empty", "-m", "Initial commit")
-	commit.Dir = root
-	if out, err := commit.CombinedOutput(); err != nil {
-		t.Fatalf("git commit: %v\n%s", err, out)
-	}
 
 	home := configHome(t)
 	if _, stderr, code := authSet(t, bin, home, "gw", "good-token"); code != 0 {

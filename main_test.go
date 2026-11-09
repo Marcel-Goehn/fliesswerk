@@ -138,7 +138,7 @@ func fakeGhBinDir(t *testing.T) string {
 	return fakeGhPath
 }
 
-// ghEnv is an environment whose PATH holds only the fake gh, answering
+// ghEnv is an environment whose PATH holds only git, the fake Harness and the fake gh, answering
 // from testdata/gh/<fixtures>, with no token of the user's own.
 func ghEnv(t *testing.T, fixtures string, extra ...string) []string {
 	t.Helper()
@@ -146,7 +146,7 @@ func ghEnv(t *testing.T, fixtures string, extra ...string) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := fakeGhBinDir(t) + string(os.PathListSeparator) + gitBinDir(t)
+	path := strings.Join([]string{fakeGhBinDir(t), fakeClaudeBinDir(t), gitBinDir(t)}, string(os.PathListSeparator))
 	return append(baseEnv(path), append([]string{"FAKEGH_DIR=" + abs, "XDG_CONFIG_HOME=" + t.TempDir()}, extra...)...)
 }
 
@@ -190,9 +190,10 @@ func baseEnv(path string) []string {
 func projectDir(t *testing.T, files map[string]string) string {
 	t.Helper()
 	root := t.TempDir()
-	if out, err := exec.Command("git", "init", "-q", root).CombinedOutput(); err != nil {
+	if out, err := exec.Command("git", "init", "-q", "-b", "main", root).CombinedOutput(); err != nil {
 		t.Skipf("no git: %v\n%s", err, out)
 	}
+	giveRemote(t, root)
 	if _, ok := files[".gitignore"]; !ok {
 		files[".gitignore"] = "config.local.toml\n.env\nstate/\nlogs/\n"
 	}
@@ -211,12 +212,32 @@ func projectDir(t *testing.T, files map[string]string) string {
 	return root
 }
 
+// giveRemote gives the checkout at root a commit on main, and a bare origin
+// that has it.
+func giveRemote(t *testing.T, root string) {
+	t.Helper()
+	remote := filepath.Join(t.TempDir(), "remote.git")
+	for _, args := range [][]string{
+		{"init", "-q", "--bare", "-b", "main", remote},
+		{"-C", root, "-c", "user.name=T", "-c", "user.email=t@example.com", "commit", "-q", "--allow-empty", "-m", "Initial commit"},
+		{"-C", root, "remote", "add", "origin", remote},
+		{"-C", root, "push", "-q", "origin", "main"},
+	} {
+		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+}
+
+// checkNoSandbox is `check` on a project that doesn't care about its Sandbox.
+var checkNoSandbox = []string{"check", "--sandbox", "none", "--i-accept-unsandboxed-risk"}
+
 func TestCheck(t *testing.T) {
 	bin := buildKraftwerk(t, "")
 
 	t.Run("valid config exits 0", func(t *testing.T) {
 		root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
-		stdout, stderr, code := runIn(t, bin, root, "check")
+		stdout, stderr, code := runIn(t, bin, root, checkNoSandbox...)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0; stderr: %s", code, stderr)
 		}
@@ -231,7 +252,7 @@ func TestCheck(t *testing.T) {
 		if err := os.MkdirAll(sub, 0o750); err != nil {
 			t.Fatal(err)
 		}
-		if _, stderr, code := runIn(t, bin, sub, "check"); code != 0 {
+		if _, stderr, code := runIn(t, bin, sub, checkNoSandbox...); code != 0 {
 			t.Fatalf("exit code = %d, want 0; stderr: %s", code, stderr)
 		}
 	})
@@ -258,7 +279,7 @@ func TestCheck(t *testing.T) {
 
 	t.Run("warnings alone exit 0", func(t *testing.T) {
 		root := projectDir(t, map[string]string{"config.toml": "version = 1\n[sandbox.env]\nAPI_TOKEN = \"x\"\n"})
-		_, stderr, code := runIn(t, bin, root, "check")
+		_, stderr, code := runIn(t, bin, root, checkNoSandbox...)
 		if code != 0 || !strings.Contains(stderr, "warning:") {
 			t.Fatalf("exit code = %d, want 0 with a warning; stderr: %s", code, stderr)
 		}

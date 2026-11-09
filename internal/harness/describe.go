@@ -1,5 +1,11 @@
 package harness
 
+import (
+	"fmt"
+
+	"github.com/Marcel-Goehn/kraftwerk/internal/version"
+)
+
 // Description is what a Harness declares about itself. It is static data:
 // the core, `init` and `check` act on it.
 type Description struct {
@@ -45,6 +51,18 @@ type Description struct {
 	HomeWritable []string
 
 	Capabilities Capabilities
+}
+
+// CheckVersion reports what's wrong with the output of the version command.
+func (d Description) CheckVersion(output string) error {
+	have, err := d.ParseVersion(output)
+	if err != nil {
+		return fmt.Errorf("can't read %s's version: %w", d.Binary, err)
+	}
+	if !version.AtLeast(have, d.MinVersion) {
+		return fmt.Errorf("%s %s is older than %s, the oldest the Factory works with", d.Binary, have, d.MinVersion)
+	}
+	return nil
 }
 
 // AuthMethod is one way the Harness authenticates, set by `method = "…"`

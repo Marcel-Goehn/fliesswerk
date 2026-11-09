@@ -23,7 +23,8 @@ func main() {
 }
 
 const usage = `Usage:
-  kraftwerk check                 validate the config, test the credentials and check the Tracker's tools
+  kraftwerk check [--commands]    find where a setup is stuck, before any token is spent;
+                                  --commands also runs the project's commands on base_branch
   kraftwerk run [<N>]             implement the ready Tickets, Iteration by Iteration (of only Spec or standalone Ticket N)
   kraftwerk run --dry-run [<N>]   show what Iteration 1 would take, and what is skipped and why
   kraftwerk run --verbose [<N>]   show the agent's text as well

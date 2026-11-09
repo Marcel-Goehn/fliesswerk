@@ -139,13 +139,12 @@ func proxyArch(ctx context.Context, e Engine) (string, error) {
 	return "", fmt.Errorf("the container engine runs on %q, and the proxy sidecar exists only for amd64 and arm64; pick another Sandbox kind with `sandbox.kind`", arch)
 }
 
-// CheckEngine reports an engine that can't run the proxy sidecar, and a
-// Factory that has no sidecar to give it. Having no engine at all is left
-// to the Run, which stops with the fix.
+// CheckEngine reports a missing engine, one that can't run the proxy sidecar,
+// and a Factory that has no sidecar to give it.
 func CheckEngine(ctx context.Context) error {
 	e, err := Resolve(ctx)
 	if err != nil {
-		return nil
+		return err
 	}
 	arch, err := proxyArch(ctx, e)
 	if err != nil {
@@ -164,9 +163,11 @@ func Resolve(ctx context.Context) (Engine, error) {
 func resolve(ctx context.Context, getenv func(string) string, run cli) (Engine, error) {
 	switch chosen := getenv(EngineEnv); chosen {
 	case docker:
-		return resolveDocker(ctx, run)
+		e, err := resolveDocker(ctx, run)
+		return e, chosenEngineError(chosen, err)
 	case podman:
-		return resolvePodman(ctx, getenv, run)
+		e, err := resolvePodman(ctx, getenv, run)
+		return e, chosenEngineError(chosen, err)
 	case "":
 	default:
 		return Engine{}, fmt.Errorf("%s is %q; it must be %s or %s", EngineEnv, chosen, docker, podman)
@@ -179,8 +180,19 @@ func resolve(ctx context.Context, getenv func(string) string, run cli) (Engine, 
 	if podmanErr == nil {
 		return e, nil
 	}
-	return Engine{}, errors.New("the container Sandbox needs a running Docker or Podman, and neither responded; start one, or pick another Sandbox kind with `sandbox.kind`\n  " +
+	return Engine{}, errors.New("the container Sandbox needs a running Docker or Podman, and neither responded; start one (to install one, see " + installDocs + "), or pick another Sandbox kind with `sandbox.kind`\n  " +
 		dockerErr.Error() + "\n  " + podmanErr.Error())
+}
+
+// installDocs is where to find out how to install an engine.
+const installDocs = "https://docs.docker.com/engine/install/ or https://podman.io/docs/installation"
+
+// chosenEngineError says how to get the engine the user chose going.
+func chosenEngineError(chosen string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%s is %s, and it didn't respond; start it (to install it, see %s), or pick another Sandbox kind with `sandbox.kind`\n  %w", EngineEnv, chosen, installDocs, err)
 }
 
 // resolveDocker pins Docker's current context, which also honours

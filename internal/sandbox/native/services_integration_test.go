@@ -193,3 +193,24 @@ func TestASandboxsMemoryIsItsCommandsAndItsOwnServices(t *testing.T) {
 		t.Errorf("MemoryUse = %d, want the Services' 1 GiB and the running command's memory on top", use)
 	}
 }
+
+func TestTheNetworkProbeFindsAServiceFromInsideASandbox(t *testing.T) {
+	f := &fakeServices{running: []sandbox.PublishedService{{Name: "db", Aliases: []string{"db"}, Ports: []sandbox.PublishedPort{{Container: 5432, Host: listener(t, "db")}}}}}
+	pr := newProject(t, nil, func(o *Options) { o.Services = f })
+	sb := pr.open(t)
+
+	report, err := sandbox.ProbeNetwork(context.Background(), sb, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(report.Problems) != 0 {
+		t.Errorf("problems = %q", report.Problems)
+	}
+	passed := strings.Join(report.Passed, "\n")
+	for _, want := range []string{"the Service db is reachable at", "direct connections are blocked"} {
+		if !strings.Contains(passed, want) {
+			t.Errorf("passed = %q, want %q", passed, want)
+		}
+	}
+}

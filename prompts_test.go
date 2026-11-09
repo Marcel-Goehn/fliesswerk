@@ -35,7 +35,7 @@ func TestCheckWarnsAboutAPromptFileWithoutAMarker(t *testing.T) {
 		"prompts/review.md": "<!-- kraftwerk: based on the built-in review prompt v1; this line isn't sent to the agent -->\n# Ours\n",
 	})
 
-	_, stderr, code := runIn(t, bin, root, "check")
+	_, stderr, code := runIn(t, bin, root, checkNoSandbox...)
 
 	want := "warning: .kraftwerk/prompts/merge.md: no marker line names the built-in it is based on"
 	if code != 0 || !strings.Contains(stderr, want) {

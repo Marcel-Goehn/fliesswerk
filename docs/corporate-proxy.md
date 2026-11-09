@@ -69,6 +69,8 @@ upstream_proxy = "http://proxy.corp.example:8080"
 
 `upstream_proxy` replaces all three host variables. To find the proxy behind a PAC file, open the PAC URL and look for the `PROXY host:port` it returns for external hosts.
 
+A proxy that listens on your machine's own localhost works with a native Sandbox only. A container Sandbox reaches the outside through a proxy sidecar, and in a container `localhost` is that container, so `kraftwerk check` stops and tells you. Make the proxy listen on an address containers can reach and name that in `upstream_proxy`, or use `kind = "native"`.
+
 ## Image builds
 
 Builds go through your corporate proxy, not the egress proxy. They get your proxy variables as build args (`upstream_proxy` instead, if set) and `ca_certs` as the build secret `kraftwerk-ca`. Changing `ca_certs` rebuilds the image.

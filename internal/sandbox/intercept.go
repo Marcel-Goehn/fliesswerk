@@ -65,8 +65,8 @@ func IsRoot(cert *x509.Certificate) bool { return bytes.Equal(cert.RawIssuer, ce
 // Anything else that goes wrong says nothing about interception and is left to
 // a warning, "" for none: the request is only a question about trust.
 func CheckInterception(ctx context.Context, s Sandbox, host string, chain HostChain) (warning string, err error) {
-	line := fmt.Sprintf("curl --silent --show-error --output /dev/null --max-time %d 'https://%s/'",
-		int(probeTimeout.Seconds()), strings.ReplaceAll(host, "'", `'\''`))
+	line := fmt.Sprintf("curl --silent --show-error --output /dev/null --max-time %d %s",
+		int(probeTimeout.Seconds()), shellQuote("https://"+host+"/"))
 	out, runErr := Shell(ctx, s, "", line, nil).CombinedOutput()
 	if runErr == nil {
 		return "", nil

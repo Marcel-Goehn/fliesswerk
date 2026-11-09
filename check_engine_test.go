@@ -39,6 +39,19 @@ esac
 	return append(env, "PATH="+path, "KRAFTWERK_ENGINE=docker")
 }
 
+// holdRunLock has a Run in progress in the project, as far as `check` can
+// tell, so that it stops short of starting a Sandbox on the fake engine.
+func holdRunLock(t *testing.T, root string) {
+	t.Helper()
+	lock := filepath.Join(root, factory.StateDir, "lock")
+	if err := os.MkdirAll(filepath.Dir(lock), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(lock, []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCheckExplainsThatWindowsContainersCannotRunTheSidecar(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake docker is a shell script")
@@ -62,6 +75,7 @@ func TestCheckAcceptsAnEngineThatRunsLinuxContainers(t *testing.T) {
 	}
 	bin := buildKraftwerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
+	holdRunLock(t, root)
 
 	if _, stderr, code := runEnv(t, bin, root, withFakeDocker(t, ghEnv(t, "ok"), "linux x86_64"), "check"); code != exitOK {
 		t.Fatalf("exit code = %d, want 0; stderr: %s", code, stderr)
@@ -129,7 +143,9 @@ func TestCheckEnforcesTheComposeRules(t *testing.T) {
 		})
 	}
 	t.Run("a usable file", func(t *testing.T) {
-		if _, stderr, code := runEnv(t, bin, composeProjectDir(t), withFakeCompose(t, ghEnv(t, "ok"), "v2.24.4", fine), "check"); code != exitOK {
+		root := composeProjectDir(t)
+		holdRunLock(t, root)
+		if _, stderr, code := runEnv(t, bin, root, withFakeCompose(t, ghEnv(t, "ok"), "v2.24.4", fine), "check"); code != exitOK {
 			t.Fatalf("exit code = %d, want 0; stderr: %s", code, stderr)
 		}
 	})
@@ -158,6 +174,7 @@ func TestCheckReportsThePeakAndTheWaitsOfTheLastRun(t *testing.T) {
 	}
 	bin := buildKraftwerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n", "state/memory.json": `{"peak_bytes": 3221225472, "last_run_waits": 2}`})
+	holdRunLock(t, root)
 
 	stdout, stderr, code := runEnv(t, bin, root, withFakeDocker(t, ghEnv(t, "ok"), "linux x86_64"), "check")
 
@@ -175,6 +192,7 @@ func TestCheckSaysWhenNoPeakHasBeenMeasured(t *testing.T) {
 	}
 	bin := buildKraftwerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
+	holdRunLock(t, root)
 
 	stdout, stderr, code := runEnv(t, bin, root, withFakeDocker(t, ghEnv(t, "ok"), "linux x86_64"), "check")
 
@@ -224,13 +242,7 @@ func TestCheckLeavesARunningRunAloneAndSaysItSkippedTheTrustCheck(t *testing.T) 
 	}
 	bin := buildKraftwerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n", "config.local.toml": gatewayConfig(srv.URL)})
-	lock := filepath.Join(root, factory.StateDir, "lock")
-	if err := os.MkdirAll(filepath.Dir(lock), 0o750); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(lock, []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	holdRunLock(t, root)
 	home := configHome(t)
 	authSet(t, bin, home, "gw", "good-token")
 	env := withFakeDocker(t, append(append(ghEnv(t, "ok"), home...), "SSL_CERT_FILE="+trusted), "linux x86_64")

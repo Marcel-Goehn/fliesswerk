@@ -84,6 +84,36 @@ func (o Options) Route() (func(*url.URL) (*url.URL, error), error) {
 	return newRoute(o.UpstreamProxy)
 }
 
+// LoopbackUpstream is the host and port of the upstream proxy if it listens
+// on this machine's own localhost, "" if not: only the host itself can reach
+// it there, not a container. The error never repeats a proxy URL.
+func (o Options) LoopbackUpstream() (string, error) {
+	r, err := newRoute(o.UpstreamProxy)
+	if err != nil {
+		return "", err
+	}
+	for _, scheme := range []string{"https", "http"} {
+		via, err := r(&url.URL{Scheme: scheme, Host: "example.com"})
+		if err != nil {
+			return "", err
+		}
+		if via != nil && isLoopback(via.Hostname()) {
+			return via.Host, nil
+		}
+	}
+	return "", nil
+}
+
+// isLoopback reports whether host names this machine.
+func isLoopback(host string) bool {
+	name := canonical(host)
+	if name == "localhost" || strings.HasSuffix(name, ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 // canonical is the form hosts are compared in: DNS names ignore case, and a
 // trailing dot only spells out the root.
 func canonical(host string) string {

@@ -1,6 +1,7 @@
 package github
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -39,6 +40,16 @@ func (t *Tracker) checkVersion(ctx context.Context) error {
 func (t *Tracker) checkLogin(ctx context.Context) error {
 	if _, err := t.opts.Runner.Run(ctx, nil, "auth", "status"); err != nil {
 		return fmt.Errorf("gh is not logged in (%v). Run `gh auth login`, or set `tracker.token` in config.local.toml", err)
+	}
+	return nil
+}
+
+// checkRepo is the token's free test call: can it read the repository the
+// Tickets are in?
+func (t *Tracker) checkRepo(ctx context.Context) error {
+	repo := cmp.Or(t.opts.Repo, "{owner}/{repo}")
+	if _, err := t.opts.Runner.Run(ctx, nil, "api", "repos/"+repo, "--silent"); err != nil {
+		return fmt.Errorf("gh can't read %s (%v). Check `tracker.repo`, and that your login or `tracker.token` has access to it", repo, err)
 	}
 	return nil
 }

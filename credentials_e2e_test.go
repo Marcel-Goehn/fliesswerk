@@ -140,7 +140,7 @@ func TestCheckTestsTheHarnessCredential(t *testing.T) {
 		authSet(t, bin, env, "gw", "good-token")
 		root := projectDir(t, map[string]string{"config.toml": "version = 1\n", "config.local.toml": gatewayConfig(srv.URL)})
 
-		stdout, stderr, code := runEnv(t, bin, root, append(ghEnv(t, "ok"), env...), "check")
+		stdout, stderr, code := runEnv(t, bin, root, append(ghEnv(t, "ok"), env...), checkNoSandbox...)
 
 		if code != 0 || !strings.Contains(stdout, "claude_code credential (gateway) ok") {
 			t.Fatalf("exit code = %d, stdout = %q, want 0 with the credential ok; stderr: %s", code, stdout, stderr)

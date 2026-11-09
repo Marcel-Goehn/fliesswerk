@@ -172,3 +172,71 @@ KWK_FAKE_HARNESS_SCRIPT = "`+p.scriptPath+`"
 		t.Errorf("check doesn't report the memory:\n%s", p.stdout)
 	}
 }
+
+func TestCheckProvesANativeSandboxAndRunsItsCommands(t *testing.T) {
+	if _, err := exec.LookPath("bwrap"); err != nil && runtime.GOOS == "linux" {
+		t.Skip("no bwrap; the native job installs it")
+	}
+	bin := buildTestKraftwerk(t)
+	p := newRunProject(t, bin, cartIssues(), `{"sessions": []}`)
+	config := func(extra string) string {
+		return `[sandbox]
+kind = "native"
+
+[sandbox.network]
+allow = ["github.com"]
+
+[commands]
+sandboxed = 'test -n "$KRAFTWERK_SANDBOX"'
+` + extra + `
+[[hooks.sandbox_created]]
+run = 'test -n "$KRAFTWERK_SANDBOX"'
+`
+	}
+	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), config(""))
+	curl, err := exec.LookPath("curl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := []string{fakeClaudeBinDir(t), filepath.Dir(curl), filepath.Dir(git), "/bin"}
+	if runtime.GOOS == "linux" {
+		bwrap, err := exec.LookPath("bwrap")
+		if err != nil {
+			t.Fatal(err)
+		}
+		path = append(path, filepath.Dir(bwrap))
+	}
+	p.extraEnv = append(p.extraEnv, "HOME="+t.TempDir(), "PATH="+strings.Join(path, string(os.PathListSeparator)))
+
+	code := p.kwk(t, "check", "--commands")
+
+	if _, err := native.Check(context.Background()); err != nil {
+		var blocked *native.BlockedError
+		if !errors.As(err, &blocked) {
+			t.Fatal(err)
+		}
+		if code != exitConfigError || !strings.Contains(p.stderr, "sudo ") {
+			t.Fatalf("a blocked bwrap must stop check with the fix: exit %d, stderr: %s", code, p.stderr)
+		}
+		return
+	}
+	if code != exitOK {
+		t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+	}
+	mustContain(t, "stdout", p.stdout,
+		"direct connections are blocked",
+		"github.com is reachable through the egress proxy",
+		"claude ok",
+		"`sandboxed` passes on main",
+	)
+
+	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), config("broken = 'echo nope && exit 3'\n"))
+	if code := p.kwk(t, "check", "--commands"); code != exitConfigError {
+		t.Fatalf("exit code = %d, want %d\nstderr: %s", code, exitConfigError, p.stderr)
+	}
+	mustContain(t, "stderr", p.stderr, "`broken` is already failing on main", "nope")
+}

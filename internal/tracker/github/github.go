@@ -385,6 +385,7 @@ func (t *Tracker) Describe() tracker.Description {
 		Checks: []tracker.Check{
 			{Name: "gh", Run: t.checkVersion},
 			{Name: "gh login", Run: t.checkLogin},
+			{Name: "GitHub repository", Run: t.checkRepo},
 		},
 		TokenSource:    "`[tracker] token` in config.local.toml, handed to gh as GH_TOKEN; without it, gh's own login",
 		LinkBlockerFix: t.linkBlockerFix,
