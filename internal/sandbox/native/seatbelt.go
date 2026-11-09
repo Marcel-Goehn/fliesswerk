@@ -77,6 +77,9 @@ func (s sandboxPlan) seatbeltProfile() (string, error) {
 	if s.CADir != "" {
 		r.read(s.CADir)
 	}
+	if s.CredentialDir != "" {
+		r.read(s.CredentialDir)
+	}
 	for _, a := range s.Added {
 		r.read(a.Target)
 		verb := "deny"

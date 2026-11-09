@@ -43,6 +43,9 @@ type Options struct {
 	Egress egress.Options
 	// CACerts is `[network] ca_certs`.
 	CACerts []string
+	// CredentialDir holds the credential file the Factory keeps up to date,
+	// "" for none. Every Sandbox can read it and nothing more.
+	CredentialDir string
 	// ReadOnly and Writable are the checked `sandbox.read_only_paths` and
 	// `sandbox.writable_paths`.
 	ReadOnly, Writable []string
@@ -252,6 +255,14 @@ func (p *Provider) Create(ctx context.Context, req sandbox.Request) (sandbox.San
 	}
 	b := &box{self: p.self, state: state, plan: filepath.Join(state, "plan.json"), groupDir: groupDir, env: p.baseEnv(path, home, tmp), ownServices: p.opts.Services}
 	b.setEnv([]string{"KRAFTWERK_SANDBOX=" + req.Name})
+	if p.opts.CredentialDir != "" {
+		s.CredentialDir = p.opts.CredentialDir
+		inside := insideCredentialDir
+		if p.host.Mac { // Seatbelt can't put a directory at another path
+			inside = realPath(s.CredentialDir)
+		}
+		b.setEnv(sandbox.CredentialEnv(inside))
+	}
 	start := func() error {
 		if err := p.installCA(b, &s); err != nil {
 			return err

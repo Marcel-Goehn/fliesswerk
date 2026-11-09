@@ -117,6 +117,8 @@ func harnessTable() *node {
 		"access_key_id":     cred("Where the AWS access key id comes from (method = \"bedrock\")."),
 		"secret_access_key": cred("Where the AWS secret access key comes from (method = \"bedrock\")."),
 		"role_arn":          str("A role to assume for Bedrock (method = \"bedrock\")."),
+		"i_accept_long_lived_keys_in_sandbox": local(boolean("Hand your own AWS credentials to every Sandbox as they are, instead of short-lived, Bedrock-only ones (method = \"bedrock\"). The agent can read them, and every Run warns."),
+			"the acknowledgement for passing AWS credentials through", always),
 	})
 }
 

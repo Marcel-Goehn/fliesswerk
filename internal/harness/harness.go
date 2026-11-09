@@ -31,6 +31,9 @@ type Step struct {
 	// ScrubCredentials keeps credentials out of the env of the commands
 	// the agent runs. On unless `scrub_credentials = false`.
 	ScrubCredentials bool
+	// CredentialCommand is the shell command that prints the credential
+	// the Factory keeps in a file, "" for none.
+	CredentialCommand string
 }
 
 // Invocation is a Step's process as data.

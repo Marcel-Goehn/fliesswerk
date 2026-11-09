@@ -118,7 +118,7 @@ func runFactory(values map[string]any, root, only string, view runView, stdout, 
 		log.Write(runlog.Line{Kind: runlog.Warning, Text: fmt.Sprintf("warning: pruning old logs: %v", err)})
 	}
 	writeBanner(log, values, s)
-	for _, w := range sandboxWarnings {
+	for _, w := range slices.Concat(s.authWarnings(context.Background()), sandboxWarnings) {
 		log.Write(runlog.Line{Kind: runlog.Warning, Text: "warning: " + w})
 	}
 	if lock.StalePID != 0 {
@@ -142,6 +142,11 @@ func runFactory(values map[string]any, root, only string, view runView, stdout, 
 		})
 		opts.Preflight = func(ctx context.Context) error {
 			if err := preflight(ctx, tr, s); err != nil {
+				return err
+			}
+			// Before the Sandboxes: each of them mounts the directory.
+			warn := func(w string) { log.Write(runlog.Line{Kind: runlog.Warning, Text: "warning: " + w}) }
+			if err := s.startCredentials(ctx, credentialDir(root), inSandbox(values), warn); err != nil {
 				return err
 			}
 			if sandboxes == nil {
@@ -168,6 +173,7 @@ func runFactory(values map[string]any, root, only string, view runView, stdout, 
 		if sandboxes != nil {
 			sandboxes.Close()
 		}
+		s.stopCredentials()
 	}
 	code = exitCode(res)
 	summary := log.Finish(summaryOf(res, log.ID(), started, code))
@@ -213,16 +219,20 @@ func newSandboxes(values map[string]any, root, kind string, s *secrets, runID st
 	}
 	state := filepath.Join(root, factory.StateDir)
 	egressOptions := egress.OptionsFrom(values, endpoints)
+	credentialsMount := ""
+	if s.usesBedrock() {
+		credentialsMount = credentialDir(root)
+	}
 	switch kind {
 	case "container":
 		return container.New(container.Options{
 			Root: root, StateDir: state, RunID: runID, RunArgs: runArgs(values), Env: env,
-			Egress: egressOptions, CACerts: caCerts(values), Version: versionString(), Log: logLine,
+			Egress: egressOptions, CACerts: caCerts(values), CredentialDir: credentialsMount, Version: versionString(), Log: logLine,
 			ComposeFile: composeFile(values), Services: ownServices(values), Shared: sharedServices(values), EnvTemplates: serviceEnvTemplates(values),
 		})
 	case "native":
 		opts := native.Options{
-			Root: root, StateDir: state, Env: env, Egress: egressOptions, CACerts: caCerts(values),
+			Root: root, StateDir: state, Env: env, Egress: egressOptions, CACerts: caCerts(values), CredentialDir: credentialsMount,
 			ReadOnly: readOnlyPaths(values), Writable: writablePaths(values),
 			HomeSeed: theHarness.Describe().HomeSeed, Log: logLine,
 		}
@@ -236,6 +246,11 @@ func newSandboxes(values map[string]any, root, kind string, s *secrets, runID st
 		return native.New(opts)
 	}
 	return nil
+}
+
+// credentialDir is where a Run keeps its credential file.
+func credentialDir(root string) string {
+	return filepath.Join(root, factory.StateDir, "credentials")
 }
 
 // checkSandboxConfig checks the settings of the Run's Sandbox kind. refused
@@ -383,8 +398,9 @@ func secretsForRun(values map[string]any, root string, stderr io.Writer) (s *sec
 // the attempt's prompt and raw output.
 func stepRunner(values map[string]any, sec *secrets, log *runlog.Log) func(context.Context, factory.Step) harness.Outcome {
 	scrub := boolAt(values, true, "sandbox", "scrub_credentials")
-	env, unset := sec.stepEnv(scrub)
 	return func(ctx context.Context, req factory.Step) harness.Outcome {
+		// Only here: what a Step gets is settled once the Run has started.
+		env, unset := sec.stepEnv(scrub)
 		settings := settingsOf(values, req.Name)
 		attempt := log.Attempt(req.Ticket.ID.Branch, req.Name, req.Prompt)
 		defer attempt.Close()
@@ -410,11 +426,12 @@ func stepRunner(values map[string]any, sec *secrets, log *runlog.Log) func(conte
 		}
 		begin := time.Now()
 		out := r.Run(ctx, harness.Step{
-			Prompt:           req.Prompt,
-			Model:            settings.model,
-			Effort:           settings.effort,
-			ReportSchema:     harness.ReportSchema,
-			ScrubCredentials: scrub,
+			Prompt:            req.Prompt,
+			Model:             settings.model,
+			Effort:            settings.effort,
+			ReportSchema:      harness.ReportSchema,
+			ScrubCredentials:  scrub,
+			CredentialCommand: sec.credentialCommand(inSandbox(values)),
 		}, req.Dir)
 		req.Log(runlog.Event, runlog.StepEnd(time.Since(begin), out.Usage, out.ContextWindow))
 		return out

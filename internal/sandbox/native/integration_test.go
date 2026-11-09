@@ -494,3 +494,29 @@ func TestAKeychainStaysHiddenBehindASymlinkedHome(t *testing.T) {
 
 	mustFail(t, sb, "cat "+filepath.Join(link, ".gnupg", "private-keys"))
 }
+
+func TestTheCredentialFileIsReadOnlyAndARewriteShowsInside(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, sandbox.CredentialFile)
+	writeFile(t, file, "first")
+	pr := newProject(t, nil, func(o *Options) { o.CredentialDir = dir })
+	sb := pr.open(t)
+
+	if got := mustSh(t, sb, sandbox.ReadCredentialCommand(false)); got != "first" {
+		t.Errorf("read %q, want the file's content", got)
+	}
+	if out, ok := sh(sb, `echo x > "$`+sandbox.CredentialFileEnv+`"`); ok {
+		t.Errorf("the Sandbox could write the file: %s", out)
+	}
+	if out, ok := sh(sb, `echo x > "$(dirname "$`+sandbox.CredentialFileEnv+`")/other"`); ok {
+		t.Errorf("the Sandbox could write next to the file: %s", out)
+	}
+
+	writeFile(t, file+".new", "second")
+	if err := os.Rename(file+".new", file); err != nil {
+		t.Fatal(err)
+	}
+	if got := mustSh(t, sb, sandbox.ReadCredentialCommand(false)); got != "second" {
+		t.Errorf("read %q after the rewrite, want the new content", got)
+	}
+}

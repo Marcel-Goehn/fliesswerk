@@ -3,7 +3,11 @@
 // declares what Claude Code needs.
 package claudecode
 
-import "github.com/Marcel-Goehn/kraftwerk/internal/harness"
+import (
+	"encoding/json"
+
+	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
+)
 
 // ClaudeCode is the Claude Code adapter, selected by
 // `harness = "claude_code"`.
@@ -17,9 +21,27 @@ const (
 	envScrub     = "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"
 )
 
-// settings turns Claude Code's built-in sandbox off: the Factory's Sandbox
-// isolates the Step.
-const settings = `{"sandbox":{"enabled":false}}`
+// settings are what Claude Code gets with --settings. Its built-in sandbox
+// is off, as the Factory's Sandbox isolates the Step, and it reads AWS
+// credentials through AWSCredentialExport, if set.
+type settings struct {
+	Sandbox             sandboxSettings `json:"sandbox"`
+	AWSCredentialExport string          `json:"awsCredentialExport,omitempty"`
+}
+
+type sandboxSettings struct {
+	Enabled bool `json:"enabled"`
+}
+
+// settingsJSON is the value of --settings. It holds a command, never a
+// credential.
+func settingsJSON(credentialCommand string) string {
+	data, err := json.Marshal(settings{AWSCredentialExport: credentialCommand})
+	if err != nil {
+		panic(err) // two plain fields always marshal
+	}
+	return string(data)
+}
 
 // Command builds the headless command. The AFK flags are pinned here, not
 // in user config, and it never passes --bare, so an OAuth token,
@@ -30,7 +52,7 @@ func (ClaudeCode) Command(step harness.Step) harness.Invocation {
 		"--output-format", "stream-json", "--verbose",
 		"--permission-mode", "bypassPermissions",
 		"--permission-prompts", "none",
-		"--settings", settings,
+		"--settings", settingsJSON(step.CredentialCommand),
 		"--json-schema", step.ReportSchema,
 		"--no-session-persistence",
 	}

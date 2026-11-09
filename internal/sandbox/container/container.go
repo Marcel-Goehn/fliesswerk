@@ -33,6 +33,8 @@ const (
 	homeDir = "/tmp/kraftwerk-home"
 	// caDir holds the CA files of a Sandbox with `ca_certs`.
 	caDir = factoryDir + "/ca"
+	// credentialDir holds the credential file the Factory keeps.
+	credentialDir = factoryDir + "/credentials"
 )
 
 // killTimeout bounds clearing a Sandbox.
@@ -51,6 +53,9 @@ type Options struct {
 	Egress egress.Options
 	// CACerts is `[network] ca_certs`.
 	CACerts []string
+	// CredentialDir holds the credential file the Factory keeps up to date,
+	// "" for none. Every Sandbox mounts it read-only.
+	CredentialDir string
 	// Version is the Factory's, which tags the sidecar's image.
 	Version string
 	// ComposeFile is the compose file relative to the project root, Services
@@ -389,6 +394,9 @@ func (p *Provider) mounts(worktree, state string) ([]mount, error) {
 	for _, file := range []string{"commondir", "gitdir", "config.worktree"} {
 		mounts = append(mounts, mount{source: filepath.Join(admin, file), target: own + "/" + file, readOnly: true})
 	}
+	if p.opts.CredentialDir != "" {
+		mounts = append(mounts, mount{source: p.opts.CredentialDir, target: credentialDir, readOnly: true})
+	}
 	if p.ca.Configured() {
 		// Filled in once the Sandbox can say what its system list is.
 		if err := os.MkdirAll(caStateDir(state), 0o755); err != nil { //nolint:gosec // readable by the Sandbox's user; public certificates
@@ -444,9 +452,13 @@ func (p *Provider) baseEnv() []string {
 	}
 	env = append(env, p.identity...)
 	for k, v := range p.opts.Env {
-		if !slices.Contains(proxyVars, k) { // these always name the sidecar
+		// These always name the sidecar and the Factory's credential file.
+		if !slices.Contains(proxyVars, k) && k != sandbox.CredentialFileEnv {
 			env = append(env, k+"="+v)
 		}
+	}
+	if p.opts.CredentialDir != "" {
+		env = append(env, sandbox.CredentialEnv(credentialDir)...)
 	}
 	slices.Sort(env)
 	return env

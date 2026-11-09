@@ -62,7 +62,10 @@ var authMethods = []harness.AuthMethod{
 	},
 	{
 		// The Factory mints temporary credentials on the host and hands
-		// them over through CredentialFile, never through the env.
+		// them over through CredentialFile. Only the user's own keys, passed
+		// through on their acknowledgement, go in the env. The free test
+		// call is STS GetCallerIdentity, which the AWS SDK signs on the host,
+		// so the method declares no TestCall.
 		Name: "bedrock",
 		Fields: []harness.AuthField{
 			{Key: "region"},
@@ -70,13 +73,11 @@ var authMethods = []harness.AuthMethod{
 			{Key: "access_key_id", Secret: true, Optional: true},
 			{Key: "secret_access_key", Secret: true, Optional: true},
 			{Key: "role_arn", Optional: true},
+			{Key: "i_accept_long_lived_keys_in_sandbox", Flag: true, Optional: true},
 		},
 		Env: map[string]string{"CLAUDE_CODE_USE_BEDROCK": "=1", "AWS_REGION": "region"},
 		Endpoints: func(f map[string]string) []string {
 			return []string{"bedrock-runtime." + f["region"] + ".amazonaws.com"}
-		},
-		TestCall: func(f map[string]string) harness.Request {
-			return harness.Request{Method: "GET", URL: "https://bedrock." + f["region"] + ".amazonaws.com/foundation-models", SignAWS: "bedrock"}
 		},
 	},
 	{

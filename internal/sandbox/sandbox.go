@@ -8,6 +8,7 @@ import (
 	"maps"
 	"os/exec"
 	"regexp"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -111,4 +112,28 @@ func Shell(ctx context.Context, s Sandbox, dir, line string, env []string) *exec
 	shell.Isolate(cmd)
 	cmd.Env = hostEnv
 	return cmd
+}
+
+// CredentialFile is the name of the credential file the Factory keeps for a
+// Harness, in a directory a Sandbox can only read: a directory, because a file
+// the Factory replaces would stay the old one in a mount of just the file.
+const CredentialFile = "credentials.json"
+
+// CredentialFileEnv names the variable that says where a command finds the
+// credential file.
+const CredentialFileEnv = "KRAFTWERK_CREDENTIAL_FILE" //nolint:gosec // the name of a variable that holds a path
+
+// CredentialEnv is what points a Sandbox's commands at the credential file
+// in dir, a path inside the Sandbox.
+func CredentialEnv(dir string) []string {
+	return []string{CredentialFileEnv + "=" + dir + "/" + CredentialFile}
+}
+
+// ReadCredentialCommand is the shell command that prints the credential file:
+// with sh in a Sandbox, or with the host's own shell when there is none.
+func ReadCredentialCommand(onHost bool) string {
+	if onHost && runtime.GOOS == "windows" {
+		return `type "%` + CredentialFileEnv + `%"`
+	}
+	return `cat "$` + CredentialFileEnv + `"`
 }

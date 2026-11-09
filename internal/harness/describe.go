@@ -69,7 +69,10 @@ type AuthField struct {
 	Key string
 	// Secret marks a credential: it takes a secret source (env, command,
 	// stored, dotenv), never a plain value.
-	Secret   bool
+	Secret bool
+	// Flag marks a true or false setting, "true" among the resolved fields
+	// when set.
+	Flag     bool
 	Optional bool
 }
 
@@ -78,9 +81,6 @@ type Request struct {
 	Method string
 	URL    string
 	Header map[string]string
-	// SignAWS names the AWS service to SigV4-sign the request for, empty
-	// for none.
-	SignAWS string
 }
 
 // CredentialFile is how a Harness reads a credential from a file.

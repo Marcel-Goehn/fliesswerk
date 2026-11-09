@@ -1,6 +1,7 @@
 package claudecode_test
 
 import (
+	"encoding/json"
 	"maps"
 	"slices"
 	"strings"
@@ -128,5 +129,31 @@ func TestCommandEnv(t *testing.T) {
 	want = map[string]string{"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}
 	if !maps.Equal(env, want) {
 		t.Errorf("scrub off: env = %v, want %v", env, want)
+	}
+}
+
+func TestCommandPointsClaudeCodeAtTheCredentialFile(t *testing.T) {
+	s := step()
+	s.CredentialCommand = `cat "$KRAFTWERK_CREDENTIAL_FILE"`
+
+	got, _ := flag(claudecode.ClaudeCode{}.Command(s).Argv, "--settings")
+
+	var settings map[string]any
+	if err := json.Unmarshal([]byte(got), &settings); err != nil {
+		t.Fatalf("--settings %q is not JSON: %v", got, err)
+	}
+	if settings["awsCredentialExport"] != s.CredentialCommand {
+		t.Errorf("awsCredentialExport = %v, want %q", settings["awsCredentialExport"], s.CredentialCommand)
+	}
+	if sandbox, _ := settings["sandbox"].(map[string]any); sandbox["enabled"] != false {
+		t.Errorf("settings = %v, want Claude Code's own sandbox still off", settings)
+	}
+}
+
+func TestCommandSetsNoCredentialExportWithoutAFile(t *testing.T) {
+	got, _ := flag(claudecode.ClaudeCode{}.Command(step()).Argv, "--settings")
+
+	if strings.Contains(got, "awsCredentialExport") {
+		t.Errorf("--settings = %q, want no awsCredentialExport", got)
 	}
 }

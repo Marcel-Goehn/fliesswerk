@@ -20,6 +20,8 @@ const (
 	insideSelf   = insideDir + "/kraftwerk"
 	insideSocket = insideDir + "/" + socketName
 	insideCADir  = insideDir + "/ca"
+	// insideCredentialDir holds the credential file the Factory keeps.
+	insideCredentialDir = insideDir + "/credentials"
 	// proxyPort is where a Sandbox's programs find the egress proxy, on the
 	// Sandbox's own loopback.
 	proxyPort = "3128"
@@ -86,6 +88,9 @@ type sandboxPlan struct {
 	// CADir holds the Sandbox's CA files, "" for none. It is at insideCADir
 	// under bwrap, and at its own path under Seatbelt.
 	CADir string
+	// CredentialDir holds the credential file the Factory keeps, "" for none.
+	// It is read-only, at insideCredentialDir under bwrap.
+	CredentialDir string
 	// Added are `read_only_paths` and `writable_paths`.
 	Added []addedPath
 	// Never are the paths no Sandbox may see, as Host.neverExposed.
@@ -178,6 +183,9 @@ func (s sandboxPlan) options(env []string) ([]string, error) {
 	)
 	if s.CADir != "" {
 		opts = append(opts, "--ro-bind", s.CADir, insideCADir)
+	}
+	if s.CredentialDir != "" {
+		opts = append(opts, "--ro-bind", s.CredentialDir, insideCredentialDir)
 	}
 	opts = append(opts, s.serviceMounts()...)
 	opts = append(opts, s.gitMounts()...)

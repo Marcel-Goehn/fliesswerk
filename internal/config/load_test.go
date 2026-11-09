@@ -222,11 +222,12 @@ func TestErrorsNameTheLayerTheyComeFrom(t *testing.T) {
 
 func TestLocalOnlyKeysAreRejectedInConfigToml(t *testing.T) {
 	cases := map[string]struct{ cfg, key string }{
-		"no sandbox":     {"[sandbox]\nkind = \"none\"\ni_accept_unsandboxed_risk = true\n", "sandbox.kind"},
-		"open network":   {"[sandbox.network]\nallow = [\"registry.npmjs.org\", \"*\"]\n", "sandbox.network.allow"},
-		"tracker token":  {"[tracker]\ntoken = { stored = \"github\" }\n", "tracker.token"},
-		"harness secret": {"[harnesses.claude_code]\nsecret = { stored = \"claude\" }\n", "harnesses.claude_code.secret"},
-		"bedrock key":    {"[harnesses.claude_code]\naccess_key_id = { env = \"AWS_ACCESS_KEY_ID\" }\n", "harnesses.claude_code.access_key_id"},
+		"no sandbox":                  {"[sandbox]\nkind = \"none\"\ni_accept_unsandboxed_risk = true\n", "sandbox.kind"},
+		"open network":                {"[sandbox.network]\nallow = [\"registry.npmjs.org\", \"*\"]\n", "sandbox.network.allow"},
+		"tracker token":               {"[tracker]\ntoken = { stored = \"github\" }\n", "tracker.token"},
+		"harness secret":              {"[harnesses.claude_code]\nsecret = { stored = \"claude\" }\n", "harnesses.claude_code.secret"},
+		"bedrock key":                 {"[harnesses.claude_code]\naccess_key_id = { env = \"AWS_ACCESS_KEY_ID\" }\n", "harnesses.claude_code.access_key_id"},
+		"bedrock keys passed through": {"[harnesses.claude_code]\ni_accept_long_lived_keys_in_sandbox = true\n", "harnesses.claude_code.i_accept_long_lived_keys_in_sandbox"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

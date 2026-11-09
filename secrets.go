@@ -5,18 +5,21 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/Marcel-Goehn/kraftwerk/internal/bedrock"
 	"github.com/Marcel-Goehn/kraftwerk/internal/credentials"
 	"github.com/Marcel-Goehn/kraftwerk/internal/git"
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness/claudecode"
 	"github.com/Marcel-Goehn/kraftwerk/internal/hook"
 	"github.com/Marcel-Goehn/kraftwerk/internal/redact"
+	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
 	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/github"
 )
 
@@ -53,6 +56,11 @@ type secrets struct {
 	// harnessEnv are the Harness's credential variables, left out of a
 	// Step's inherited env when a credential is configured.
 	harnessEnv []string
+	// keeper holds the AWS credentials of a running Run, nil for none.
+	keeper *bedrock.Keeper
+	// credentialFile is where a Step with no Sandbox finds the credential
+	// file; in a Sandbox, the Sandbox says.
+	credentialFile string
 }
 
 // resolveSecrets checks that .kraftwerk/.env is git-ignored and that the
@@ -148,6 +156,54 @@ func (s *secrets) testHarnessCredential(ctx context.Context) error {
 	return s.auth.Test(ctx, http.DefaultClient)
 }
 
+// usesBedrock reports whether the Run signs in to AWS on the host, and so
+// has a credential directory for its Sandboxes to mount.
+func (s *secrets) usesBedrock() bool {
+	return s.auth != nil && s.auth.Bedrock != nil
+}
+
+// startCredentials mints the Harness's short-lived credentials on the host
+// and keeps them fresh until stopCredentials.
+func (s *secrets) startCredentials(ctx context.Context, dir string, sandboxed bool, warn func(string)) error {
+	if !s.usesBedrock() {
+		return nil
+	}
+	k, err := s.auth.Bedrock.Start(ctx, bedrock.Delivery{Dir: dir, Secret: s.redactor.Add, Warn: warn})
+	if err != nil {
+		return fmt.Errorf("%s (%s): %w", s.auth.Harness, s.auth.Method, err)
+	}
+	s.keeper = k
+	if !sandboxed && k.InFile() {
+		s.credentialFile = k.File()
+	}
+	return nil
+}
+
+// stopCredentials ends the refreshing and removes the credential file.
+func (s *secrets) stopCredentials() {
+	if s.keeper != nil {
+		s.keeper.Stop()
+	}
+}
+
+// credentialCommand is the command that prints the credential file, "" when
+// the credential isn't in one.
+func (s *secrets) credentialCommand(sandboxed bool) string {
+	if s.keeper == nil || !s.keeper.InFile() {
+		return ""
+	}
+	return sandbox.ReadCredentialCommand(!sandboxed)
+}
+
+// authWarnings are what a person should hear about the Harness's credential
+// at `check` and at the start of every Run.
+func (s *secrets) authWarnings(ctx context.Context) []string {
+	if !s.usesBedrock() {
+		return nil
+	}
+	return s.auth.Bedrock.Warnings(ctx, time.Now())
+}
+
 // stepEnv is what each Step's env gets: the Harness's credential, and the
 // project secrets only when scrubbing is off, the user having chosen to
 // let the agent's own commands see credentials. unset are the variables
@@ -167,6 +223,12 @@ func (s *secrets) stepEnv(scrub bool) (env map[string]string, unset []string) {
 			env[k] = v
 		}
 		unset = append(unset, s.harnessEnv...)
+	}
+	if s.keeper != nil {
+		maps.Copy(env, s.keeper.Env())
+	}
+	if s.credentialFile != "" {
+		env[sandbox.CredentialFileEnv] = s.credentialFile
 	}
 	return env, unset
 }

@@ -59,7 +59,7 @@ func TestDescribeAuthMethods(t *testing.T) {
 	}{
 		{"oauth_token", map[string]string{"secret": "t"}, []string{"api.anthropic.com"}, "https://api.anthropic.com/v1/models", "CLAUDE_CODE_OAUTH_TOKEN"},
 		{"api_key", map[string]string{"secret": "k"}, []string{"api.anthropic.com"}, "https://api.anthropic.com/v1/models", "ANTHROPIC_API_KEY"},
-		{"bedrock", map[string]string{"region": "eu-central-1", "profile": "dev"}, []string{"bedrock-runtime.eu-central-1.amazonaws.com"}, "https://bedrock.eu-central-1.amazonaws.com/foundation-models", ""},
+		{"bedrock", map[string]string{"region": "eu-central-1", "profile": "dev"}, []string{"bedrock-runtime.eu-central-1.amazonaws.com"}, "", ""},
 		{"gateway", map[string]string{"base_url": "https://llm.corp.example:8443/anthropic", "secret": "t"}, []string{"llm.corp.example"}, "https://llm.corp.example:8443/anthropic/v1/models", "ANTHROPIC_AUTH_TOKEN"},
 	}
 	for _, tt := range tests {
@@ -68,8 +68,10 @@ func TestDescribeAuthMethods(t *testing.T) {
 			if got := m.Endpoints(tt.fields); !slices.Equal(got, tt.endpoints) {
 				t.Errorf("endpoints = %q, want %q", got, tt.endpoints)
 			}
-			if got := m.TestCall(tt.fields); got.URL != tt.testURL || got.Method != "GET" {
-				t.Errorf("test call = %s %s, want GET %s", got.Method, got.URL, tt.testURL)
+			if tt.testURL != "" {
+				if got := m.TestCall(tt.fields); got.URL != tt.testURL || got.Method != "GET" {
+					t.Errorf("test call = %s %s, want GET %s", got.Method, got.URL, tt.testURL)
+				}
 			}
 			if tt.credEnv == "" {
 				return

@@ -95,6 +95,9 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	if s.auth != nil {
 		_, _ = fmt.Fprintf(stdout, "kraftwerk check: %s credential (%s) ok\n", s.auth.Harness, s.auth.Method)
 	}
+	for _, w := range s.authWarnings(ctx) {
+		_, _ = fmt.Fprintf(stderr, "warning: %s\n", w)
+	}
 	if len(s.project) > 0 {
 		_, _ = fmt.Fprintf(stdout, "kraftwerk check: %d project %s resolved\n", len(s.project), pluralize(len(s.project), "secret", "secrets"))
 		if !boolAt(values, true, "sandbox", "scrub_credentials") {

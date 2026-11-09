@@ -78,6 +78,10 @@
               "description": "The gateway's URL (method = \"gateway\").",
               "type": "string"
             },
+            "i_accept_long_lived_keys_in_sandbox": {
+              "description": "Hand your own AWS credentials to every Sandbox as they are, instead of short-lived, Bedrock-only ones (method = \"bedrock\"). The agent can read them, and every Run warns. Setting the acknowledgement for passing AWS credentials through is allowed only in config.local.toml or as a CLI flag, never in config.toml.",
+              "type": "boolean"
+            },
             "method": {
               "description": "How to sign in.",
               "enum": [

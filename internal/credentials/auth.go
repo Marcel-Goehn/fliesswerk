@@ -10,14 +10,9 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Marcel-Goehn/kraftwerk/internal/bedrock"
 	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
 )
-
-// unavailable are auth methods a Harness may declare that this kraftwerk
-// can't deliver yet, with what to say instead.
-var unavailable = map[string]string{
-	"bedrock": "method = \"bedrock\" isn't available in this kraftwerk yet; use oauth_token, api_key or gateway",
-}
 
 // Auth is a Harness's credential, resolved for a Run.
 type Auth struct {
@@ -29,9 +24,12 @@ type Auth struct {
 	Secrets []string
 	// Endpoints are the hosts the method talks to.
 	Endpoints []string
+	// Bedrock signs in to AWS, nil for every other method.
+	Bedrock *bedrock.Client
 
 	test    harness.Request
 	sources []Source
+	profile string
 }
 
 // methodOf finds the method the table names in desc, nil if the Harness
@@ -65,9 +63,6 @@ func CheckAuth(desc harness.Description, table map[string]any) []string {
 		}
 		return []string{key("method") + fmt.Sprintf("%s doesn't accept method = %q; use %s", desc.Name, name, strings.Join(names, ", "))}
 	}
-	if why, ok := unavailable[name]; ok {
-		return []string{key("method") + why}
-	}
 
 	var problems []string
 	for _, k := range sortedKeys(table) {
@@ -81,6 +76,10 @@ func CheckAuth(desc harness.Description, table map[string]any) []string {
 		case !set && !f.Optional:
 			problems = append(problems, key(f.Key)+fmt.Sprintf("method = %q needs `%s`", name, f.Key))
 		case !set:
+		case f.Flag:
+			if _, ok := v.(bool); !ok {
+				problems = append(problems, key(f.Key)+"must be true or false")
+			}
 		case f.Secret:
 			if _, ok := ParseSource(v); !ok {
 				problems = append(problems, key(f.Key)+"must say where the secret comes from, e.g. `{ stored = \"name\" }`")
@@ -90,6 +89,37 @@ func CheckAuth(desc harness.Description, table map[string]any) []string {
 				problems = append(problems, key(f.Key)+"base_url must be an http or https URL, e.g. \"https://llm.example.com\"")
 			}
 		}
+	}
+	if name == "bedrock" {
+		problems = append(problems, checkBedrock(table, key)...)
+	}
+	return problems
+}
+
+// passThroughKey is the acknowledgement that hands a user's own AWS
+// credentials to the Sandbox.
+const passThroughKey = "i_accept_long_lived_keys_in_sandbox"
+
+// checkBedrock checks what no single field can: where the credentials come
+// from. Keys are one way and a profile another.
+func checkBedrock(table map[string]any, key func(string) string) []string {
+	_, profile := table["profile"]
+	_, id := table["access_key_id"]
+	_, secret := table["secret_access_key"]
+	_, role := table["role_arn"]
+	var problems []string
+	switch {
+	case profile && (id || secret):
+		problems = append(problems, key("profile")+"set `profile` or the access keys, not both")
+	case !profile && !id && !secret:
+		problems = append(problems, key("method")+"method = \"bedrock\" needs `profile`, or `access_key_id` and `secret_access_key`")
+	case id && !secret:
+		problems = append(problems, key("secret_access_key")+"`access_key_id` also needs `secret_access_key`")
+	case secret && !id:
+		problems = append(problems, key("access_key_id")+"`secret_access_key` also needs `access_key_id`")
+	}
+	if pass, _ := table[passThroughKey].(bool); pass && role {
+		problems = append(problems, key(passThroughKey)+"set `role_arn` or this, not both: a role is assumed with Bedrock-only credentials, which is the safer of the two")
 	}
 	return problems
 }
@@ -118,6 +148,12 @@ func ResolveAuth(ctx context.Context, r Resolver, desc harness.Description, tabl
 		if !set {
 			continue
 		}
+		if f.Flag {
+			if on, _ := v.(bool); on {
+				fields[f.Key] = "true"
+			}
+			continue
+		}
 		if !f.Secret {
 			fields[f.Key], _ = v.(string)
 			continue
@@ -144,6 +180,18 @@ func ResolveAuth(ctx context.Context, r Resolver, desc harness.Description, tabl
 	if m.TestCall != nil {
 		a.test = m.TestCall(fields)
 	}
+	if desc.CredentialFile != nil && slices.Contains(desc.CredentialFile.Methods, name) {
+		a.profile = fields["profile"]
+		var err error
+		a.Bedrock, err = bedrock.New(ctx, bedrock.Config{
+			Region: fields["region"], Profile: fields["profile"],
+			AccessKeyID: fields["access_key_id"], SecretAccessKey: fields["secret_access_key"],
+			RoleARN: fields["role_arn"], PassThrough: fields[passThroughKey] == "true",
+		})
+		if err != nil {
+			return nil, fmt.Errorf("harnesses.%s: %w; check `profile` and your AWS config", desc.Name, err)
+		}
+	}
 	return a, nil
 }
 
@@ -167,12 +215,15 @@ func (a *Auth) TLSEndpoint() string {
 // Test makes the method's one free test call and says, in plain words,
 // what to fix if the credential doesn't work.
 func (a *Auth) Test(ctx context.Context, client *http.Client) error {
+	if a.Bedrock != nil {
+		if err := a.Bedrock.Test(ctx); err != nil {
+			return fmt.Errorf("%s (%s): the AWS credentials don't work: %w; %s", a.Harness, a.Method, err, a.fix())
+		}
+		return nil
+	}
 	t := a.test
 	if t.URL == "" {
 		return nil
-	}
-	if t.SignAWS != "" {
-		return fmt.Errorf("%s (%s): signed test calls aren't available in this kraftwerk yet", a.Harness, a.Method)
 	}
 	req, err := http.NewRequestWithContext(ctx, t.Method, t.URL, nil)
 	if err != nil {
@@ -209,6 +260,9 @@ func unwrapURLError(err error) error {
 
 // fix says how to replace the credential.
 func (a *Auth) fix() string {
+	if a.profile != "" {
+		return fmt.Sprintf("check the AWS profile %q, and if it uses SSO run `aws sso login --profile %s`", a.profile, a.profile)
+	}
 	fixes := make([]string, len(a.sources))
 	for i, s := range a.sources {
 		fixes[i] = s.String() + ": " + s.fix()
