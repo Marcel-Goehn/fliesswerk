@@ -49,3 +49,5 @@ The files `kraftwerk init` writes into your project, in `.kraftwerk/`, are yours
 ## Contributing
 
 Kraftwerk is pre-v1 and isn't taking outside contributions yet. Issues from people outside the project aren't accepted before v1 and will be closed without review. Pull requests from outside the project are turned off.
+
+Security reports are the exception: if you find a vulnerability, report it privately as [`SECURITY.md`](SECURITY.md) describes, never in a public issue.
