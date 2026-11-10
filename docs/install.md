@@ -157,7 +157,7 @@ fliesswerk --version
 ```
 
 - **`go generate`:** builds the egress proxy that container Sandboxes run next to them, and the build embeds it. Without this step, container Sandboxes have no egress proxy.
-- **`fwk`:** the last line but one adds `fwk` as a short name, unless a `fwk` is already on your `PATH`. If it prints a path, that program keeps the name. Use `fliesswerk` instead.
+- **`fwk`:** the last line but one adds `fwk` as a short name, unless a `fwk` is already on your `PATH`. If it prints `~/.local/bin/fwk` (written out in full), that is your own `fwk` from an earlier build, and it runs the new one too. If it prints any other path, that program keeps the name. Use `fliesswerk` instead.
 - **`PATH`:** if `fliesswerk --version` says `command not found`, `~/.local/bin` isn't on your `PATH`. Add `export PATH="$HOME/.local/bin:$PATH"` to your shell's profile (for fish: `fish_add_path ~/.local/bin`), then open a new terminal.
 
 ### Windows (PowerShell)
