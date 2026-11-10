@@ -40,6 +40,12 @@ The Factory itself connects only to:
 
 The agent reaches its model provider and the hosts on your allowlist, and nothing else.
 
+## License
+
+Kraftwerk is released under the [MIT License](LICENSE).
+
+The files `kraftwerk init` writes into your project, in `.kraftwerk/`, are yours: use, change and share them without the license's conditions, including its notice.
+
 ## Contributing
 
 Kraftwerk is pre-v1 and isn't taking outside contributions yet. Issues from people outside the project aren't accepted before v1 and will be closed without review. Pull requests from outside the project are turned off.
