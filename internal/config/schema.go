@@ -110,7 +110,7 @@ func harnessTable() *node {
 	cred := func(doc string) *node { return local(secret(doc), "a Harness credential", always) }
 	return table("Settings of the Claude Code Harness.", map[string]*node{
 		"method":            enum("How to sign in.", authMethods...),
-		"secret":            cred("Where the token or API key comes from."),
+		"secret":            cred("Where the token or API key comes from. A subscription token (method = \"oauth_token\") can't be `stored`."),
 		"base_url":          str("The gateway's URL (method = \"gateway\")."),
 		"region":            str("The AWS region (method = \"bedrock\")."),
 		"profile":           str("The AWS profile (method = \"bedrock\")."),

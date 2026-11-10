@@ -30,7 +30,7 @@ const (
 
 var kinds = []string{Env, Command, Stored, Dotenv}
 
-// Source is where one secret comes from, e.g. `{ stored = "claude" }`.
+// Source is where one secret comes from, e.g. `{ env = "ANTHROPIC_API_KEY" }`.
 type Source struct {
 	Kind string
 	// Ref is the variable name, command or key, by Kind.

@@ -229,7 +229,7 @@ func configTOML(f Facts, a Answers, h Harness) string {
 			"# Stop the Step after this long.", `timeout = "60m"`, "")
 	}
 	w("[logs]", "# How many days Run logs are kept: a positive whole number, or \"forever\".", "keep_days = 30", "",
-		"# How you sign in to the Harness: config.local.toml only.", "# [harnesses.claude_code]", `# method = "oauth_token"`, `# secret = { stored = "claude" }`)
+		"# How you sign in to the Harness: config.local.toml only.", "# [harnesses.claude_code]", `# method = "oauth_token"`, `# secret = { env = "CLAUDE_CODE_OAUTH_TOKEN" }  # a subscription token is never stored`)
 	return b.String()
 }
 

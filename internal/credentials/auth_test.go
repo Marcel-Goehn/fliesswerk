@@ -30,7 +30,12 @@ func TestCheckAuth(t *testing.T) {
 		want  string // a problem contains it; "" for none
 	}{
 		{"nothing set uses the Harness's own login", claude, nil, ""},
-		{"oauth_token with a secret", claude, map[string]any{"method": "oauth_token", "secret": map[string]any{"stored": "claude"}}, ""},
+		{"oauth_token from an env var", claude, map[string]any{"method": "oauth_token", "secret": map[string]any{"env": "CLAUDE_CODE_OAUTH_TOKEN"}}, ""},
+		{"oauth_token from a command", claude, map[string]any{"method": "oauth_token", "secret": map[string]any{"command": "op read op://dev/claude"}}, ""},
+		{"oauth_token from .env", claude, map[string]any{"method": "oauth_token", "secret": map[string]any{"dotenv": "CLAUDE_CODE_OAUTH_TOKEN"}}, ""},
+		{"oauth_token stored names the allowed sources", claude, map[string]any{"method": "oauth_token", "secret": map[string]any{"stored": "claude"}}, "`{ env = \"CLAUDE_CODE_OAUTH_TOKEN\" }`, `{ command = \"op read op://…\" }` or `{ dotenv = \"CLAUDE_CODE_OAUTH_TOKEN\" }`"},
+		{"oauth_token stored says auth set won't take it", claude, map[string]any{"method": "oauth_token", "secret": map[string]any{"stored": "claude"}}, "`kraftwerk auth set` doesn't take"},
+		{"api_key stored", claude, map[string]any{"method": "api_key", "secret": map[string]any{"stored": "claude_api_key"}}, ""},
 		{"gateway with a base_url", claude, map[string]any{"method": "gateway", "base_url": "https://llm.corp.example", "secret": map[string]any{"env": "T"}}, ""},
 		{"a secret without a method", claude, map[string]any{"secret": map[string]any{"stored": "claude"}}, "set `method`"},
 		{"a method the Harness doesn't declare", onlyOAuth, map[string]any{"method": "api_key", "secret": map[string]any{"env": "K"}}, `claude_code doesn't accept method = "api_key"; use "oauth_token"`},
@@ -66,12 +71,10 @@ func TestCheckAuth(t *testing.T) {
 
 func TestResolveAuthPutsTheSecretInTheStepEnv(t *testing.T) {
 	r := project(t, ".env\n")
-	if err := credentials.Store(r.Store, "claude", "oauth-secret"); err != nil {
-		t.Fatal(err)
-	}
+	r.Getenv = func(name string) string { return map[string]string{"MY_CLAUDE_TOKEN": "oauth-secret"}[name] }
 
 	a, err := credentials.ResolveAuth(context.Background(), r, claude,
-		map[string]any{"method": "oauth_token", "secret": map[string]any{"stored": "claude"}})
+		map[string]any{"method": "oauth_token", "secret": map[string]any{"env": "MY_CLAUDE_TOKEN"}})
 
 	if err != nil {
 		t.Fatal(err)

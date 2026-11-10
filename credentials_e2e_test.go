@@ -63,21 +63,21 @@ func TestAuthSetStoresASecretInAUserOnlyFile(t *testing.T) {
 	bin := buildKraftwerk(t, "")
 	env := configHome(t)
 
-	stdout, stderr, code := authSet(t, bin, env, "claude", "sk-ant-oat01-secret")
+	stdout, stderr, code := authSet(t, bin, env, "claude_api_key", "sk-ant-api03-secret")
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr: %s", code, stderr)
 	}
-	if strings.Contains(stdout+stderr, "sk-ant-oat01-secret") {
+	if strings.Contains(stdout+stderr, "sk-ant-api03-secret") {
 		t.Errorf("the secret was echoed:\n%s%s", stdout, stderr)
 	}
-	if !strings.Contains(stdout, `secret = { stored = "claude" }`) {
+	if !strings.Contains(stdout, `secret = { stored = "claude_api_key" }`) {
 		t.Errorf("stdout = %q, want it to say how to use the key", stdout)
 	}
 	home := strings.TrimPrefix(env[0], "HOME=")
 	path := findCredentialsFile(t, home)
 	data, err := os.ReadFile(path) //nolint:gosec // the test's own temp file
-	if err != nil || !strings.Contains(string(data), "sk-ant-oat01-secret") {
+	if err != nil || !strings.Contains(string(data), "sk-ant-api03-secret") {
 		t.Errorf("credentials file = %q, %v; want it to hold the secret", data, err)
 	}
 	if fi, err := os.Stat(path); runtime.GOOS != "windows" && (err != nil || fi.Mode().Perm() != 0o600) {
@@ -92,7 +92,7 @@ func TestAuthSetRefusesBadInput(t *testing.T) {
 	for _, tt := range []struct {
 		name, key, value, want string
 	}{
-		{"an empty secret", "claude", "", "empty"},
+		{"an empty secret", "claude_api_key", "", "empty"},
 		{"a key that can't name a secret", "my key", "v", "can't name a secret"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -101,6 +101,31 @@ func TestAuthSetRefusesBadInput(t *testing.T) {
 				t.Errorf("exit code = %d, stderr = %q; want 3 saying %q", code, stderr, tt.want)
 			}
 		})
+	}
+}
+
+func TestAuthSetRefusesASubscriptionTokenAndWritesNothing(t *testing.T) {
+	bin := buildKraftwerk(t, "")
+	env := configHome(t)
+	if _, stderr, code := authSet(t, bin, env, "claude_api_key", "an-api-key"); code != 0 {
+		t.Fatalf("auth set: %s", stderr)
+	}
+	path := findCredentialsFile(t, strings.TrimPrefix(env[0], "HOME="))
+	before, err := os.ReadFile(path) //nolint:gosec // the test's own temp file
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, stderr, code := authSet(t, bin, env, "claude", "sk-ant-oat01-secret")
+
+	if code != 3 {
+		t.Errorf("exit code = %d, want 3; stderr: %s", code, stderr)
+	}
+	for _, want := range []string{"`kraftwerk auth set` doesn't take it", `{ env = "CLAUDE_CODE_OAUTH_TOKEN" }`} {
+		mustContain(t, "stderr", stderr, want)
+	}
+	if after, err := os.ReadFile(path); err != nil || string(after) != string(before) { //nolint:gosec // the test's own temp file
+		t.Errorf("credentials file = %q, %v; want it unchanged", after, err)
 	}
 }
 
@@ -152,7 +177,7 @@ func TestCheckSendsNoClaudeCredentialAndSaysClaudeCodeChecksIt(t *testing.T) {
 	bin := buildKraftwerk(t, "")
 	endpoint, proxy, requests := fakeAnthropic(t)
 	for _, tt := range []struct{ method, config string }{
-		{"oauth_token", "[harnesses.claude_code]\nmethod = \"oauth_token\"\nsecret = { stored = \"gw\" }\n"},
+		{"oauth_token", "[harnesses.claude_code]\nmethod = \"oauth_token\"\nsecret = { env = \"CLAUDE_CODE_OAUTH_TOKEN\" }\n"},
 		{"api_key", "[harnesses.claude_code]\nmethod = \"api_key\"\nsecret = { stored = \"gw\" }\n"},
 		{"gateway", gatewayConfig(endpoint)},
 	} {
@@ -160,7 +185,7 @@ func TestCheckSendsNoClaudeCredentialAndSaysClaudeCodeChecksIt(t *testing.T) {
 			env := configHome(t)
 			authSet(t, bin, env, "gw", "a-claude-credential")
 			root := projectDir(t, map[string]string{"config.toml": "version = 1\n", "config.local.toml": tt.config})
-			env = append(append(ghEnv(t, "ok"), env...), "HTTPS_PROXY="+proxy, "HTTP_PROXY="+proxy, "NO_PROXY=", "https_proxy="+proxy, "http_proxy="+proxy, "no_proxy=")
+			env = append(append(ghEnv(t, "ok"), env...), "CLAUDE_CODE_OAUTH_TOKEN=a-claude-credential", "HTTPS_PROXY="+proxy, "HTTP_PROXY="+proxy, "NO_PROXY=", "https_proxy="+proxy, "http_proxy="+proxy, "no_proxy=")
 			requests.Store(0)
 
 			stdout, stderr, code := runEnv(t, bin, root, env, checkNoSandbox...)
@@ -183,6 +208,15 @@ func TestCheckSendsNoClaudeCredentialAndSaysClaudeCodeChecksIt(t *testing.T) {
 		_, stderr, code := runEnv(t, bin, root, append(ghEnv(t, "ok"), configHome(t)...), "check")
 		if code != 3 || !strings.Contains(stderr, "kraftwerk auth set gw") {
 			t.Fatalf("exit code = %d, want 3 naming `kraftwerk auth set gw`; stderr: %s", code, stderr)
+		}
+	})
+
+	t.Run("a stored subscription token is rejected", func(t *testing.T) {
+		root := projectDir(t, map[string]string{"config.toml": "version = 1\n",
+			"config.local.toml": "[harnesses.claude_code]\nmethod = \"oauth_token\"\nsecret = { stored = \"claude\" }\n"})
+		_, stderr, code := runEnv(t, bin, root, append(ghEnv(t, "ok"), configHome(t)...), "check")
+		if code != 3 || !strings.Contains(stderr, `{ env = "CLAUDE_CODE_OAUTH_TOKEN" }`) {
+			t.Fatalf("exit code = %d, want 3 naming where the token can come from; stderr: %s", code, stderr)
 		}
 	})
 
@@ -307,17 +341,16 @@ func TestWithScrubbingOnTheAgentGetsNoProjectSecretOrTrackerToken(t *testing.T) 
 	}
 }
 
-// rejectedRun is a Run whose credential is the subscription token stored as
-// `claude`, and that Claude Code rejects at every Step script matches.
+// rejectedRun is a Run whose credential is the subscription token in
+// CLAUDE_CODE_OAUTH_TOKEN, and that Claude Code rejects at every Step script matches.
 func rejectedRun(t *testing.T, issues []fake.Issue, script string) (*runProject, string) {
 	t.Helper()
 	bin := buildTestKraftwerk(t)
 	p := newRunProject(t, bin, issues, script)
 	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), noSandbox+
-		"[harnesses.claude_code]\nmethod = \"oauth_token\"\nsecret = { stored = \"claude\" }\n")
+		"[harnesses.claude_code]\nmethod = \"oauth_token\"\nsecret = { env = \"CLAUDE_CODE_OAUTH_TOKEN\" }\n")
 	logPath := filepath.Join(t.TempDir(), "harness.jsonl")
-	p.extraEnv = append(configHome(t), "KWK_FAKE_HARNESS_LOG="+logPath)
-	authSet(t, bin, p.extraEnv, "claude", "an-expired-token")
+	p.extraEnv = append(configHome(t), "KWK_FAKE_HARNESS_LOG="+logPath, "CLAUDE_CODE_OAUTH_TOKEN=an-expired-token")
 	return p, logPath
 }
 
@@ -329,7 +362,7 @@ func (p *runProject) stoppedForTheCredential(t *testing.T, code int) {
 	if code != exitStopped {
 		t.Fatalf("exit code = %d, want %d\nstdout: %s\nstderr: %s", code, exitStopped, p.stdout, p.stderr)
 	}
-	mustContain(t, "stderr", p.stderr, "reported an auth error", "claude setup-token", "kraftwerk auth set claude")
+	mustContain(t, "stderr", p.stderr, "reported an auth error", "claude setup-token", "set the environment variable CLAUDE_CODE_OAUTH_TOKEN")
 	if n := strings.Count(p.stderr, "kraftwerk run: stopped:"); n != 1 {
 		t.Errorf("the Run says it stopped %d times, want once:\n%s", n, p.stderr)
 	}

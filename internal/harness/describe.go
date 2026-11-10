@@ -114,7 +114,15 @@ type AuthField struct {
 	// call it ("the API key"). A field with none is never asked for.
 	Prompt string
 	// StoreKey is the name a Secret gets in the user-level credentials file.
+	// With NotStored, it is the name `kraftwerk auth set` refuses.
 	StoreKey string
+	// NotStored, if set, says why the Secret is never kept in the user-level
+	// credentials file: `stored` is refused for it, `init` doesn't offer it,
+	// and `kraftwerk auth set` won't take StoreKey.
+	NotStored string
+	// SuggestEnv is the environment variable `init` suggests a Secret comes
+	// from, "" for none.
+	SuggestEnv string
 	// UnlessSet names a field that, once answered, makes this one
 	// unnecessary, so `init` doesn't ask for it.
 	UnlessSet string

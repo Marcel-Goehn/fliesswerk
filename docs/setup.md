@@ -105,21 +105,23 @@ The host is added to the network allowlist for you. Every secret is resolved at 
 
 The Factory never sends your Claude credential itself: only Claude Code does, from inside the Sandbox (see [ADR 0007](adr/0007-only-the-harness-sends-its-credential.md)). So `check` reports a subscription token, an API key or a gateway token as found but not tested ahead of time, and Claude Code checks it on the first Step. If Claude Code rejects it, the Run stops at once with exit code 2 and says how to fix it, such as `claude setup-token` for a subscription, and no Ticket is held against it. Bedrock is the exception: the Factory mints the Sandbox's short-lived AWS credentials from yours, so `check` and every Run start test those with AWS STS.
 
-A secret can be kept in one of four places. `init` offers all of them:
+A secret can be kept in one of four places:
 
 | Source | In the config | Notes |
 | --- | --- | --- |
-| Your credentials file | `{ stored = "claude" }` | Recommended. `kraftwerk auth set <key>` stores or replaces a secret from a hidden prompt |
+| Your credentials file | `{ stored = "claude_api_key" }` | Recommended, except for a subscription token, which it never holds. `kraftwerk auth set <key>` stores or replaces a secret from a hidden prompt |
 | An environment variable | `{ env = "NAME" }` | |
 | A command that prints it | `{ command = "op read op://…" }` | Such as a password manager. Its output is the secret |
 | `.kraftwerk/.env` | `{ dotenv = "KEY" }` | The Factory refuses to start if the file isn't git-ignored |
+
+A Claude subscription token is never kept in your credentials file: Anthropic's terms say developers ["may not collect, store, or intermediate Claude.ai credentials or session tokens"](https://code.claude.com/docs/en/legal-and-compliance). For a subscription, `init` offers only the other three, suggests `{ env = "CLAUDE_CODE_OAUTH_TOKEN" }` as Anthropic does, and never asks for the token itself. Set it where you'd set any environment variable, or have your password manager print it.
 
 The resulting `config.local.toml` looks like this:
 
 ```toml
 [harnesses.claude_code]
 method = "oauth_token"
-secret = { stored = "claude" }
+secret = { env = "CLAUDE_CODE_OAUTH_TOKEN" }
 ```
 
 Your secret reaches each Step through its environment when the Step starts. It is never on a command line, in a container's configuration or in the image, and it is masked as `***` in every log and Tracker comment.

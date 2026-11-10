@@ -81,8 +81,12 @@ func CheckAuth(desc harness.Description, table map[string]any) []string {
 				problems = append(problems, key(f.Key)+"must be true or false")
 			}
 		case f.Secret:
-			if _, ok := ParseSource(v); !ok {
+			src, ok := ParseSource(v)
+			switch {
+			case !ok:
 				problems = append(problems, key(f.Key)+"must say where the secret comes from, e.g. `{ stored = \"name\" }`")
+			case src.Kind == Stored && f.NotStored != "":
+				problems = append(problems, key(f.Key)+"`stored` isn't accepted here: "+NotStoredFix(f))
 			}
 		case f.Key == "base_url":
 			if s, _ := v.(string); !isHTTPURL(s) {
@@ -94,6 +98,30 @@ func CheckAuth(desc harness.Description, table map[string]any) []string {
 		problems = append(problems, checkBedrock(table, key)...)
 	}
 	return problems
+}
+
+// NotStoredFix says why a NotStored secret stays out of the credentials file,
+// and where else it can come from, with an example of each.
+func NotStoredFix(f harness.AuthField) string {
+	name := f.SuggestEnv
+	if name == "" {
+		name = "NAME"
+	}
+	return fmt.Sprintf("%s, so `kraftwerk auth set` doesn't take it; use `%s`, `%s` or `%s`",
+		f.NotStored, Source{Env, name}, Source{Command, "op read op://…"}, Source{Dotenv, name})
+}
+
+// NotStoredKey finds the NotStored secret that key in the credentials file
+// would name, if there is one.
+func NotStoredKey(desc harness.Description, key string) (harness.AuthField, bool) {
+	for _, m := range desc.AuthMethods {
+		for _, f := range m.Fields {
+			if f.NotStored != "" && f.StoreKey == key {
+				return f, true
+			}
+		}
+	}
+	return harness.AuthField{}, false
 }
 
 // passThroughKey is the acknowledgement that hands a user's own AWS

@@ -27,6 +27,10 @@ func runAuth(args []string, stdin *os.File, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "kraftwerk auth set: %q can't name a secret; use letters, digits, '.', '_' and '-'\n", key)
 		return exitConfigError
 	}
+	if f, refused := credentials.NotStoredKey(theHarness.Describe(), key); refused {
+		_, _ = fmt.Fprintf(stderr, "kraftwerk auth set: nothing was stored: %s\n", credentials.NotStoredFix(f))
+		return exitConfigError
+	}
 	path, err := credentials.StorePath()
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "kraftwerk auth set: %v\n", err)

@@ -106,7 +106,7 @@
             },
             "secret": {
               "additionalProperties": false,
-              "description": "Where the token or API key comes from. Setting a Harness credential is allowed only in config.local.toml or as a CLI flag, never in config.toml.",
+              "description": "Where the token or API key comes from. A subscription token (method = \"oauth_token\") can't be `stored`. Setting a Harness credential is allowed only in config.local.toml or as a CLI flag, never in config.toml.",
               "maxProperties": 1,
               "minProperties": 1,
               "properties": {

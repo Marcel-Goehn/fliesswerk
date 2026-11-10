@@ -26,10 +26,12 @@ Every key that takes a secret takes a table with exactly one of these:
 
 | Source | Example | Reads the secret from |
 | --- | --- | --- |
-| `stored` | `{ stored = "claude" }` | Your user-level credentials file, written by `kraftwerk auth set <key>` |
+| `stored` | `{ stored = "claude_api_key" }` | Your user-level credentials file, written by `kraftwerk auth set <key>` |
 | `env` | `{ env = "ANTHROPIC_API_KEY" }` | An environment variable of the Factory |
 | `command` | `{ command = "op read op://dev/claude/token" }` | The stdout of a shell command |
 | `dotenv` | `{ dotenv = "CLAUDE_TOKEN" }` | `.kraftwerk/.env`, which must be git-ignored |
+
+`stored` isn't accepted for a Claude subscription token (`method = "oauth_token"`), and `kraftwerk auth set` won't take one. Anthropic's terms say developers ["may not collect, store, or intermediate Claude.ai credentials or session tokens"](https://code.claude.com/docs/en/legal-and-compliance), so the token comes only from a place you own: an environment variable (Anthropic suggests `{ env = "CLAUDE_CODE_OAUTH_TOKEN" }`), a command such as a password manager, or `.kraftwerk/.env`.
 
 ## Top-level keys
 
@@ -368,7 +370,7 @@ How to sign in: `"oauth_token"` (a Claude subscription, with a token from `claud
 
 ### `harnesses.claude_code.secret`
 
-Where the subscription token, API key or gateway token comes from, as a [secret source](#secret-sources). Local only.
+Where the subscription token, API key or gateway token comes from, as a [secret source](#secret-sources). Local only. A subscription token can't be `stored`.
 
 ### `harnesses.claude_code.base_url`
 

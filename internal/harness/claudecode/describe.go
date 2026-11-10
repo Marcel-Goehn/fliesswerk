@@ -33,10 +33,17 @@ func anthropicEndpoints(map[string]string) []string { return []string{anthropicH
 
 var authMethods = []harness.AuthMethod{
 	{
-		Name:        "oauth_token",
-		Label:       "A Claude subscription",
-		Hint:        "Get a long-lived token with `claude setup-token`.",
-		Fields:      []harness.AuthField{{Key: "secret", Secret: true, Prompt: "the token", StoreKey: "claude"}},
+		Name:  "oauth_token",
+		Label: "A Claude subscription",
+		Hint:  "Get a long-lived token with `claude setup-token`.",
+		// Anthropic's terms: developers "may not collect, store, or
+		// intermediate Claude.ai credentials or session tokens"
+		// (https://code.claude.com/docs/en/legal-and-compliance).
+		Fields: []harness.AuthField{{
+			Key: "secret", Secret: true, Prompt: "the token", StoreKey: "claude",
+			NotStored:  "Anthropic's terms don't let other tools store a Claude subscription token",
+			SuggestEnv: "CLAUDE_CODE_OAUTH_TOKEN",
+		}},
 		Env:         map[string]string{"CLAUDE_CODE_OAUTH_TOKEN": "secret"},
 		Endpoints:   anthropicEndpoints,
 		RejectedFix: "get a new token with `claude setup-token`",

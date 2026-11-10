@@ -142,7 +142,7 @@ func (a Asker) signIn(ctx context.Context, in PersonalInput, p *Personal) error 
 			continue
 		}
 		if f.Secret {
-			if sources[f.Key], err = a.keep(ctx, in, f.Prompt, f.StoreKey, p); err != nil {
+			if sources[f.Key], err = a.keep(ctx, in, f, p); err != nil {
 				return err
 			}
 			continue
@@ -239,32 +239,38 @@ func (a Asker) reachTracker(ctx context.Context, in PersonalInput, p *Personal) 
 	}
 	a.say("%s", access.Walkthrough(in.Repo))
 	var err error
-	p.tracker, err = a.keep(ctx, in, "the token", access.TokenKey(in.Repo), p)
+	p.tracker, err = a.keep(ctx, in, harness.AuthField{Prompt: "the token", StoreKey: access.TokenKey(in.Repo)}, p)
 	return err
 }
 
-// keep asks where the secret called what is kept, and for the secret itself
-// when it is to be stored under key. It returns the Source as TOML.
-func (a Asker) keep(ctx context.Context, in PersonalInput, what, key string, p *Personal) (string, error) {
-	where, err := a.pick("Where is "+what+" kept?", []option{
+// keep asks where the secret f is kept, and for the secret itself when it is
+// to be stored under f.StoreKey. A NotStored secret is never asked for: it
+// only says where the secret is. It returns the Source as TOML.
+func (a Asker) keep(ctx context.Context, in PersonalInput, f harness.AuthField, p *Personal) (string, error) {
+	options := []option{
 		{credentials.Stored, "In your own credentials file, outside every repo (recommended)"},
 		{credentials.Env, "In an environment variable"},
 		{credentials.Command, "A command prints it (a password manager, say)"},
 		{credentials.Dotenv, "In " + credentials.DotenvFile},
-	})
+	}
+	if f.NotStored != "" {
+		options = slices.DeleteFunc(options, func(o option) bool { return o.value == credentials.Stored })
+		a.say("  Not in your credentials file: %s.", f.NotStored)
+	}
+	where, err := a.pick("Where is "+f.Prompt+" kept?", options)
 	if err != nil {
 		return "", err
 	}
-	ref := key
+	ref := f.StoreKey
 	switch where {
 	case credentials.Env:
-		ref, err = a.required("Which variable holds it?", "")
+		ref, err = a.required("Which variable holds it?", f.SuggestEnv)
 	case credentials.Command:
 		ref, err = a.required("Which command prints it?", "")
 	case credentials.Dotenv:
 		ref, err = a.required("Under which name is it in "+credentials.DotenvFile+"?", "")
 	default:
-		err = a.storeSecret(ctx, in, what, key, p)
+		err = a.storeSecret(ctx, in, f.Prompt, f.StoreKey, p)
 	}
 	if err != nil {
 		return "", err

@@ -307,6 +307,26 @@ func TestInitKeepsAKeyWhereThePersonSays(t *testing.T) {
 	}
 }
 
+func TestInitKeepsASubscriptionTokenOutOfTheCredentialsFile(t *testing.T) {
+	p := teamProject(t, map[string]string{"config.toml": teamConfig})
+
+	p.init(t, p.initEnv(t), "oauth_token", "", "", "", gitHubSecret) // env, then the suggested variable
+
+	signIn, _, _ := strings.Cut(p.stdout, "personal-access-tokens/new") // the Tracker's questions follow
+	mustContain(t, "stdout", signIn, "Where is the token kept?", "Which variable holds it? [CLAUDE_CODE_OAUTH_TOKEN]", "Anthropic's terms")
+	for _, unwanted := range []string{"credentials file, outside every repo", "Paste the token"} {
+		if strings.Contains(signIn, unwanted) {
+			t.Errorf("signing in with a subscription says %q:\n%s", unwanted, signIn)
+		}
+	}
+	if got := valueAt(p.localConfig(t), "harnesses", "claude_code", "secret", "env"); got != "CLAUDE_CODE_OAUTH_TOKEN" {
+		t.Errorf("secret.env = %v\n%s", got, p.kraftwerkFile(t, "config.local.toml"))
+	}
+	if _, ok := p.stored(t)["claude"]; ok {
+		t.Error("stored the subscription token")
+	}
+}
+
 func TestInitCanUseAKeyAlreadyStored(t *testing.T) {
 	p := teamProject(t, map[string]string{"config.toml": teamConfig})
 	env := p.initEnv(t)
