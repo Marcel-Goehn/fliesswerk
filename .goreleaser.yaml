@@ -1,0 +1,49 @@
+# Builds the six archives and checksums.txt of a release; see
+# .github/workflows/release.yml for the pipeline around it.
+#
+# Nothing may touch a binary after the linker: changing a macOS binary breaks
+# the ad-hoc signature Go gave it, and macOS then refuses to run it. So no upx
+# and no post hooks here.
+version: 2
+
+project_name: kraftwerk
+
+before:
+  hooks:
+    - go generate ./internal/proxyimage
+
+builds:
+  - id: kraftwerk
+    binary: kraftwerk
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+# The names carry no version, so the install scripts can ask GitHub for
+# /releases/latest/download/<name> without calling its API.
+archives:
+  - id: kraftwerk
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - none*
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+# A draft until the workflow has attested it, so a failure before that
+# publishes nothing.
+release:
+  draft: true
+  replace_existing_draft: true
+  prerelease: auto

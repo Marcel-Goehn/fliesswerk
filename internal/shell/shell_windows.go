@@ -1,0 +1,51 @@
+// Package shell runs a project's own command lines with the system shell.
+package shell
+
+import (
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"syscall"
+)
+
+// Command runs line with the system's cmd.exe, which a terminal's Ctrl-C
+// doesn't reach and which is killed with every process it started when
+// ctx ends. The command line is passed as written: Go's argument quoting
+// (\") is not what cmd.exe understands.
+func Command(ctx context.Context, line string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, cmdExe()) //nolint:gosec // the project's own command
+	cmd.SysProcAttr = &syscall.SysProcAttr{CmdLine: `cmd.exe /d /s /c "` + line + `"`, CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP}
+	cmd.Cancel = func() error {
+		kill := exec.Command(filepath.Join(systemRoot(), "System32", "taskkill.exe"), "/T", "/F", "/PID", strconv.Itoa(cmd.Process.Pid)) //nolint:gosec // a pid
+		if err := kill.Run(); err != nil {
+			return cmd.Process.Kill()
+		}
+		return nil
+	}
+	return cmd
+}
+
+// Isolate keeps a terminal's Ctrl-C away from cmd: a new process group
+// doesn't get it.
+func Isolate(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP}
+}
+
+// cmdExe is the system's cmd.exe: %ComSpec%, else the one in System32,
+// whatever PATH says.
+func cmdExe() string {
+	if c := os.Getenv("ComSpec"); c != "" {
+		return c
+	}
+	return filepath.Join(systemRoot(), "System32", "cmd.exe")
+}
+
+// systemRoot is the Windows directory.
+func systemRoot() string {
+	if r := os.Getenv("SystemRoot"); r != "" {
+		return r
+	}
+	return `C:\Windows`
+}

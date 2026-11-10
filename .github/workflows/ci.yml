@@ -1,0 +1,221 @@
+# CI: lint, the six builds, tests on all three OSes, the container Sandbox on
+# Docker and rootless Podman, the native Sandbox on bwrap, Semgrep and
+# govulncheck.
+# It runs on every push to `develop` (the default branch, which feature
+# branches start from) and on every PR into `develop` or `main`, including
+# each new push to an open PR. Pushes to a feature branch without a PR don't
+# run it, and `main` takes no direct pushes. The `ci` job at the end is the
+# single check the "Require PR" ruleset on `main` requires (set up in the
+# GitHub UI); add new CI jobs to its `needs`. A tag runs all of it too, as the
+# first stage of .github/workflows/release.yml. Linux arm64 and the
+# real-GitHub tests run nightly instead (.github/workflows/nightly.yml).
+#
+# Severity policy: findings of high severity or above fail the job, lower
+# ones only warn.
+#   - golangci-lint: every linter finding fails; gosec findings fail only at
+#     high severity (.golangci.yml), lower ones are warn-only
+#     (.golangci.warn.yml).
+#   - Semgrep: ERROR (its high level) fails; WARNING and INFO are warn-only.
+#   - govulncheck: the Go vulnerability database carries no severity, so a
+#     vulnerability the code actually calls fails; one that is only imported
+#     or required is informational (govulncheck's own exit-code rule).
+#
+# Every third-party Action is pinned by commit SHA (and the Semgrep image by
+# digest). Dependabot keeps the Action pins current; bump the Semgrep image
+# digest by hand.
+name: CI
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop, main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: golangci-lint (blocking)
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0
+      - name: golangci-lint (gosec below high, warn-only)
+        if: ${{ !cancelled() }}
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0
+          args: --config .golangci.warn.yml --issues-exit-code=0
+
+  build:
+    name: build (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goos: [windows, linux, darwin]
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: go generate (the proxy sidecar's root filesystems)
+        run: go generate ./internal/proxyimage
+      - name: go build
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build -trimpath -o dist/ .
+
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: go generate (the proxy sidecar's root filesystems)
+        run: go generate ./internal/proxyimage
+      - name: go test
+        # Proves on each OS that the platform verifier returns the root, which
+        # `check` names when it finds TLS interception.
+        env:
+          KRAFTWERK_TEST_ANCHOR: "1"
+        run: go test ./...
+
+  # The container Sandbox on real engines: both are on the runner, and
+  # KRAFTWERK_ENGINE picks one. -p 1 keeps the packages' engine use apart.
+  container:
+    name: container (${{ matrix.engine }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [docker, podman]
+    env:
+      KRAFTWERK_ENGINE: ${{ matrix.engine }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: go generate (the proxy sidecar's root filesystems)
+        run: go generate ./internal/proxyimage
+      # The oldest podman-compose the Factory accepts.
+      - name: Install podman-compose
+        if: matrix.engine == 'podman'
+        run: pipx install podman-compose==1.4.0
+      - name: go test (integration)
+        run: go test -tags integration -p 1 -timeout 20m ./internal/sandbox/container/ .
+
+  # The native Sandbox on real bwrap, on a stock runner with no sysctl
+  # changes. Where AppArmor blocks bwrap, the tests prove that it's detected
+  # and its fix named, and skip what needs a working bwrap.
+  native:
+    name: native (bwrap)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Install bubblewrap
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+      - name: go generate (the proxy sidecar's root filesystems)
+        run: go generate ./internal/proxyimage
+      - name: go test (integration)
+        run: |
+          go test -tags integration -v -timeout 10m ./internal/sandbox/native/
+          go test -tags integration -v -timeout 10m -run 'Native' .
+
+  # The native Sandbox on real Seatbelt.
+  native-macos:
+    name: native (Seatbelt)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: go generate (the proxy sidecar's root filesystems)
+        run: go generate ./internal/proxyimage
+      - name: go test (integration)
+        run: |
+          go test -tags integration -v -timeout 10m ./internal/sandbox/native/
+          go test -tags integration -v -timeout 10m -run 'Native' .
+
+  semgrep:
+    name: semgrep
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep@sha256:cc1b68266f267878b39739373ea9985b9a78e5d64497dd875c8de100b22695ed # 1.184.0
+    env:
+      SEMGREP_RULES: p/golang p/github-actions p/secrets
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: semgrep (all severities, warn-only)
+        run: semgrep scan --metrics=off
+      - name: semgrep (ERROR, blocking)
+        if: ${{ !cancelled() }}
+        run: semgrep scan --metrics=off --severity ERROR --error
+
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+  ci:
+    name: ci
+    if: ${{ always() }}
+    needs: [lint, build, test, container, native, native-macos, semgrep, govulncheck]
+    runs-on: ubuntu-latest
+    steps:
+      - name: All every-push checks passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          for r in $RESULTS; do
+            if [ "$r" != "success" ]; then exit 1; fi
+          done

@@ -1,0 +1,25 @@
+# golangci-lint v2. Warn-only run (CI passes --issues-exit-code=0): reports
+# gosec findings of every severity without failing the job. High ones repeat
+# here; the blocking run (.golangci.yml) is what fails on them.
+version: "2"
+
+run:
+  build-tags:
+    - kwkfake
+    - integration
+    - live
+
+linters:
+  default: none
+  enable:
+    - gosec
+  settings:
+    gosec:
+      severity: low
+      confidence: low
+  exclusions:
+    rules:
+      # End-to-end tests spawn the built binary and `go build` on purpose.
+      - path: _test\.go
+        linters: [gosec]
+        text: G204
