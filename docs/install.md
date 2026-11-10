@@ -106,7 +106,9 @@ shasum -a 256 --ignore-missing -c checksums.txt # macOS
 Get-FileHash -Algorithm SHA256 .\kraftwerk_windows_amd64.zip # compare with checksums.txt
 ```
 
-A checksum shows the download is intact. To prove the archive was built by this repository's release workflow, verify its attestation with the [GitHub CLI](https://cli.github.com/):
+A checksum shows the download is intact. Published releases are immutable: once a release is out, nobody can replace its archives or `checksums.txt`, move or delete its tag, or reuse its version number. So the `checksums.txt` you check against is the one published with the archive.
+
+To prove the archive was built by this repository's release workflow, verify its attestation with the [GitHub CLI](https://cli.github.com/):
 
 ```sh
 gh attestation verify kraftwerk_linux_amd64.tar.gz --repo Marcel-Goehn/kraftwerk

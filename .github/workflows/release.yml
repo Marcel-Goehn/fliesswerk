@@ -3,8 +3,10 @@
 # smoke test of what was published on all three OSes.
 #
 # The release stays a draft until it's attested, so if anything fails before
-# the "Publish" step, nothing is released. Delete the draft and the tag, or
-# re-run the workflow, which replaces the draft.
+# the "Publish" step, nothing is released. Re-run the workflow, which replaces
+# the draft. Published releases are immutable and the tag ruleset blocks
+# deleting or moving `v*` tags, so once a release is published, fix forward
+# with a new version.
 #
 # Every third-party Action is pinned by commit SHA; Dependabot keeps those
 # current. Bump GoReleaser's own `version` by hand.
