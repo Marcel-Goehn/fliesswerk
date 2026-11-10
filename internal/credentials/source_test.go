@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/credentials"
+	"github.com/Marcel-Goehn/fliesswerk/internal/credentials"
 )
 
-// project is a git checkout with a .kraftwerk/ whose .gitignore holds
+// project is a git checkout with a .fliesswerk/ whose .gitignore holds
 // ignore, and a credentials file in its own directory.
 func project(t *testing.T, ignore string) credentials.Resolver {
 	t.Helper()
@@ -21,10 +21,10 @@ func project(t *testing.T, ignore string) credentials.Resolver {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Skipf("no git: %v\n%s", err, out)
 	}
-	write(t, filepath.Join(root, ".kraftwerk", ".gitignore"), ignore)
+	write(t, filepath.Join(root, ".fliesswerk", ".gitignore"), ignore)
 	return credentials.Resolver{
 		Root:   root,
-		Store:  filepath.Join(t.TempDir(), "kraftwerk", "credentials"),
+		Store:  filepath.Join(t.TempDir(), "fliesswerk", "credentials"),
 		Getenv: func(string) string { return "" },
 	}
 }
@@ -101,8 +101,8 @@ func TestStoredSource(t *testing.T) {
 		t.Errorf("Resolve = %q, %v; want from-store", got, err)
 	}
 	_, err = r.Resolve(context.Background(), source(t, map[string]any{"stored": "missing"}))
-	if err == nil || !strings.Contains(err.Error(), "kraftwerk auth set missing") {
-		t.Errorf("Resolve of a missing key = %v, want it to name `kraftwerk auth set missing`", err)
+	if err == nil || !strings.Contains(err.Error(), "fliesswerk auth set missing") {
+		t.Errorf("Resolve of a missing key = %v, want it to name `fliesswerk auth set missing`", err)
 	}
 }
 
@@ -147,7 +147,7 @@ func TestStoredSourceRefusesAFileOthersCanRead(t *testing.T) {
 
 func TestDotenvSource(t *testing.T) {
 	r := project(t, ".env\n")
-	write(t, filepath.Join(r.Root, ".kraftwerk", ".env"), "# a comment\n"+
+	write(t, filepath.Join(r.Root, ".fliesswerk", ".env"), "# a comment\n"+
 		"PLAIN=plain-value\n"+
 		"export EXPORTED = exported-value\n"+
 		"DOUBLE=\"double # not a comment\"\n"+
@@ -171,14 +171,14 @@ func TestDotenvSource(t *testing.T) {
 
 func TestADotenvThatIsNotIgnoredIsRefused(t *testing.T) {
 	r := project(t, "config.local.toml\n")
-	write(t, filepath.Join(r.Root, ".kraftwerk", ".env"), "KEY=value\n")
+	write(t, filepath.Join(r.Root, ".fliesswerk", ".env"), "KEY=value\n")
 
 	_, err := r.Resolve(context.Background(), source(t, map[string]any{"dotenv": "KEY"}))
 	if err == nil || !strings.Contains(err.Error(), "not git-ignored") {
 		t.Errorf("Resolve = %v, want a refusal", err)
 	}
-	if err := credentials.CheckDotenvIgnored(context.Background(), r.Root); err == nil || !strings.Contains(err.Error(), ".kraftwerk/.gitignore") {
-		t.Errorf("CheckDotenvIgnored = %v, want it to name the fix in .kraftwerk/.gitignore", err)
+	if err := credentials.CheckDotenvIgnored(context.Background(), r.Root); err == nil || !strings.Contains(err.Error(), ".fliesswerk/.gitignore") {
+		t.Errorf("CheckDotenvIgnored = %v, want it to name the fix in .fliesswerk/.gitignore", err)
 	}
 }
 

@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/egress"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/egress"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
 )
 
 // directWget fetches a URL without the proxy the Sandbox is set up with.
@@ -75,7 +75,7 @@ func TestTheSidecarImageIsImportedOnceForTheEnginesArchitectureAndTheVersion(t *
 	pr := newProject(t)
 	version := "v0.0.0-test-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	pr.p.opts.Version = version
-	image := "kraftwerk-proxy:" + version
+	image := "fliesswerk-proxy:" + version
 	pr.prepare(t)
 	t.Cleanup(func() {
 		pr.p.Close()

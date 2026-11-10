@@ -12,10 +12,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/proxyimage"
+	"github.com/Marcel-Goehn/fliesswerk/internal/proxyimage"
 )
 
-const proxyPackage = "github.com/Marcel-Goehn/kraftwerk/internal/egress/proxycmd"
+const proxyPackage = "github.com/Marcel-Goehn/fliesswerk/internal/egress/proxycmd"
 
 func main() {
 	for _, arch := range proxyimage.Arches {
@@ -27,7 +27,7 @@ func main() {
 }
 
 func generate(arch string) error {
-	dir, err := os.MkdirTemp("", "kraftwerk-proxy")
+	dir, err := os.MkdirTemp("", "fliesswerk-proxy")
 	if err != nil {
 		return err
 	}

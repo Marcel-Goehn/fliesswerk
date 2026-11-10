@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
-	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
+	"github.com/Marcel-Goehn/fliesswerk/internal/factory"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/runlog"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/fake"
 )
 
 const gib = int64(1) << 30
@@ -169,8 +169,8 @@ func TestAHigherPeakRaisesTheEstimateAndALowerOneDoesNot(t *testing.T) {
 		if res.Memory == nil || res.Memory.PeakEstimate != 3*gib {
 			t.Fatalf("after a peak of %d, memory = %+v, want the highest, 3 GiB", use, res.Memory)
 		}
-		git(t, f.work, "branch", "-D", "kraftwerk/spec-1-spec-shopping-cart")
-		git(t, f.remote, "branch", "-D", "kraftwerk/spec-1-spec-shopping-cart")
+		git(t, f.work, "branch", "-D", "fliesswerk/spec-1-spec-shopping-cart")
+		git(t, f.remote, "branch", "-D", "fliesswerk/spec-1-spec-shopping-cart")
 	}
 }
 

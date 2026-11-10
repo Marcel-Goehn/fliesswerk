@@ -6,15 +6,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/config"
+	"github.com/Marcel-Goehn/fliesswerk/internal/config"
 )
 
-// project writes .kraftwerk/config.toml (and config.local.toml, if local is
+// project writes .fliesswerk/config.toml (and config.local.toml, if local is
 // not empty) into a fresh directory and returns that directory.
 func project(t *testing.T, cfg, local string) string {
 	t.Helper()
 	dir := t.TempDir()
-	kw := filepath.Join(dir, ".kraftwerk")
+	kw := filepath.Join(dir, ".fliesswerk")
 	if err := os.MkdirAll(kw, 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestMinimalConfigIsValid(t *testing.T) {
 
 func TestVersionIsRequired(t *testing.T) {
 	r := load(t, "model = \"x\"\n", "")
-	wantOne(t, r, config.Error, ".kraftwerk/config.toml", "version = 1")
+	wantOne(t, r, config.Error, ".fliesswerk/config.toml", "version = 1")
 	if r.OK() {
 		t.Fatal("OK() = true despite an error")
 	}
@@ -90,17 +90,17 @@ func TestNewerVersionIsRefused(t *testing.T) {
 	// Keys of a newer version are unknown to this binary; only the version
 	// is reported.
 	r := load(t, "version = 2\nshiny_new_key = true\n", "")
-	wantOne(t, r, config.Error, "version 2", "kraftwerk update")
+	wantOne(t, r, config.Error, "version 2", "fliesswerk update")
 }
 
 func TestMissingConfigNamesInit(t *testing.T) {
 	r := config.Load(t.TempDir(), nil)
-	wantOne(t, r, config.Error, "config.toml", "kraftwerk init")
+	wantOne(t, r, config.Error, "config.toml", "fliesswerk init")
 }
 
 func TestUnknownKeySuggestsTheClosestKnownOne(t *testing.T) {
 	r := load(t, "version = 1\nmax_paralel = 2\n", "")
-	wantOne(t, r, config.Error, ".kraftwerk/config.toml", "max_paralel", "unknown key", `did you mean "max_parallel"?`)
+	wantOne(t, r, config.Error, ".fliesswerk/config.toml", "max_paralel", "unknown key", `did you mean "max_parallel"?`)
 }
 
 func TestUnknownKeyInNestedTableSuggests(t *testing.T) {
@@ -169,7 +169,7 @@ max_parallel = 2
 protected_paths = [".claude/", "infra/"]
 [branches]
 base_branch = "main"
-prefix = "kraftwerk"
+prefix = "fliesswerk"
 `, `model = "local-model"
 protected_paths = ["secrets/"]
 [branches]
@@ -214,7 +214,7 @@ run = "c"
 
 func TestErrorsNameTheLayerTheyComeFrom(t *testing.T) {
 	r := load(t, "version = 1\n", "max_iterations = 0\n")
-	wantOne(t, r, config.Error, ".kraftwerk/config.local.toml", "max_iterations", "at least 1")
+	wantOne(t, r, config.Error, ".fliesswerk/config.local.toml", "max_iterations", "at least 1")
 
 	r = load(t, "version = 1\n", "", config.Override{Key: "sandbox.kind", Value: "nope"})
 	wantOne(t, r, config.Error, "command line", "sandbox.kind")
@@ -374,7 +374,7 @@ cannot_do_label   = "needs-investigation"
 
 [branches]
 base_branch = "main"
-prefix      = "kraftwerk"
+prefix      = "fliesswerk"
 
 [sandbox]
 kind = "container"

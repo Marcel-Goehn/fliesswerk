@@ -4,7 +4,7 @@ Every key the Factory reads, what it does and its default. The same shape is pub
 
 ## How the config is read
 
-The config is TOML in `.kraftwerk/`, read in three layers, each merged over the one before key by key:
+The config is TOML in `.fliesswerk/`, read in three layers, each merged over the one before key by key:
 
 1. `config.toml`: the team's settings, committed
 2. `config.local.toml`: your own settings, git-ignored
@@ -12,11 +12,11 @@ The config is TOML in `.kraftwerk/`, read in three layers, each merged over the 
 
 A list replaces the list of the layer below; it is not appended to. No layer may hold a secret value: a secret is always a reference to where it comes from (see [Secret sources](#secret-sources)).
 
-Every command checks the config before it does anything else, so a typo never costs a token. An unknown key or a wrong type is an error, with a did-you-mean suggestion. `kraftwerk check` exits with 3 on any error.
+Every command checks the config before it does anything else, so a typo never costs a token. An unknown key or a wrong type is an error, with a did-you-mean suggestion. `fliesswerk check` exits with 3 on any error.
 
 **Local-only settings** can disarm the Sandbox or hold a credential, so they are refused in `config.toml` and accepted only from `config.local.toml` or a flag: credentials, `sandbox.kind = "none"` and its acknowledgement, `allow = ["*"]`, and the acknowledgement for passing AWS keys through. A committed change can never turn them on for the whole team.
 
-**Upgrades.** Within a major version, an unchanged config never changes behaviour, except for security fixes, which are announced loudly. A renamed key keeps working with a deprecation warning until the next major version, and `kraftwerk migrate` rewrites it. See the [install guide](install.md#renamed-and-removed-config-keys).
+**Upgrades.** Within a major version, an unchanged config never changes behaviour, except for security fixes, which are announced loudly. A renamed key keeps working with a deprecation warning until the next major version, and `fliesswerk migrate` rewrites it. See the [install guide](install.md#renamed-and-removed-config-keys).
 
 Durations are written like `"30s"`, `"5m"` or `"1h30m"`.
 
@@ -26,18 +26,18 @@ Every key that takes a secret takes a table with exactly one of these:
 
 | Source | Example | Reads the secret from |
 | --- | --- | --- |
-| `stored` | `{ stored = "claude_api_key" }` | Your user-level credentials file, written by `kraftwerk auth set <key>` |
+| `stored` | `{ stored = "claude_api_key" }` | Your user-level credentials file, written by `fliesswerk auth set <key>` |
 | `env` | `{ env = "ANTHROPIC_API_KEY" }` | An environment variable of the Factory |
 | `command` | `{ command = "op read op://dev/claude/token" }` | The stdout of a shell command |
-| `dotenv` | `{ dotenv = "CLAUDE_TOKEN" }` | `.kraftwerk/.env`, which must be git-ignored |
+| `dotenv` | `{ dotenv = "CLAUDE_TOKEN" }` | `.fliesswerk/.env`, which must be git-ignored |
 
-`stored` isn't accepted for a Claude subscription token (`method = "oauth_token"`), and `kraftwerk auth set` won't take one. Anthropic's terms say developers ["may not collect, store, or intermediate Claude.ai credentials or session tokens"](https://code.claude.com/docs/en/legal-and-compliance), so the token comes only from a place you own: an environment variable (Anthropic suggests `{ env = "CLAUDE_CODE_OAUTH_TOKEN" }`), a command such as a password manager, or `.kraftwerk/.env`.
+`stored` isn't accepted for a Claude subscription token (`method = "oauth_token"`), and `fliesswerk auth set` won't take one. Anthropic's terms say developers ["may not collect, store, or intermediate Claude.ai credentials or session tokens"](https://code.claude.com/docs/en/legal-and-compliance), so the token comes only from a place you own: an environment variable (Anthropic suggests `{ env = "CLAUDE_CODE_OAUTH_TOKEN" }`), a command such as a password manager, or `.fliesswerk/.env`.
 
 ## Top-level keys
 
 ### `version`
 
-The config format version. Must be `1`, and is the only required key. A version newer than this Kraftwerk understands is refused with the command that updates it.
+The config format version. Must be `1`, and is the only required key. A version newer than this Fliesswerk understands is refused with the command that updates it.
 
 ### `factory`
 
@@ -77,7 +77,7 @@ The Coding standards file, relative to the project root. Only the review Step re
 
 ### `protected_paths`
 
-Extra Protected paths: files, directories (ending in `/`) or globs, relative to the project root, that the agent may not change. `.kraftwerk/`, the compose file and the standards file are always protected. A Step that changes one gets its Ticket handed back with no retry. In a native Sandbox they are also read-only.
+Extra Protected paths: files, directories (ending in `/`) or globs, relative to the project root, that the agent may not change. `.fliesswerk/`, the compose file and the standards file are always protected. A Step that changes one gets its Ticket handed back with no retry. In a native Sandbox they are also read-only.
 
 ```toml
 protected_paths = [".claude/", ".github/workflows/", "secrets/*.pem"]
@@ -121,7 +121,7 @@ The remote branch Spec branches are cut from, on `origin`. Default `"main"`. The
 
 ### `branches.prefix`
 
-The prefix of every branch the Factory creates: `<prefix>/spec-<N>-<slug>`, `<prefix>/ticket-<N>` and `<prefix>/ticket-<N>-<slug>`. Default `"kraftwerk"`.
+The prefix of every branch the Factory creates: `<prefix>/spec-<N>-<slug>`, `<prefix>/ticket-<N>` and `<prefix>/ticket-<N>-<slug>`. Default `"fliesswerk"`.
 
 ## `sandbox`
 
@@ -205,7 +205,7 @@ Your machine's network, for the egress proxy and for image builds. See [Behind a
 
 ### `network.ca_certs`
 
-PEM files trusted in every Sandbox on top of its system roots, and passed into image builds as the build secret `kraftwerk-ca`. A path can be absolute, start with `~/`, or be relative to the project root.
+PEM files trusted in every Sandbox on top of its system roots, and passed into image builds as the build secret `fliesswerk-ca`. A path can be absolute, start with `~/`, or be relative to the project root.
 
 ### `network.upstream_proxy`
 
@@ -246,7 +246,7 @@ Feedback commands, by name: how the agent and the Factory check that a change wo
 
 ### `commands.<name>`
 
-One Feedback command, run by the shell in the project's directory inside the worktree: the directory that holds `.kraftwerk/`.
+One Feedback command, run by the shell in the project's directory inside the worktree: the directory that holds `.fliesswerk/`.
 
 ```toml
 [commands]
@@ -264,7 +264,7 @@ parallel = ["cd web && pnpm install --frozen-lockfile", "cd api && uv sync --loc
 timeout  = "10m"
 
 [[hooks.spec_finished]]
-run = 'gh pr create --fill --head "$KRAFTWERK_BRANCH"'
+run = 'gh pr create --fill --head "$FLIESSWERK_BRANCH"'
 ```
 
 ### `hooks.run_start`
@@ -273,11 +273,11 @@ Runs on your machine when a Run starts, after the credentials are resolved. A fa
 
 ### `hooks.sandbox_created`
 
-Runs when a Sandbox has been created and its Services are healthy, before the agent starts. It runs in the Sandbox by default, with `KRAFTWERK_SANDBOX` set. A failure is a Step failure: the Hook gets one fresh retry, then the Ticket is handed back.
+Runs when a Sandbox has been created and its Services are healthy, before the agent starts. It runs in the Sandbox by default, with `FLIESSWERK_SANDBOX` set. A failure is a Step failure: the Hook gets one fresh retry, then the Ticket is handed back.
 
 ### `hooks.spec_finished`
 
-Runs on your machine in the Spec branch's worktree when a Spec's last Ticket closes, or a standalone Ticket closes, with `KRAFTWERK_SPEC` (such as `#31`) and `KRAFTWERK_BRANCH` set. A failure only warns.
+Runs on your machine in the Spec branch's worktree when a Spec's last Ticket closes, or a standalone Ticket closes, with `FLIESSWERK_SPEC` (such as `#31`) and `FLIESSWERK_BRANCH` set. A failure only warns.
 
 ### `hooks.run_end`
 
@@ -402,7 +402,7 @@ Set to `true` to hand your own AWS credentials to every Sandbox as they are, ins
 
 ## `logs`
 
-Run logs, in `.kraftwerk/logs/`. See the [usage guide](usage.md#the-log-directory).
+Run logs, in `.fliesswerk/logs/`. See the [usage guide](usage.md#the-log-directory).
 
 ### `logs.keep_days`
 

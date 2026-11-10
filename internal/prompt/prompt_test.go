@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/git"
-	"github.com/Marcel-Goehn/kraftwerk/internal/prompt"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
-	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
+	"github.com/Marcel-Goehn/fliesswerk/internal/git"
+	"github.com/Marcel-Goehn/fliesswerk/internal/prompt"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
+	"github.com/Marcel-Goehn/fliesswerk/internal/verify"
 )
 
 func id(n string) tracker.ID {
@@ -33,8 +33,8 @@ func inSpec() prompt.Context {
 			{ID: id("5"), Title: "Add payment", State: tracker.Open},
 		}},
 		InProgress: map[string]bool{"4": true},
-		Branch:     "kraftwerk/ticket-2",
-		Protected:  []string{".kraftwerk/", "compose.yaml"},
+		Branch:     "fliesswerk/ticket-2",
+		Protected:  []string{".fliesswerk/", "compose.yaml"},
 	}
 }
 
@@ -42,8 +42,8 @@ func inSpec() prompt.Context {
 func standalone() prompt.Context {
 	return prompt.Context{
 		Ticket:    tracker.Ticket{ID: id("7"), Title: "Fix the typo", Body: "It says teh."},
-		Branch:    "kraftwerk/ticket-7",
-		Protected: []string{".kraftwerk/"},
+		Branch:    "fliesswerk/ticket-7",
+		Protected: []string{".fliesswerk/"},
 	}
 }
 
@@ -79,7 +79,7 @@ func TestTheImplementPromptOfATicketInASpecIsTheFixedTopTheProjectsPartAndTheFix
 		"# Recent commits", "since `main`", "<recent-commits>", "Add the shop\n\nThe shop lists products.", "</recent-commits>",
 		"# Our conventions\n\nUse tabs.",
 		"# Do not close the Ticket",
-		"# Rules", "`kraftwerk/ticket-2`", "`.kraftwerk/`, `compose.yaml`", "commented-out code",
+		"# Rules", "`fliesswerk/ticket-2`", "`.fliesswerk/`, `compose.yaml`", "commented-out code",
 		"# Done", "cannot_do", "nobody will answer questions",
 	)
 	if strings.Contains(p, "`gh`") {
@@ -157,7 +157,7 @@ func TestTheReviewPromptHasTheSameContextAndWhatChanged(t *testing.T) {
 		"# The Spec", "review only what this Ticket asks for", "- #4 Add checkout (in progress)",
 		"# What changed", "since `abc123`", "`git log abc123..HEAD`", "`git diff abc123..HEAD`",
 		"Review it.",
-		"# Do not close the Ticket", "# Rules", "`kraftwerk/ticket-2`",
+		"# Do not close the Ticket", "# Rules", "`fliesswerk/ticket-2`",
 		"# Done", `report "done"`,
 	)
 	if strings.Contains(p, "Recent commits") || strings.Contains(p, "cannot_do") {
@@ -190,7 +190,7 @@ func TestEveryStepIsToldWhichServicesItCanReach(t *testing.T) {
 		"review":    prompt.Review("", c, "abc"),
 		"merge":     prompt.Merge("", c, prompt.Merging{SpecBranch: "s", Files: []string{"a"}}),
 	} {
-		for _, want := range []string{"# Services", "- postgres: `postgres:5432`, `localhost:5432`", "- worker: `worker`", "KRAFTWERK_SERVICE_<NAME>_HOST"} {
+		for _, want := range []string{"# Services", "- postgres: `postgres:5432`, `localhost:5432`", "- worker: `worker`", "FLIESSWERK_SERVICE_<NAME>_HOST"} {
 			if !strings.Contains(p, want) {
 				t.Errorf("%s doesn't say %q:\n%s", name, want, p)
 			}

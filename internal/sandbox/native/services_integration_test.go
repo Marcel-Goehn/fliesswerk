@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
 )
 
 // fakeServices stands in for the compose project: the Services are local TCP
@@ -107,7 +107,7 @@ func TestServicesThatCannotBeRemovedKeepTheirRecord(t *testing.T) {
 	f := &fakeServices{stopErr: errors.New("engine hiccup")}
 	pr := newProject(t, nil, func(o *Options) { o.Services = f })
 	sb := pr.open(t)
-	record := filepath.Join(pr.root, ".kraftwerk", "state", "sandboxes", "build-1", "compose-stack.json")
+	record := filepath.Join(pr.root, ".fliesswerk", "state", "sandboxes", "build-1", "compose-stack.json")
 	writeFile(t, record, "{}")
 
 	if err := sb.Destroy(context.Background()); err == nil {
@@ -121,7 +121,7 @@ func TestServicesThatCannotBeRemovedKeepTheirRecord(t *testing.T) {
 func TestACrashedRunsServicesGoBeforeTheirRecords(t *testing.T) {
 	f := &fakeServices{}
 	pr := newProject(t, nil, func(o *Options) { o.Services = f })
-	record := filepath.Join(pr.root, ".kraftwerk", "state", "sandboxes", "build-1", "compose-stack.json")
+	record := filepath.Join(pr.root, ".fliesswerk", "state", "sandboxes", "build-1", "compose-stack.json")
 	writeFile(t, record, "{}")
 
 	f.downLeftErr = errors.New("engine hiccup")
@@ -157,8 +157,8 @@ func TestEverySandboxReachesTheSharedServicesAndTheyOutliveIt(t *testing.T) {
 	if got := mustSh(t, sb, fetch(address)); got != "search" {
 		t.Errorf("through %s: %q", address, got)
 	}
-	if got := mustSh(t, sb, `printf %s "$KRAFTWERK_SANDBOX"`); got != "build-1" {
-		t.Errorf("KRAFTWERK_SANDBOX = %q", got)
+	if got := mustSh(t, sb, `printf %s "$FLIESSWERK_SANDBOX"`); got != "build-1" {
+		t.Errorf("FLIESSWERK_SANDBOX = %q", got)
 	}
 	if err := sb.Destroy(context.Background()); err != nil {
 		t.Fatal(err)

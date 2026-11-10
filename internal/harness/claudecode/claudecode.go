@@ -6,7 +6,7 @@ package claudecode
 import (
 	"encoding/json"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
 )
 
 // ClaudeCode is the Claude Code adapter, selected by

@@ -37,7 +37,7 @@ func ProbeNetwork(ctx context.Context, s Sandbox, allowed string) (NetworkReport
 	var r NetworkReport
 	err := r.probe(ctx, s, allowed)
 	if errors.Is(err, errNoCurl) {
-		r.Problems = append(r.Problems, "the Sandbox has no curl, so nothing about its network could be proven; install curl in it (for a container Sandbox, in .kraftwerk/Containerfile)")
+		r.Problems = append(r.Problems, "the Sandbox has no curl, so nothing about its network could be proven; install curl in it (for a container Sandbox, in .fliesswerk/Containerfile)")
 		return r, nil
 	}
 	return r, err

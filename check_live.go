@@ -11,14 +11,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/egress"
-	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
-	"github.com/Marcel-Goehn/kraftwerk/internal/git"
-	"github.com/Marcel-Goehn/kraftwerk/internal/hook"
-	"github.com/Marcel-Goehn/kraftwerk/internal/runlock"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
-	"github.com/Marcel-Goehn/kraftwerk/internal/step"
-	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
+	"github.com/Marcel-Goehn/fliesswerk/internal/egress"
+	"github.com/Marcel-Goehn/fliesswerk/internal/factory"
+	"github.com/Marcel-Goehn/fliesswerk/internal/git"
+	"github.com/Marcel-Goehn/fliesswerk/internal/hook"
+	"github.com/Marcel-Goehn/fliesswerk/internal/runlock"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/step"
+	"github.com/Marcel-Goehn/fliesswerk/internal/verify"
 )
 
 const (
@@ -37,7 +37,7 @@ type liveCheck struct {
 }
 
 func (c liveCheck) say(format string, a ...any) {
-	_, _ = fmt.Fprintf(c.stdout, "kraftwerk check: "+format+"\n", a...)
+	_, _ = fmt.Fprintf(c.stdout, "fliesswerk check: "+format+"\n", a...)
 }
 
 func (c liveCheck) warn(format string, a ...any) {
@@ -72,7 +72,7 @@ func checkLive(ctx context.Context, values map[string]any, root string, s *secre
 	var held *runlock.HeldError
 	if errors.As(err, &held) {
 		if commands {
-			return fmt.Errorf("%w; run `kraftwerk check --commands` once it has finished", err)
+			return fmt.Errorf("%w; run `fliesswerk check --commands` once it has finished", err)
 		}
 		c.warn("a Run is in progress, so no Sandbox was started to probe its network or trust")
 		return nil
@@ -216,7 +216,7 @@ func (c liveCheck) checkHarness(ctx context.Context, sb sandbox.Sandbox, dir str
 // harnessFix says how to get a suitable Harness for the configured kind.
 func (c liveCheck) harnessFix(containerfile string, host map[string]string) string {
 	if stringAt(c.values, defaultSandbox, "sandbox", "kind") == "container" {
-		return "Install it in .kraftwerk/Containerfile:\n\n" + containerfile
+		return "Install it in .fliesswerk/Containerfile:\n\n" + containerfile
 	}
 	return "Install it: " + host[runtime.GOOS]
 }
@@ -225,7 +225,7 @@ func (c liveCheck) harnessFix(containerfile string, host map[string]string) stri
 // the base branch. A red command doesn't stop the others: the point is to see
 // them all before a Run trips over them.
 func (c liveCheck) runCommands(ctx context.Context, sb sandbox.Sandbox, project, base string) error {
-	setting := hook.Setting{HostDir: c.root, SandboxDir: project, Sandbox: sb, Env: []string{"KRAFTWERK_SANDBOX=probe"}}
+	setting := hook.Setting{HostDir: c.root, SandboxDir: project, Sandbox: sb, Env: []string{"FLIESSWERK_SANDBOX=probe"}}
 	failed := hook.Run(ctx, setting, hookEntries(c.values, "sandbox_created", c.s), func(o hook.Output) {
 		if o.Err == nil {
 			c.say("sandbox_created: `%s` worked", o.Command)

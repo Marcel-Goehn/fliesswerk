@@ -1,12 +1,12 @@
-# kraftwerk
+# fliesswerk
 
-Kraftwerk (short: `kwk`) is a software factory: it runs AFK agents over a Spec's ready Tickets in a loop.
+Fliesswerk (short: `fwk`) is a software factory: it runs AFK agents over a Spec's ready Tickets in a loop.
 
 ## Agent skills
 
 ### Issue tracker
 
-Issues live in GitHub Issues for `Marcel-Goehn/kraftwerk` (via the `gh` CLI). See `docs/agents/issue-tracker.md`.
+Issues live in GitHub Issues for `Marcel-Goehn/fliesswerk` (via the `gh` CLI). See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

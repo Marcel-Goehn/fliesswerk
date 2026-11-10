@@ -10,12 +10,12 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
-	"github.com/Marcel-Goehn/kraftwerk/internal/hook"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
-	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
+	"github.com/Marcel-Goehn/fliesswerk/internal/factory"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/hook"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/fake"
+	"github.com/Marcel-Goehn/fliesswerk/internal/verify"
 )
 
 // recordedSandbox notes the commands it is asked to run. Each just passes,
@@ -285,8 +285,8 @@ func TestSandboxesThatCannotBeClearedStopTheRun(t *testing.T) {
 func TestAGitDirectoryPlantedInTheProjectIsNeverUsedByTheHost(t *testing.T) {
 	f := newFixture(t)
 	sub := filepath.Join(f.work, "app")
-	write(t, filepath.Join(sub, ".kraftwerk", "config.toml"), "version = 1\n")
-	write(t, filepath.Join(sub, ".kraftwerk", ".gitignore"), "state/\nlogs/\n.env\n")
+	write(t, filepath.Join(sub, ".fliesswerk", "config.toml"), "version = 1\n")
+	write(t, filepath.Join(sub, ".fliesswerk", ".gitignore"), "state/\nlogs/\n.env\n")
 	git(t, f.work, "add", ".")
 	git(t, f.work, "commit", "-q", "-m", "A project in a subdirectory")
 	git(t, f.work, "push", "-q", "origin", "main")

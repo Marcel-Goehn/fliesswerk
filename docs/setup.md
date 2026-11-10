@@ -1,8 +1,8 @@
 # Setting up a project
 
-This guide takes a project from nothing to its first Run. It covers `kraftwerk init`, what a teammate does after cloning a project that is already set up, how to sign in to Claude, the fine-grained GitHub token, importing a Bedrock setup and choosing a Sandbox kind.
+This guide takes a project from nothing to its first Run. It covers `fliesswerk init`, what a teammate does after cloning a project that is already set up, how to sign in to Claude, the fine-grained GitHub token, importing a Bedrock setup and choosing a Sandbox kind.
 
-Install Kraftwerk first: see the [install guide](install.md).
+Install Fliesswerk first: see the [install guide](install.md).
 
 ## What you need
 
@@ -14,11 +14,11 @@ Install Kraftwerk first: see the [install guide](install.md).
 | Docker or Podman | | The container Sandbox, and Services with either kind. See the [support matrix](support-matrix.md) |
 | bubblewrap (`bwrap`) | | The native Sandbox on Linux and WSL2 |
 
-You don't need to check these by hand. `kraftwerk check` tests each one and names the install command for your OS.
+You don't need to check these by hand. `fliesswerk check` tests each one and names the install command for your OS.
 
 ## Running `init`
 
-Run `kraftwerk init` in your project's checkout. It looks at the repo, asks its questions and writes nothing until the last question has an answer. Press Enter to take the suggestion in brackets, or type `-` to leave it out.
+Run `fliesswerk init` in your project's checkout. It looks at the repo, asks its questions and writes nothing until the last question has an answer. Press Enter to take the suggestion in brackets, or type `-` to leave it out.
 
 The project questions come first, in this order:
 
@@ -39,48 +39,48 @@ Then come your own questions, described under [Signing in to Claude](#signing-in
 
 | File | Committed | Holds |
 | --- | --- | --- |
-| `.kraftwerk/config.toml` | Yes | The team's settings, with every default written out and commented |
-| `.kraftwerk/Containerfile` | Yes | The image every container Sandbox starts from (container kind only) |
-| `.kraftwerk/prompts/implement.md`, `review.md`, `merge.md` | Yes | The part of each prompt your team may edit |
-| `.kraftwerk/.gitignore` | Yes | Keeps the files below out of git. Your root `.gitignore` is never touched |
-| `.kraftwerk/config.local.toml` | No | Your own settings: how you sign in, your tokens' sources, and any `kind = "none"` |
+| `.fliesswerk/config.toml` | Yes | The team's settings, with every default written out and commented |
+| `.fliesswerk/Containerfile` | Yes | The image every container Sandbox starts from (container kind only) |
+| `.fliesswerk/prompts/implement.md`, `review.md`, `merge.md` | Yes | The part of each prompt your team may edit |
+| `.fliesswerk/.gitignore` | Yes | Keeps the files below out of git. Your root `.gitignore` is never touched |
+| `.fliesswerk/config.local.toml` | No | Your own settings: how you sign in, your tokens' sources, and any `kind = "none"` |
 
-Secrets you type go to your user-level credentials file, never into the project. It is `kraftwerk/credentials` in your user config directory (`~/.config` on Linux, `~/Library/Application Support` on macOS, `%AppData%` on Windows), readable only by you and shared by all your projects.
+Secrets you type go to your user-level credentials file, never into the project. It is `fliesswerk/credentials` in your user config directory (`~/.config` on Linux, `~/Library/Application Support` on macOS, `%AppData%` on Windows), readable only by you and shared by all your projects.
 
 The `sandbox_created` Hook installs your dependencies from the lockfile in every fresh Sandbox, and the registries those installs need are on the network allowlist. Every setting is explained in the [config reference](config.md).
 
 ### Finishing the Containerfile
 
-For a language without a recipe, the Containerfile has a block marked `TODO(kraftwerk)`. Install the language there and delete the marker line. `check` and `run` refuse to start while a marker is left. Add anything else your Feedback commands need under "system packages".
+For a language without a recipe, the Containerfile has a block marked `TODO(fliesswerk)`. Install the language there and delete the marker line. `check` and `run` refuse to start while a marker is left. Add anything else your Feedback commands need under "system packages".
 
 ### The end of `init`
 
-`init` ends by running `kraftwerk check --commands`. It builds the image, resolves every credential, tests the ones the Factory uses itself (GitHub, and AWS for Bedrock), does a dry-run push, starts a Sandbox, and runs your `sandbox_created` Hook and every Feedback command once on the base branch, with no agent and no tokens spent. A command that already fails on the base branch shows up here, so the agent isn't blamed for it.
+`init` ends by running `fliesswerk check --commands`. It builds the image, resolves every credential, tests the ones the Factory uses itself (GitHub, and AWS for Bedrock), does a dry-run push, starts a Sandbox, and runs your `sandbox_created` Hook and every Feedback command once on the base branch, with no agent and no tokens spent. A command that already fails on the base branch shows up here, so the agent isn't blamed for it.
 
 It ends with either:
 
 ```
-Ready: commit `.kraftwerk/`, label a Ticket, run `kraftwerk run`
+Ready: commit `.fliesswerk/`, label a Ticket, run `fliesswerk run`
 ```
 
-or the exact lines to fix. Fix them and run `kraftwerk check --commands` again.
+or the exact lines to fix. Fix them and run `fliesswerk check --commands` again.
 
 ### Labels
 
 The Factory adds the `in_progress_label` (default `in-progress`) to a Spec it claims, and swaps the ready label for the `cannot_do_label` (default `needs-investigation`) on a Ticket it hands back. GitHub can only add labels that exist, so create them once:
 
 ```sh
-gh label create in-progress --description "Claimed by a Kraftwerk Run"
-gh label create needs-investigation --description "Kraftwerk handed it back to a person"
+gh label create in-progress --description "Claimed by a Fliesswerk Run"
+gh label create needs-investigation --description "Fliesswerk handed it back to a person"
 ```
 
 ### Running `init` again
 
-`init` never overwrites a file. Run it again at any time: it creates only what's missing (`.kraftwerk/.gitignore`, the Containerfile for the container kind, and `config.local.toml`), says "Already set up" if nothing is missing, and runs `check`. To change a setting, edit the file.
+`init` never overwrites a file. Run it again at any time: it creates only what's missing (`.fliesswerk/.gitignore`, the Containerfile for the container kind, and `config.local.toml`), says "Already set up" if nothing is missing, and runs `check`. To change a setting, edit the file.
 
 ## A teammate cloning a set-up repo
 
-When `.kraftwerk/config.toml` is already committed, `kraftwerk init` asks only your own questions: how you sign in to Claude, where your secrets are kept and how you reach GitHub. It writes them to your `config.local.toml`, which is never committed, so you can't change the team's config by accident. Then it runs `check --commands`.
+When `.fliesswerk/config.toml` is already committed, `fliesswerk init` asks only your own questions: how you sign in to Claude, where your secrets are kept and how you reach GitHub. It writes them to your `config.local.toml`, which is never committed, so you can't change the team's config by accident. Then it runs `check --commands`.
 
 To use something other than what the team chose, override it in `config.local.toml`. It is merged over `config.toml` key by key, and CLI flags are merged over both. For example, a cheaper model for yourself:
 
@@ -88,7 +88,7 @@ To use something other than what the team chose, override it in `config.local.to
 model = "claude-sonnet-5-5"
 ```
 
-If the team pinned a version with `factory = "…"`, a Kraftwerk outside that range fails validation and names the command that installs a matching one.
+If the team pinned a version with `factory = "…"`, a Fliesswerk outside that range fails validation and names the command that installs a matching one.
 
 ## Signing in to Claude
 
@@ -116,10 +116,10 @@ A secret can be kept in one of four places:
 
 | Source | In the config | Notes |
 | --- | --- | --- |
-| Your credentials file | `{ stored = "claude_api_key" }` | Recommended, except for a subscription token, which it never holds. `kraftwerk auth set <key>` stores or replaces a secret from a hidden prompt |
+| Your credentials file | `{ stored = "claude_api_key" }` | Recommended, except for a subscription token, which it never holds. `fliesswerk auth set <key>` stores or replaces a secret from a hidden prompt |
 | An environment variable | `{ env = "NAME" }` | |
 | A command that prints it | `{ command = "op read op://…" }` | Such as a password manager. Its output is the secret |
-| `.kraftwerk/.env` | `{ dotenv = "KEY" }` | The Factory refuses to start if the file isn't git-ignored |
+| `.fliesswerk/.env` | `{ dotenv = "KEY" }` | The Factory refuses to start if the file isn't git-ignored |
 
 A Claude subscription token is never kept in your credentials file: Anthropic's terms say developers ["may not collect, store, or intermediate Claude.ai credentials or session tokens"](https://code.claude.com/docs/en/legal-and-compliance). For a subscription, `init` offers only the other three, suggests `{ env = "CLAUDE_CODE_OAUTH_TOKEN" }` as Anthropic does, and never asks for the token itself. Set it where you'd set any environment variable, or have your password manager print it.
 
@@ -171,7 +171,7 @@ Every Step runs in a Sandbox. The network is denied by default for every kind ex
 
 | Kind | Runs the agent | Needs | Pick it when |
 | --- | --- | --- | --- |
-| `container` (default) | In a container built from `.kraftwerk/Containerfile` | Docker or Podman | You can use a container engine. It is the strongest isolation and the same on every OS |
+| `container` (default) | In a container built from `.fliesswerk/Containerfile` | Docker or Podman | You can use a container engine. It is the strongest isolation and the same on every OS |
 | `native` | On your machine, fenced in by bubblewrap (Linux, WSL2) or Seatbelt (macOS 14 or newer) | `bwrap` on Linux | You can't or don't want to run containers, and your toolchain is on your machine |
 | `none` | On your machine, not fenced in at all | Your acknowledgement | You accept that the agent can read and change anything your user can |
 
@@ -197,10 +197,10 @@ or for one Run with `--sandbox none --i-accept-unsandboxed-risk`. Every Run warn
 
 ## Teaching the agent your conventions
 
-Each Step's prompt is a fixed part in the binary around your file in `.kraftwerk/prompts/`. Edit your part freely: the fixed part holds the Factory's protocol, so your edits can't break it. Two placeholders are available, each rendering its whole section or nothing: `{{commands}}` lists your Feedback commands, and `{{standards}}` points at your Coding standards file. Any other placeholder is a `check` error.
+Each Step's prompt is a fixed part in the binary around your file in `.fliesswerk/prompts/`. Edit your part freely: the fixed part holds the Factory's protocol, so your edits can't break it. Two placeholders are available, each rendering its whole section or nothing: `{{commands}}` lists your Feedback commands, and `{{standards}}` points at your Coding standards file. Any other placeholder is a `check` error.
 
-When a new release improves a built-in prompt, `check` tells you, and `kraftwerk prompts diff <step>` shows what changed, for you to take over as you like.
+When a new release improves a built-in prompt, `check` tells you, and `fliesswerk prompts diff <step>` shows what changed, for you to take over as you like.
 
 ## Next
 
-Label a Ticket `ready-for-agent`, commit `.kraftwerk/`, and read the [usage guide](usage.md).
+Label a Ticket `ready-for-agent`, commit `.fliesswerk/`, and read the [usage guide](usage.md).

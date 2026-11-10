@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox/container"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox/container"
 )
 
 func TestTheSecretIsNotInTheFirstProcesssArgv(t *testing.T) {
@@ -82,7 +82,7 @@ func TestAServiceIsReachableEveryWayTheSandboxIsToldAndNothingElseIs(t *testing.
 			t.Errorf("through %s: %q", address, got)
 		}
 	}
-	if got := mustSh(t, sb, `printf '%s %s %s' "$KRAFTWERK_SERVICE_DB_HOST" "$KRAFTWERK_SERVICE_DB_PORT" "$DATABASE_URL"`); got != "db 5432 postgres://db:5432/app" {
+	if got := mustSh(t, sb, `printf '%s %s %s' "$FLIESSWERK_SERVICE_DB_HOST" "$FLIESSWERK_SERVICE_DB_PORT" "$DATABASE_URL"`); got != "db 5432 postgres://db:5432/app" {
 		t.Errorf("the variables say %q", got)
 	}
 	listed := strings.Join(sb.Services()[0].Addresses, " ")

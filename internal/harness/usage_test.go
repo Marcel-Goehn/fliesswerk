@@ -3,7 +3,7 @@ package harness_test
 import (
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
 )
 
 func call(id string, input, cacheRead, cacheWrite int64) harness.Event {

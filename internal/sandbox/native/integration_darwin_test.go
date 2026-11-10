@@ -13,20 +13,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
 )
 
 func TestTheRealTmpIsClosed(t *testing.T) {
 	sb := newProject(t, nil, nil).open(t)
-	mustFail(t, sb, "touch /tmp/kraftwerk-sandbox-escaped")
-	mustFail(t, sb, "touch /private/tmp/kraftwerk-sandbox-escaped")
+	mustFail(t, sb, "touch /tmp/fliesswerk-sandbox-escaped")
+	mustFail(t, sb, "touch /private/tmp/fliesswerk-sandbox-escaped")
 }
 
 func TestAHardLinkCannotReachAProtectedPathOrGitControlFile(t *testing.T) {
-	pr := newProject(t, map[string]string{".kraftwerk/config.toml": "version = 1\n"}, nil)
-	sb := pr.open(t, ".kraftwerk/")
+	pr := newProject(t, map[string]string{".fliesswerk/config.toml": "version = 1\n"}, nil)
+	sb := pr.open(t, ".fliesswerk/")
 
-	mustFail(t, sb, "ln .kraftwerk/config.toml linked")
+	mustFail(t, sb, "ln .fliesswerk/config.toml linked")
 	mustFail(t, sb, "ln "+filepath.Join(pr.root, ".git", "config")+" linked")
 }
 
@@ -42,7 +42,7 @@ func TestTheWorktreeCannotBeMovedAside(t *testing.T) {
 }
 
 func TestAUnixSocketIsOutOfReachEvenOnAWritablePath(t *testing.T) {
-	dir, err := os.MkdirTemp("/tmp", "kwk-") // t.TempDir() is too long for a socket's path
+	dir, err := os.MkdirTemp("/tmp", "fwk-") // t.TempDir() is too long for a socket's path
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestTerminalsAreOutOfReach(t *testing.T) {
 }
 
 func TestTheEnvironmentOfAHostProcessIsNotVisible(t *testing.T) {
-	const marker = "KWK_HOST_SECRET=31337"
+	const marker = "FWK_HOST_SECRET=31337"
 	cmd := exec.Command("sleep", "60")
 	cmd.Env = append(os.Environ(), marker)
 	if err := cmd.Start(); err != nil {
@@ -208,7 +208,7 @@ func TestAPublishedPortIsReachableAndNoOtherLocalhostPortIs(t *testing.T) {
 	if got, ok := sh(sb, fetch(address)); !ok || got != "db" {
 		t.Errorf("%s: %q\nwhat Seatbelt denied:\n%s", address, got, denials())
 	}
-	if got := mustSh(t, sb, `printf '%s %s %s' "$KRAFTWERK_SERVICE_DB_HOST" "$KRAFTWERK_SERVICE_DB_PORT" "$DATABASE_URL"`); got != "127.0.0.1 "+strconv.Itoa(port)+" postgres://"+address+"/app" {
+	if got := mustSh(t, sb, `printf '%s %s %s' "$FLIESSWERK_SERVICE_DB_HOST" "$FLIESSWERK_SERVICE_DB_PORT" "$DATABASE_URL"`); got != "127.0.0.1 "+strconv.Itoa(port)+" postgres://"+address+"/app" {
 		t.Errorf("the variables say %q", got)
 	}
 	if listed := sb.Services(); len(listed) != 1 || listed[0].Addresses[0] != address {

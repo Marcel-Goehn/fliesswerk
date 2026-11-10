@@ -1,8 +1,8 @@
 # Running the Factory
 
-This guide covers what happens in a Run and how to steer it: `kraftwerk run` and `--dry-run`, stopping with Ctrl-C, exit codes, the terminal view, the logs and `summary.json`, Blockers, Claims, and what to do after a rejected push.
+This guide covers what happens in a Run and how to steer it: `fliesswerk run` and `--dry-run`, stopping with Ctrl-C, exit codes, the terminal view, the logs and `summary.json`, Blockers, Claims, and what to do after a rejected push.
 
-It assumes a project that `kraftwerk init` has set up. See the [setup guide](setup.md).
+It assumes a project that `fliesswerk init` has set up. See the [setup guide](setup.md).
 
 ## Before a Run: Specs, Tickets and labels
 
@@ -26,8 +26,8 @@ There is no cycle detection: Tickets that block each other never become ready.
 ## Starting a Run
 
 ```sh
-kraftwerk run          # every eligible Spec and standalone Ticket
-kraftwerk run 31       # only Spec #31, or standalone Ticket #31
+fliesswerk run          # every eligible Spec and standalone Ticket
+fliesswerk run 31       # only Spec #31, or standalone Ticket #31
 ```
 
 A Run checks the config and refuses to start on an error. Then it takes the checkout's Run lock, prunes old logs, cleans up what a crashed Run left behind, replays any Tracker writes that failed last time, resolves every credential and tests the ones the Factory uses itself (the Tracker's, and AWS for Bedrock), runs the `run_start` Hook and starts shared Services. Then it works Iteration after Iteration, and finally runs the `run_end` Hook.
@@ -56,19 +56,19 @@ After every committing Step, the Factory checks that no Protected path was chang
 
 | Branch | Name | Kept |
 | --- | --- | --- |
-| Spec branch | `kraftwerk/spec-<N>-<slug>` | Always. It is the deliverable |
-| Standalone Ticket's branch | `kraftwerk/ticket-<N>-<slug>` | Always |
-| Ticket branch inside a Spec | `kraftwerk/ticket-<N>` | Until the Ticket lands. It is never pushed |
+| Spec branch | `fliesswerk/spec-<N>-<slug>` | Always. It is the deliverable |
+| Standalone Ticket's branch | `fliesswerk/ticket-<N>-<slug>` | Always |
+| Ticket branch inside a Spec | `fliesswerk/ticket-<N>` | Until the Ticket lands. It is never pushed |
 
-`kraftwerk` is `[branches] prefix`. A Spec branch is cut from the remote `base_branch` the first time, and pushed after every Ticket that lands. Closed always means the code is on GitHub. An existing Spec branch, local or remote, is found by its number and continued, so a Spec can be handed over or moved to another machine.
+`fliesswerk` is `[branches] prefix`. A Spec branch is cut from the remote `base_branch` the first time, and pushed after every Ticket that lands. Closed always means the code is on GitHub. An existing Spec branch, local or remote, is found by its number and continued, so a Spec can be handed over or moved to another machine.
 
-All the Factory's work happens in its own worktrees under `.kraftwerk/state/`. Your checkout is never touched: keep working on any branch, even with uncommitted changes. The Factory never rebases a Spec branch, never merges `base_branch` into it, never force-pushes and never pushes `base_branch`.
+All the Factory's work happens in its own worktrees under `.fliesswerk/state/`. Your checkout is never touched: keep working on any branch, even with uncommitted changes. The Factory never rebases a Spec branch, never merges `base_branch` into it, never force-pushes and never pushes `base_branch`.
 
 The Factory doesn't open pull requests. Open one when a Spec is finished, or have a `spec_finished` Hook do it. Host Hooks run with your own `gh` login:
 
 ```toml
 [[hooks.spec_finished]]
-run = 'gh pr create --fill --head "$KRAFTWERK_BRANCH"'
+run = 'gh pr create --fill --head "$FLIESSWERK_BRANCH"'
 ```
 
 ### When a Ticket fails
@@ -85,13 +85,13 @@ run = 'gh pr create --fill --head "$KRAFTWERK_BRANCH"'
 
 A handed-back Ticket's comment ends with the last 30 lines of its log in a collapsed **details** block, or the failing command's last 30 lines after a failed `verify`, plus the Run id and the local log path. The Tickets it blocks stay blocked, and the rest of the Spec goes on. To try again, fix the cause, then swap `needs-investigation` back for `ready-for-agent`.
 
-A Tracker write that still fails after its retries is queued in `.kraftwerk/state/` and replayed at the start of the next Run, so a Ticket that was closed but not recorded never runs twice.
+A Tracker write that still fails after its retries is queued in `.fliesswerk/state/` and replayed at the start of the next Run, so a Ticket that was closed but not recorded never runs twice.
 
 ## Previewing with `--dry-run`
 
 ```sh
-kraftwerk run --dry-run
-kraftwerk run --dry-run 31
+fliesswerk run --dry-run
+fliesswerk run --dry-run 31
 ```
 
 The dry run checks the config, reads the Tracker and prints:
@@ -119,14 +119,14 @@ Either way the `run_end` Hook runs and the summary is written. The next Run clea
 | 2 | The Run was stopped: an authentication error, a transient error that outlasted its retries, a failed `run_start` Hook, Ctrl-C, an unreadable Tracker, or another Run holding the checkout's Run lock |
 | 3 | The config is invalid, `check` failed, or the project isn't set up for a Run |
 
-`kraftwerk check` uses 0 and 3.
+`fliesswerk check` uses 0 and 3.
 
 ## Watching a Run
 
 A Run starts with a banner: the version, the Run id and log directory, the Harness and auth method, the Sandbox kind and the limits. Then it prints plain lines, one per event and one per tool call the agent makes:
 
 ```
-14:03:41  #42  implement  started on kraftwerk/ticket-42
+14:03:41  #42  implement  started on fliesswerk/ticket-42
 14:03:52  #42  implement  ▸ Read src/cart.go
 14:07:10  #42  implement  finished in 3m29s, tokens 184210 in, 6120 out, context 52344, $0.84
 ```
@@ -148,7 +148,7 @@ Cost is shown in the unit the Harness reports and never converted. Mixed units a
 
 ## The log directory
 
-Every Run gets its own directory, `.kraftwerk/logs/<run-id>/`, named after its start time, such as `2026-11-07T14-03-12`. `kraftwerk logs` prints the latest one.
+Every Run gets its own directory, `.fliesswerk/logs/<run-id>/`, named after its start time, such as `2026-11-07T14-03-12`. `fliesswerk logs` prints the latest one.
 
 | File | Holds |
 | --- | --- |
@@ -168,7 +168,7 @@ Each Run, when it starts, removes the Run directories older than `[logs] keep_da
 keep_days = "forever"
 ```
 
-Only directories named like Run ids are removed. Anything else in `.kraftwerk/logs/` is left alone.
+Only directories named like Run ids are removed. Anything else in `.fliesswerk/logs/` is left alone.
 
 ### `summary.json`
 
@@ -202,7 +202,7 @@ Everyone else's Runs skip a claimed Spec. `check`, the dry run and the summary l
 To hand a Spec over on purpose, release it:
 
 ```sh
-kraftwerk release 31
+fliesswerk release 31
 ```
 
 That removes the label and the assignee, and the next Run of whoever starts one takes it, continuing the Spec branch where it is. There is no timeout: a Claim whose owner has gone stays until someone releases it.

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
-	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/runlog"
 )
 
 func TestTheSummaryListsEverySectionInTheSpecsOrder(t *testing.T) {
@@ -30,7 +30,7 @@ func TestTheSummaryListsEverySectionInTheSpecsOrder(t *testing.T) {
 		QueuedWrites:  []string{"comment on #2"},
 		Tickets:       []runlog.TicketUsage{{ID: "#2", Usage: runlog.Usage{Input: 10, CacheRead: 5, Output: 3, CostDisplay: "$0.50"}}},
 		Usage:         runlog.Usage{Input: 10, CacheRead: 5, Output: 3, CostDisplay: "$0.50"},
-		LogDir:        ".kraftwerk/logs/r",
+		LogDir:        ".fliesswerk/logs/r",
 	}
 
 	want := `
@@ -67,7 +67,7 @@ Tokens and cost:
   #2  15 in, 3 out  $0.50
   Run  15 in, 3 out  $0.50
 
-Logs: .kraftwerk/logs/r
+Logs: .fliesswerk/logs/r
 `
 	if got := s.Text(); got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)

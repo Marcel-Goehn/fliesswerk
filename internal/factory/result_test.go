@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
-	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
-	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
+	"github.com/Marcel-Goehn/fliesswerk/internal/factory"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/runlog"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/fake"
+	"github.com/Marcel-Goehn/fliesswerk/internal/verify"
 )
 
 func cartCommit() func(context.Context, factory.Step) harness.Outcome {
@@ -80,7 +80,7 @@ func TestAFailedTicketSaysWhatKindOfFailureItWas(t *testing.T) {
 		{factory.KindVerify, differentEachTime(), func(o *factory.Options) {
 			o.Verify = []verify.Command{{Name: "test", Line: "git --no-such-flag"}}
 		}},
-		{factory.KindProtectedPath, commits(map[string]string{".kraftwerk/x": "x\n"}, "Done."), nil},
+		{factory.KindProtectedPath, commits(map[string]string{".fliesswerk/x": "x\n"}, "Done."), nil},
 	}
 	for _, c := range cases {
 		t.Run(c.kind, func(t *testing.T) {
@@ -101,7 +101,7 @@ func TestAFailedTicketSaysWhatKindOfFailureItWas(t *testing.T) {
 
 func TestARejectedPushNamesTheSpecItStoppedAndTheFix(t *testing.T) {
 	f := newFixture(t)
-	spec := "kraftwerk/spec-1-spec-shopping-cart"
+	spec := "fliesswerk/spec-1-spec-shopping-cart"
 	git(t, f.work, "branch", spec, "main")
 	git(t, f.work, "push", "-q", "origin", spec)
 	other := t.TempDir() + "/other"
@@ -157,7 +157,7 @@ func TestAFinishedSpecIsReported(t *testing.T) {
 		t.Fatalf("finished = %+v, want #1", res.SpecsFinished)
 	}
 	got := res.SpecsFinished[0]
-	if got.ID.Display != "#1" || got.Title != "Spec: Shopping cart" || got.Branch != "kraftwerk/spec-1-spec-shopping-cart" {
+	if got.ID.Display != "#1" || got.Title != "Spec: Shopping cart" || got.Branch != "fliesswerk/spec-1-spec-shopping-cart" {
 		t.Errorf("finished = %+v", got)
 	}
 }

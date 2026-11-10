@@ -5,7 +5,7 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
+	"github.com/Marcel-Goehn/fliesswerk/internal/runlog"
 )
 
 // watchCtrlC handles a person stopping the Run. The first Ctrl-C closes

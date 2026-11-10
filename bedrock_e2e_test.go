@@ -38,7 +38,7 @@ func fakeSTS(t *testing.T) (url string, actions *[]string) {
 }
 
 const bedrockKeys = "[harnesses.claude_code]\nmethod = \"bedrock\"\nregion = \"eu-central-1\"\n" +
-	"access_key_id = { env = \"KWK_TEST_KEY_ID\" }\nsecret_access_key = { env = \"KWK_TEST_KEY_SECRET\" }\n"
+	"access_key_id = { env = \"FWK_TEST_KEY_ID\" }\nsecret_access_key = { env = \"FWK_TEST_KEY_SECRET\" }\n"
 
 // awsEnv points the AWS SDK at the fake STS and away from the machine's own
 // AWS config.
@@ -47,12 +47,12 @@ func awsEnv(t *testing.T, stsURL string) []string {
 	none := filepath.Join(t.TempDir(), "none")
 	return []string{
 		"AWS_ENDPOINT_URL_STS=" + stsURL, "AWS_CONFIG_FILE=" + none, "AWS_SHARED_CREDENTIALS_FILE=" + none,
-		"KWK_TEST_KEY_ID=AKIALONGLIVED", "KWK_TEST_KEY_SECRET=long-lived-secret",
+		"FWK_TEST_KEY_ID=AKIALONGLIVED", "FWK_TEST_KEY_SECRET=long-lived-secret",
 	}
 }
 
 func TestCheckTestsABedrockCredentialWithoutMintingAnything(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	stsURL, actions := fakeSTS(t)
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n", "config.local.toml": bedrockKeys})
 
@@ -70,17 +70,17 @@ func TestARunHandsBedrockCredentialsOverInAReadableFile(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the scripted agent copies the file with /bin/cp")
 	}
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	stsURL, actions := fakeSTS(t)
 	copied := filepath.Join(t.TempDir(), "seen.json")
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, {"match": "Ticket #2", "expand": true, "actions": [
-		{"run": ["/bin/cp", "$KRAFTWERK_CREDENTIAL_FILE", "`+copied+`"]},
+		{"run": ["/bin/cp", "$FLIESSWERK_CREDENTIAL_FILE", "`+copied+`"]},
 		{"run": ["git", "commit", "-q", "--allow-empty", "-m", "done"]}
 	], "report": {"outcome": "done", "summary": "Done."}}]}`)
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), noSandbox+bedrockKeys)
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), noSandbox+bedrockKeys)
 	logPath := filepath.Join(t.TempDir(), "harness.jsonl")
-	p.extraEnv = append(append(configHome(t), awsEnv(t, stsURL)...), "KWK_FAKE_HARNESS_LOG="+logPath,
-		"KWK_FAKE_LOG_ENV=KRAFTWERK_CREDENTIAL_FILE,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_SESSION_TOKEN,AWS_REGION,KWK_TEST_KEY_SECRET")
+	p.extraEnv = append(append(configHome(t), awsEnv(t, stsURL)...), "FWK_FAKE_HARNESS_LOG="+logPath,
+		"FWK_FAKE_LOG_ENV=FLIESSWERK_CREDENTIAL_FILE,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_SESSION_TOKEN,AWS_REGION,FWK_TEST_KEY_SECRET")
 
 	code := p.run(t)
 
@@ -100,7 +100,7 @@ func TestARunHandsBedrockCredentialsOverInAReadableFile(t *testing.T) {
 		}
 	}
 	for _, c := range harnessCalls(t, logPath) {
-		for _, name := range []string{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "KWK_TEST_KEY_SECRET"} {
+		for _, name := range []string{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "FWK_TEST_KEY_SECRET"} {
 			if v := c.Env[name]; v != "" {
 				t.Errorf("the Step's env has %s = %q, want no AWS credential in it", name, v)
 			}
@@ -116,21 +116,21 @@ func TestARunHandsBedrockCredentialsOverInAReadableFile(t *testing.T) {
 			t.Errorf("a secret is on the command line: %q", argv)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(p.work, ".kraftwerk", "state", "credentials")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(p.work, ".fliesswerk", "state", "credentials")); !os.IsNotExist(err) {
 		t.Errorf("stat the credential directory after the Run: %v, want it gone", err)
 	}
 }
 
 func TestPassingLongLivedKeysThroughWarnsAndUsesTheStepEnv(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	stsURL, actions := fakeSTS(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, {"match": "Ticket #2", "actions": [
 		{"run": ["git", "commit", "-q", "--allow-empty", "-m", "done"]}
 	], "report": {"outcome": "done", "summary": "Done."}}]}`)
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), noSandbox+bedrockKeys+"i_accept_long_lived_keys_in_sandbox = true\n")
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), noSandbox+bedrockKeys+"i_accept_long_lived_keys_in_sandbox = true\n")
 	logPath := filepath.Join(t.TempDir(), "harness.jsonl")
-	p.extraEnv = append(append(configHome(t), awsEnv(t, stsURL)...), "KWK_FAKE_HARNESS_LOG="+logPath,
-		"KWK_FAKE_LOG_ENV=AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY")
+	p.extraEnv = append(append(configHome(t), awsEnv(t, stsURL)...), "FWK_FAKE_HARNESS_LOG="+logPath,
+		"FWK_FAKE_LOG_ENV=AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY")
 
 	code := p.run(t)
 

@@ -11,15 +11,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/bedrock"
-	"github.com/Marcel-Goehn/kraftwerk/internal/credentials"
-	"github.com/Marcel-Goehn/kraftwerk/internal/git"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness/claudecode"
-	"github.com/Marcel-Goehn/kraftwerk/internal/hook"
-	"github.com/Marcel-Goehn/kraftwerk/internal/redact"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/github"
+	"github.com/Marcel-Goehn/fliesswerk/internal/bedrock"
+	"github.com/Marcel-Goehn/fliesswerk/internal/credentials"
+	"github.com/Marcel-Goehn/fliesswerk/internal/git"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness/claudecode"
+	"github.com/Marcel-Goehn/fliesswerk/internal/hook"
+	"github.com/Marcel-Goehn/fliesswerk/internal/redact"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/github"
 )
 
 // harnesses are the Harnesses compiled in, by config name.
@@ -63,7 +63,7 @@ type secrets struct {
 	credentialFile string
 }
 
-// resolveSecrets checks that .kraftwerk/.env is git-ignored and that the
+// resolveSecrets checks that .fliesswerk/.env is git-ignored and that the
 // Harness's auth config fits the methods it declares, then resolves every
 // secret the config references. An error is for a person to fix before
 // anything can start; it names the fix and never holds a secret.

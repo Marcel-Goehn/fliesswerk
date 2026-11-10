@@ -1,12 +1,12 @@
-//go:build kwkfake
+//go:build fwkfake
 
 // Command fakeclaude is a scripted fake Harness: it stands in for Claude
 // Code in end-to-end tests, so they never spend tokens. It is built only
-// with the test-only `kwkfake` build tag, so no release ever ships it.
+// with the test-only `fwkfake` build tag, so no release ever ships it.
 //
 // Like `claude -p --output-format stream-json`, it reads the prompt from
 // stdin and writes Claude Code's events to stdout. What it does comes
-// from the JSON script at $KWK_FAKE_HARNESS_SCRIPT:
+// from the JSON script at $FWK_FAKE_HARNESS_SCRIPT:
 //
 //	{"sessions": [{
 //	  "match":   "#42",          // a substring of the prompt; "" matches any
@@ -32,10 +32,10 @@
 // The first session whose match is in the prompt, and that hasn't run
 // its times yet, runs. How often each has run is kept next to the
 // script, in <script>.runs. Every invocation is
-// appended to $KWK_FAKE_HARNESS_LOG, if set, as a JSON line
+// appended to $FWK_FAKE_HARNESS_LOG, if set, as a JSON line
 // {"argv": […], "prompt": "…", "env": {…}} with the CLAUDE_CODE_*,
 // ANTHROPIC_* and GIT_* env, and the variables named in the
-// comma-separated $KWK_FAKE_LOG_ENV.
+// comma-separated $FWK_FAKE_LOG_ENV.
 //
 // A `background` grandchild inherits stdout and stderr and appends a byte
 // to the named file, relative to the work dir, every 20ms until it is
@@ -91,7 +91,7 @@ type action struct {
 }
 
 // envBeat makes the fake a background grandchild beating into this file.
-const envBeat = "KWK_FAKE_BEAT"
+const envBeat = "FWK_FAKE_BEAT"
 
 const sessionID = "00000000-0000-4000-8000-00000000fa4e"
 
@@ -171,10 +171,10 @@ func (s *session) expand() {
 }
 
 func pick(prompt string) session {
-	path := os.Getenv("KWK_FAKE_HARNESS_SCRIPT")
+	path := os.Getenv("FWK_FAKE_HARNESS_SCRIPT")
 	data, err := os.ReadFile(path) //nolint:gosec // the test that runs the fake names its script
 	if err != nil {
-		fail("fakeclaude: KWK_FAKE_HARNESS_SCRIPT: %v", err)
+		fail("fakeclaude: FWK_FAKE_HARNESS_SCRIPT: %v", err)
 	}
 	var sc script
 	if err := json.Unmarshal(data, &sc); err != nil {
@@ -371,12 +371,12 @@ func (w *writer) fail(class string) {
 }
 
 func logInvocation(args []string, prompt string) {
-	path := os.Getenv("KWK_FAKE_HARNESS_LOG")
+	path := os.Getenv("FWK_FAKE_HARNESS_LOG")
 	if path == "" {
 		return
 	}
 	env := map[string]string{}
-	extra := strings.Split(os.Getenv("KWK_FAKE_LOG_ENV"), ",")
+	extra := strings.Split(os.Getenv("FWK_FAKE_LOG_ENV"), ",")
 	for _, kv := range os.Environ() {
 		k, v, _ := strings.Cut(kv, "=")
 		if strings.HasPrefix(k, "CLAUDE_CODE_") || strings.HasPrefix(k, "ANTHROPIC_") || strings.HasPrefix(k, "GIT_") || slices.Contains(extra, k) {

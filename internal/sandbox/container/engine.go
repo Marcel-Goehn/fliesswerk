@@ -11,12 +11,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/proxyimage"
+	"github.com/Marcel-Goehn/fliesswerk/internal/proxyimage"
 )
 
 // EngineEnv names the engine to use, docker or podman, on a machine that
 // has both. Without it Docker is used if it responds, else Podman.
-const EngineEnv = "KRAFTWERK_ENGINE"
+const EngineEnv = "FLIESSWERK_ENGINE"
 
 // Engine is one connection to a container engine, resolved once per Run.
 // Every call goes through it, so that all of a Run's containers and

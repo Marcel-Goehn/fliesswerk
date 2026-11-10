@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/fake"
 )
 
 var (
@@ -35,7 +35,7 @@ func fakeClaudeBinDir(t *testing.T) string {
 		if runtime.GOOS == "windows" {
 			name += ".exe"
 		}
-		cmd := exec.Command("go", "build", "-tags", "kwkfake", "-o", filepath.Join(dir, name), "./internal/harness/fakeclaude")
+		cmd := exec.Command("go", "build", "-tags", "fwkfake", "-o", filepath.Join(dir, name), "./internal/harness/fakeclaude")
 		cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 		if out, err := cmd.CombinedOutput(); err != nil {
 			fakeClaudeErr = fmt.Errorf("go build fakeclaude: %v\n%s", err, out)
@@ -49,12 +49,12 @@ func fakeClaudeBinDir(t *testing.T) string {
 	return fakeClaudeDir
 }
 
-// buildTestKraftwerk gives the test a kraftwerk binary built with the
-// test-only `kwkfake` tag, which lets $KWK_FAKE_TRACKER stand in for the
+// buildTestFliesswerk gives the test a fliesswerk binary built with the
+// test-only `fwkfake` tag, which lets $FWK_FAKE_TRACKER stand in for the
 // Tracker.
-func buildTestKraftwerk(t *testing.T) string {
+func buildTestFliesswerk(t *testing.T) string {
 	t.Helper()
-	return ownCopy(t, builtKraftwerk(t, "kwkfake", ""))
+	return ownCopy(t, builtFliesswerk(t, "fwkfake", ""))
 }
 
 func gitIn(t *testing.T, dir string, args ...string) string {
@@ -107,7 +107,7 @@ func writeFile(t *testing.T, path, content string) {
 }
 
 // runProject is a fixture repo for a Run: a bare remote, the user's
-// checkout cloned from it with a committed .kraftwerk/, a fake Tracker
+// checkout cloned from it with a committed .fliesswerk/, a fake Tracker
 // and a fake Harness script.
 type runProject struct {
 	remote, work   string
@@ -130,14 +130,14 @@ func newRunProject(t *testing.T, bin string, issues []fake.Issue, script string)
 	gitIn(t, dir, "init", "-q", "--bare", "-b", "main", p.remote)
 	gitIn(t, dir, "clone", "-q", p.remote, p.work)
 	gitIn(t, p.work, "symbolic-ref", "HEAD", "refs/heads/main")
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.toml"), "version = 1\n[tracker]\nrepo = \"acme/shop\"\n")
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", ".gitignore"), "config.local.toml\nstate/\nlogs/\n.env\n")
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.toml"), "version = 1\n[tracker]\nrepo = \"acme/shop\"\n")
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", ".gitignore"), "config.local.toml\nstate/\nlogs/\n.env\n")
 	writeFile(t, filepath.Join(p.work, "README.md"), "shop\n")
 	gitIn(t, p.work, "add", ".")
 	gitIn(t, p.work, "commit", "-q", "-m", "Initial commit")
 	gitIn(t, p.work, "push", "-q", "origin", "main")
 	p.baseSHA = gitIn(t, p.work, "rev-parse", "HEAD")
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), "[sandbox]\nkind = \"none\"\ni_accept_unsandboxed_risk = true\n")
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), "[sandbox]\nkind = \"none\"\ni_accept_unsandboxed_risk = true\n")
 
 	state, err := json.Marshal(map[string]any{"ready_label": "ready-for-agent", "issues": issues})
 	if err != nil {
@@ -148,23 +148,23 @@ func newRunProject(t *testing.T, bin string, issues []fake.Issue, script string)
 	return p
 }
 
-// run runs `kraftwerk run` in the user's checkout, with only the fake
+// run runs `fliesswerk run` in the user's checkout, with only the fake
 // Harness and git on PATH.
 func (p *runProject) run(t *testing.T, args ...string) int {
 	t.Helper()
-	return p.kwk(t, append([]string{"run"}, args...)...)
+	return p.fwk(t, append([]string{"run"}, args...)...)
 }
 
-// kwk runs any kraftwerk command in the user's checkout, with the fake
+// fwk runs any fliesswerk command in the user's checkout, with the fake
 // Tracker, the fake Harness and git.
-func (p *runProject) kwk(t *testing.T, args ...string) int {
+func (p *runProject) fwk(t *testing.T, args ...string) int {
 	t.Helper()
 	var code int
 	p.stdout, p.stderr, code = runEnv(t, p.bin, p.work, p.env(t), args...)
 	return code
 }
 
-// env is what kraftwerk runs with: the fake Tracker, the fake Harness and
+// env is what fliesswerk runs with: the fake Tracker, the fake Harness and
 // git.
 func (p *runProject) env(t *testing.T) []string {
 	t.Helper()
@@ -174,7 +174,7 @@ func (p *runProject) env(t *testing.T) []string {
 	}
 	path := fakeClaudeBinDir(t) + string(os.PathListSeparator) + filepath.Dir(gitBin)
 	env := append(baseEnv(path), gitIdentity()...)
-	env = append(env, "KWK_FAKE_TRACKER="+p.trackerPath, "KWK_FAKE_HARNESS_SCRIPT="+p.scriptPath)
+	env = append(env, "FWK_FAKE_TRACKER="+p.trackerPath, "FWK_FAKE_HARNESS_SCRIPT="+p.scriptPath)
 	return append(env, p.extraEnv...)
 }
 
@@ -227,7 +227,7 @@ func cartIssues() []fake.Issue {
 const approves = `{"match": "Review the code changes", "report": {"outcome": "done", "summary": "Looks good."}}`
 
 func TestRunImplementsATicketEndToEnd(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, {"match": "Ticket #2", "actions": [
 		{"write": "cart/cart.go", "content": "package cart\n"},
 		{"run": ["git", "add", "cart/cart.go"]},
@@ -242,7 +242,7 @@ func TestRunImplementsATicketEndToEnd(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
 	}
-	spec := "kraftwerk/spec-1-spec-shopping-cart"
+	spec := "fliesswerk/spec-1-spec-shopping-cart"
 	tip := gitIn(t, p.remote, "for-each-ref", "--format=%(objectname)", "refs/heads/"+spec)
 	if tip == "" {
 		t.Fatalf("%s wasn't pushed; the remote has:\n%s\nstdout: %s", spec, gitIn(t, p.remote, "branch"), p.stdout)
@@ -250,7 +250,7 @@ func TestRunImplementsATicketEndToEnd(t *testing.T) {
 	if got := gitIn(t, p.remote, "log", "--format=%s", p.baseSHA+".."+tip); got != "Add the cart package" {
 		t.Errorf("the pushed Spec branch adds %q to main, want the agent's commit", got)
 	}
-	if got := gitIn(t, p.remote, "for-each-ref", "--format=%(refname:short)"); got != "kraftwerk/spec-1-spec-shopping-cart\nmain" {
+	if got := gitIn(t, p.remote, "for-each-ref", "--format=%(refname:short)"); got != "fliesswerk/spec-1-spec-shopping-cart\nmain" {
 		t.Errorf("branches on the remote = %q, want main and the Spec branch only", got)
 	}
 	if got := gitIn(t, p.remote, "rev-parse", "main"); got != p.baseSHA {
@@ -283,7 +283,7 @@ func TestRunImplementsATicketEndToEnd(t *testing.T) {
 }
 
 func TestRunHandsATicketDoneWithoutChangesBackAndExits1(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [{"match": "Ticket #2", "report": {"outcome": "done", "summary": "Nothing to do."}}]}`)
 
 	code := p.run(t)
@@ -301,7 +301,7 @@ func TestRunHandsATicketDoneWithoutChangesBackAndExits1(t *testing.T) {
 }
 
 func TestTheFakeTrackerNeverShips(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": []}`)
 	p.extraEnv = []string{"FAKEGH_DIR=" + t.TempDir()}
 
@@ -309,7 +309,7 @@ func TestTheFakeTrackerNeverShips(t *testing.T) {
 	if err != nil {
 		t.Skip("no git")
 	}
-	env := append(baseEnv(fakeGhBinDir(t)+string(os.PathListSeparator)+filepath.Dir(gitBin)), "KWK_FAKE_TRACKER="+p.trackerPath)
+	env := append(baseEnv(fakeGhBinDir(t)+string(os.PathListSeparator)+filepath.Dir(gitBin)), "FWK_FAKE_TRACKER="+p.trackerPath)
 	env = append(env, p.extraEnv...)
 	_, stderr, code := runEnv(t, bin, p.work, env, "run", "--dry-run")
 
@@ -319,10 +319,10 @@ func TestTheFakeTrackerNeverShips(t *testing.T) {
 }
 
 func TestRunStopsASilentStepAtItsConfiguredIdleTimeout(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [{"match": "Ticket #2", "actions": [{"sleep": "1m"}],
 		"report": {"outcome": "done", "summary": "ok"}}]}`)
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"),
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"),
 		"[sandbox]\nkind = \"none\"\ni_accept_unsandboxed_risk = true\n[steps.implement]\nidle_timeout = \"1s\"\n")
 
 	start := time.Now()
@@ -357,14 +357,14 @@ func implementsCart(match, content string) string {
 // top of main.
 func (p *runProject) specLog(t *testing.T) string {
 	t.Helper()
-	return gitIn(t, p.remote, "log", "--format=%s", "main..kraftwerk/spec-1-spec-shopping-cart")
+	return gitIn(t, p.remote, "log", "--format=%s", "main..fliesswerk/spec-1-spec-shopping-cart")
 }
 
 func TestReviewApprovesInAFreshSession(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, `+implementsCart("Implement Ticket #2", `package cart\n`)+`]}`)
 	logPath := filepath.Join(t.TempDir(), "harness.jsonl")
-	p.extraEnv = []string{"KWK_FAKE_HARNESS_LOG=" + logPath}
+	p.extraEnv = []string{"FWK_FAKE_HARNESS_LOG=" + logPath}
 
 	if code := p.run(t); code != 0 {
 		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
@@ -384,7 +384,7 @@ func TestReviewApprovesInAFreshSession(t *testing.T) {
 }
 
 func TestReviewFixesWhatItFinds(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [{"match": "Review the code changes", "actions": [
 		{"write": "cart/cart_test.go", "content": "package cart\n"},
 		{"run": ["git", "add", "cart/cart_test.go"]},
@@ -403,15 +403,15 @@ func TestReviewFixesWhatItFinds(t *testing.T) {
 }
 
 func TestVerifyFailsThenPassesAfterImplementRetriesWithItsOutput(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	// Only the retry's prompt says it is one, so its session matches that.
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, `+
 		implementsCart("This is a retry", `package cart // fixed\n`)+`, `+
 		implementsCart("Implement Ticket #2", `package cart\n`)+`]}`)
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), "verify = [\"test\"]\n"+noSandbox+
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), "verify = [\"test\"]\n"+noSandbox+
 		"[commands]\ntest = \"git grep -q fixed -- cart/cart.go || (echo cart.go lacks the fix && exit 1)\"\n")
 	logPath := filepath.Join(t.TempDir(), "harness.jsonl")
-	p.extraEnv = []string{"KWK_FAKE_HARNESS_LOG=" + logPath}
+	p.extraEnv = []string{"FWK_FAKE_HARNESS_LOG=" + logPath}
 
 	if code := p.run(t); code != 0 {
 		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
@@ -430,12 +430,12 @@ func TestVerifyFailsThenPassesAfterImplementRetriesWithItsOutput(t *testing.T) {
 }
 
 func TestEachStepGetsItsOwnSettingsOrElseTheTopLevelOnes(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, `+implementsCart("Implement Ticket #2", `package cart\n`)+`]}`)
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), "model = \"top-model\"\neffort = \"high\"\n"+noSandbox+
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), "model = \"top-model\"\neffort = \"high\"\n"+noSandbox+
 		"[steps.implement]\neffort = \"low\"\n[steps.review]\nharness = \"claude_code\"\nmodel = \"review-model\"\n")
 	logPath := filepath.Join(t.TempDir(), "harness.jsonl")
-	p.extraEnv = []string{"KWK_FAKE_HARNESS_LOG=" + logPath}
+	p.extraEnv = []string{"FWK_FAKE_HARNESS_LOG=" + logPath}
 
 	if code := p.run(t); code != 0 {
 		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
@@ -452,11 +452,11 @@ func TestEachStepGetsItsOwnSettingsOrElseTheTopLevelOnes(t *testing.T) {
 }
 
 func TestReviewDisabledRunsImplementAlone(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+implementsCart("Implement Ticket #2", `package cart\n`)+`]}`)
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), noSandbox+"[steps.review]\nenabled = false\n")
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), noSandbox+"[steps.review]\nenabled = false\n")
 	logPath := filepath.Join(t.TempDir(), "harness.jsonl")
-	p.extraEnv = []string{"KWK_FAKE_HARNESS_LOG=" + logPath}
+	p.extraEnv = []string{"FWK_FAKE_HARNESS_LOG=" + logPath}
 
 	if code := p.run(t); code != 0 {
 		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)

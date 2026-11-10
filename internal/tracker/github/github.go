@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
 )
 
 // Kind is the `[tracker] kind` that selects this adapter.
@@ -122,7 +122,7 @@ func (t *Tracker) Snapshot(ctx context.Context) (tracker.Snapshot, error) {
 		home = repoOf(issues[0].URL)
 	}
 	if len(issues) >= listLimit {
-		return tracker.Snapshot{}, fmt.Errorf("gh returned %d ready issues, its limit; this kraftwerk can't read more", len(issues))
+		return tracker.Snapshot{}, fmt.Errorf("gh returned %d ready issues, its limit; this fliesswerk can't read more", len(issues))
 	}
 	snap := tracker.Snapshot{Specs: map[string]tracker.Spec{}}
 	for _, i := range issues {
@@ -272,7 +272,7 @@ func (t *Tracker) Claims(ctx context.Context) ([]tracker.Claimed, error) {
 		return nil, fmt.Errorf("reading the claimed issues: %w", err)
 	}
 	if len(issues) >= listLimit {
-		return nil, fmt.Errorf("gh returned %d claimed issues, its limit; this kraftwerk can't read more", len(issues))
+		return nil, fmt.Errorf("gh returned %d claimed issues, its limit; this fliesswerk can't read more", len(issues))
 	}
 	home := t.opts.Repo
 	out := make([]tracker.Claimed, 0, len(issues))
@@ -322,7 +322,7 @@ func (t *Tracker) readClaim(ctx context.Context, id tracker.ID, i ghIssue) (trac
 		}
 		at, err := time.Parse(time.RFC3339, date)
 		if err != nil {
-			return tracker.Claim{}, fmt.Errorf("reading who claimed %s: gh printed a date this kraftwerk can't read: %q", id.Display, date)
+			return tracker.Claim{}, fmt.Errorf("reading who claimed %s: gh printed a date this fliesswerk can't read: %q", id.Display, date)
 		}
 		last[login], labeller = at, login
 	}
@@ -436,7 +436,7 @@ func (t *Tracker) runJSON(ctx context.Context, v any, args ...string) error {
 		return err
 	}
 	if err := json.Unmarshal(out, v); err != nil {
-		return fmt.Errorf("gh printed JSON this kraftwerk can't read: %w", err)
+		return fmt.Errorf("gh printed JSON this fliesswerk can't read: %w", err)
 	}
 	return nil
 }

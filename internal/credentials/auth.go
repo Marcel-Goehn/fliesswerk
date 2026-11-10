@@ -8,8 +8,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/bedrock"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/bedrock"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
 )
 
 // Auth is a Harness's credential, resolved for a Run.
@@ -107,7 +107,7 @@ func NotStoredFix(f harness.AuthField) string {
 	if name == "" {
 		name = "NAME"
 	}
-	return fmt.Sprintf("%s, so `kraftwerk auth set` doesn't take it; use `%s`, `%s` or `%s`",
+	return fmt.Sprintf("%s, so `fliesswerk auth set` doesn't take it; use `%s`, `%s` or `%s`",
 		f.NotStored, Source{Env, name}, Source{Command, "op read op://…"}, Source{Dotenv, name})
 }
 

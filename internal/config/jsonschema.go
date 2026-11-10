@@ -6,7 +6,7 @@ import (
 )
 
 // SchemaID is where the published JSON Schema can be fetched from.
-const SchemaID = "https://raw.githubusercontent.com/Marcel-Goehn/kraftwerk/main/schema/config.schema.json"
+const SchemaID = "https://raw.githubusercontent.com/Marcel-Goehn/fliesswerk/main/schema/config.schema.json"
 
 // JSONSchema renders the config's shape as a JSON Schema (draft-07), for
 // editors to autocomplete and validate config.toml and config.local.toml
@@ -15,7 +15,7 @@ func JSONSchema() []byte {
 	s := jsonSchema(schema)
 	s["$schema"] = "http://json-schema.org/draft-07/schema#"
 	s["$id"] = SchemaID
-	s["title"] = "Kraftwerk config"
+	s["title"] = "Fliesswerk config"
 	s["required"] = []string{"version"}
 	out, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {

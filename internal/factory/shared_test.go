@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
-	"github.com/Marcel-Goehn/kraftwerk/internal/hook"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
+	"github.com/Marcel-Goehn/fliesswerk/internal/factory"
+	"github.com/Marcel-Goehn/fliesswerk/internal/hook"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/fake"
 )
 
 func TestSharedServicesRunOnceFromAWorktreeOfTheBaseBranch(t *testing.T) {
@@ -110,9 +110,9 @@ func TestAHookOnTheHostIsToldItsSandbox(t *testing.T) {
 	f := newFixture(t)
 	tr := fake.New(ready, cartSpec()...)
 	var m sandboxes
-	line := `echo sandbox is $KRAFTWERK_SANDBOX`
+	line := `echo sandbox is $FLIESSWERK_SANDBOX`
 	if runtime.GOOS == "windows" {
-		line = `echo sandbox is %KRAFTWERK_SANDBOX%`
+		line = `echo sandbox is %FLIESSWERK_SANDBOX%`
 	}
 	lines := &lineLog{}
 	opts := options(f, tr, commitFile("cart.go", "package cart\n"))

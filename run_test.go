@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/config"
+	"github.com/Marcel-Goehn/fliesswerk/internal/config"
 )
 
 // ghCall is one call the fake gh logged.
@@ -74,10 +74,10 @@ func isRead(args []string) bool {
 	return false
 }
 
-const dryRunProject = "version = 1\n[tracker]\nrepo = \"Marcel-Goehn/kraftwerk\"\n"
+const dryRunProject = "version = 1\n[tracker]\nrepo = \"Marcel-Goehn/fliesswerk\"\n"
 
 func TestRunDryRun(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 
 	t.Run("shows Iteration 1 and every skipped Ticket with its reason", func(t *testing.T) {
 		root := projectDir(t, map[string]string{"config.toml": dryRunProject})
@@ -89,11 +89,11 @@ func TestRunDryRun(t *testing.T) {
 		for _, want := range []string{
 			"Iteration 1 would take 1 Ticket (max_parallel = 1):\n  #35  Tracker boundary, GitHub adapter and `run --dry-run`  (Spec #31)\n",
 			"Ready, for a later Iteration:\n  #36  Harness boundary: Claude Code adapter and scripted fake Harness  (Spec #31)\n",
-			"  #31  Spec: Factory v1 (Kraftwerk): is a Spec; its Tickets are worked instead\n",
+			"  #31  Spec: Factory v1 (Fliesswerk): is a Spec; its Tickets are worked instead\n",
 			"  #37  First Run: git, branches and loop, `kind = \"none\"`: waits for #36, #35 (open Blockers)\n",
 			"  #64  Nightly jobs: names #36, #41, #40, acme/lib#5 as Blockers in its text, with no native blocking link\n",
-			"       fix: gh issue edit 64 --repo Marcel-Goehn/kraftwerk --add-blocked-by 36\n",
-			"       fix: gh issue edit 64 --repo Marcel-Goehn/kraftwerk --add-blocked-by https://github.com/acme/lib/issues/5\n",
+			"       fix: gh issue edit 64 --repo Marcel-Goehn/fliesswerk --add-blocked-by 36\n",
+			"       fix: gh issue edit 64 --repo Marcel-Goehn/fliesswerk --add-blocked-by https://github.com/acme/lib/issues/5\n",
 			"Dry run: nothing was written and nothing was started.\n",
 		} {
 			if !strings.Contains(stdout, want) {
@@ -118,12 +118,12 @@ func TestRunDryRun(t *testing.T) {
 		const token = "s3cret-token-value"
 		root := projectDir(t, map[string]string{
 			"config.toml":       dryRunProject,
-			"config.local.toml": "[tracker]\ntoken = { env = \"KWK_TEST_GH_TOKEN\" }\n",
+			"config.local.toml": "[tracker]\ntoken = { env = \"FWK_TEST_GH_TOKEN\" }\n",
 		})
 		before := tree(t, root)
 		log := filepath.Join(t.TempDir(), "gh.log")
 
-		_, stderr, code := runEnv(t, bin, root, ghEnv(t, "dryrun", "FAKEGH_LOG="+log, "KWK_TEST_GH_TOKEN="+token), "run", "--dry-run")
+		_, stderr, code := runEnv(t, bin, root, ghEnv(t, "dryrun", "FAKEGH_LOG="+log, "FWK_TEST_GH_TOKEN="+token), "run", "--dry-run")
 		if code != 1 {
 			t.Fatalf("exit code = %d, want 1; stderr: %s", code, stderr)
 		}
@@ -153,10 +153,10 @@ func TestRunDryRun(t *testing.T) {
 	t.Run("a token from an unset variable exits 3", func(t *testing.T) {
 		root := projectDir(t, map[string]string{
 			"config.toml":       dryRunProject,
-			"config.local.toml": "[tracker]\ntoken = { env = \"KWK_TEST_UNSET\" }\n",
+			"config.local.toml": "[tracker]\ntoken = { env = \"FWK_TEST_UNSET\" }\n",
 		})
 		_, stderr, code := runEnv(t, bin, root, ghEnv(t, "dryrun"), "run", "--dry-run")
-		if code != 3 || !strings.Contains(stderr, "KWK_TEST_UNSET") {
+		if code != 3 || !strings.Contains(stderr, "FWK_TEST_UNSET") {
 			t.Fatalf("exit code = %d, want 3 naming the variable; stderr: %s", code, stderr)
 		}
 	})
@@ -208,7 +208,7 @@ func TestARunThatCannotBuildANativeSandboxStopsWithTheFix(t *testing.T) {
 	if runtime.GOOS == "darwin" {
 		t.Skip("macOS ships what the Sandbox needs; its version check has its own test")
 	}
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": dryRunProject})
 	log := filepath.Join(t.TempDir(), "gh.log")
 
@@ -225,7 +225,7 @@ func TestARunThatCannotBuildANativeSandboxStopsWithTheFix(t *testing.T) {
 }
 
 func TestANativeSandboxRefusesAPathItMustNeverExpose(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": dryRunProject + "\n[sandbox]\nkind = \"native\"\nread_only_paths = [\"/var/run/docker.sock\"]\n"})
 	log := filepath.Join(t.TempDir(), "gh.log")
 
@@ -240,7 +240,7 @@ func TestANativeSandboxRefusesAPathItMustNeverExpose(t *testing.T) {
 }
 
 func TestCheckWarnsAboutANativeSandboxFootgun(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n[sandbox]\nkind = \"native\"\nwritable_paths = [\"~/.bashrc\"]\n"})
 
 	_, stderr, _ := runEnv(t, bin, root, ghEnv(t, "ok"), "check")
@@ -251,11 +251,11 @@ func TestCheckWarnsAboutANativeSandboxFootgun(t *testing.T) {
 }
 
 func TestARunWithoutAContainerEngineStopsWithTheFix(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": dryRunProject})
 
 	// Whichever engine CI picks for its own job, this Run must choose itself.
-	_, stderr, code := runEnv(t, bin, root, ghEnv(t, "dryrun", "KRAFTWERK_ENGINE="), "run")
+	_, stderr, code := runEnv(t, bin, root, ghEnv(t, "dryrun", "FLIESSWERK_ENGINE="), "run")
 
 	if code != 3 || !strings.Contains(stderr, "Docker or Podman") {
 		t.Fatalf("exit code = %d, want 3 naming the engines; stderr: %s", code, stderr)
@@ -263,7 +263,7 @@ func TestARunWithoutAContainerEngineStopsWithTheFix(t *testing.T) {
 }
 
 func TestARefusedRunArgStopsTheRunBeforeItStarts(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	for _, arg := range []string{"--network=host", "--env=GH_TOKEN"} {
 		root := projectDir(t, map[string]string{"config.toml": dryRunProject + "\n[sandbox]\nrun_args = [\"" + arg + "\"]\n"})
 		log := filepath.Join(t.TempDir(), "gh.log")

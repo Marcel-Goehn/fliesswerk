@@ -22,7 +22,7 @@ func initProject(t *testing.T, files map[string]string) *runProject {
 	p := &runProject{
 		remote: filepath.Join(dir, "remote.git"), work: filepath.Join(dir, "work"),
 		trackerPath: filepath.Join(dir, "tracker.json"), scriptPath: filepath.Join(dir, "script.json"),
-		bin: buildTestKraftwerk(t),
+		bin: buildTestFliesswerk(t),
 	}
 	gitIn(t, dir, "init", "-q", "--bare", "-b", "main", p.remote)
 	gitIn(t, dir, "clone", "-q", p.remote, p.work)
@@ -52,13 +52,13 @@ func (p *runProject) initEnv(t *testing.T, bins ...string) []string {
 	}
 	path := strings.Join([]string{tools, fakeClaudeBinDir(t), gitBinDir(t)}, string(os.PathListSeparator))
 	env := append(baseEnv(path), gitIdentity()...)
-	env = append(env, "KRAFTWERK_ENGINE=") // CI picks one, and these have neither
+	env = append(env, "FLIESSWERK_ENGINE=") // CI picks one, and these have neither
 	p.home = t.TempDir()
-	return append(env, "KWK_FAKE_TRACKER="+p.trackerPath, "KWK_FAKE_HARNESS_SCRIPT="+p.scriptPath,
+	return append(env, "FWK_FAKE_TRACKER="+p.trackerPath, "FWK_FAKE_HARNESS_SCRIPT="+p.scriptPath,
 		"HOME="+p.home, "USERPROFILE="+p.home, "XDG_CONFIG_HOME="+filepath.Join(p.home, ".config"), "AppData="+filepath.Join(p.home, "AppData"))
 }
 
-// init runs `kraftwerk init` in env, typing one line per answer.
+// init runs `fliesswerk init` in env, typing one line per answer.
 func (p *runProject) init(t *testing.T, env []string, answers ...string) int {
 	t.Helper()
 	return p.initWith(t, env, nil, answers...)
@@ -92,9 +92,9 @@ func (p *runProject) thenSignIn(t *testing.T, project []string) []string {
 	return append(slices.Clone(project), viaGateway(srv)...)
 }
 
-func (p *runProject) kraftwerkFile(t *testing.T, name string) string {
+func (p *runProject) fliesswerkFile(t *testing.T, name string) string {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(p.work, ".kraftwerk", filepath.FromSlash(name)))
+	data, err := os.ReadFile(filepath.Join(p.work, ".fliesswerk", filepath.FromSlash(name)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func (p *runProject) kraftwerkFile(t *testing.T, name string) string {
 func (p *runProject) config(t *testing.T) map[string]any {
 	t.Helper()
 	var values map[string]any
-	if err := toml.Unmarshal([]byte(p.kraftwerkFile(t, "config.toml")), &values); err != nil {
+	if err := toml.Unmarshal([]byte(p.fliesswerkFile(t, "config.toml")), &values); err != nil {
 		t.Fatalf("config.toml isn't TOML: %v", err)
 	}
 	return values
@@ -174,7 +174,7 @@ func TestInitNodePostgresWritesATeamConfigFromTheRepo(t *testing.T) {
 	if got := valueAt(values, "services", "postgres", "shared"); got != false {
 		t.Errorf("services.postgres.shared = %v", got)
 	}
-	mustContain(t, "config.toml", p.kraftwerkFile(t, "config.toml"),
+	mustContain(t, "config.toml", p.fliesswerkFile(t, "config.toml"),
 		`# env = { DATABASE_URL = "postgres://app:app@{host}:{port}/app" }`)
 
 	hooks, _ := valueAt(values, "hooks", "sandbox_created").([]any)
@@ -196,7 +196,7 @@ func TestInitWritesEveryDefaultWithAOneLineComment(t *testing.T) {
 	p := initProject(t, nodePostgres())
 	p.init(t, p.initEnv(t), p.thenSignIn(t, acceptAll)...)
 
-	text := p.kraftwerkFile(t, "config.toml")
+	text := p.fliesswerkFile(t, "config.toml")
 	mustContain(t, "config.toml", text, "max_parallel", "max_iterations", "in_progress_label", "cannot_do_label",
 		"prefix", "run_args", "read_only_paths", "writable_paths", "scrub_credentials", "ca_certs", "upstream_proxy",
 		"keep_days", "idle_timeout", "[sandbox.env]", "[sandbox.secrets]", "[steps.review]", "[steps.implement]", "[steps.merge]")
@@ -224,10 +224,10 @@ func TestInitContainerfileIsBuiltInOrderAtThePinnedVersion(t *testing.T) {
 	p := initProject(t, nodePostgres())
 	p.init(t, p.initEnv(t), p.thenSignIn(t, acceptAll)...)
 
-	file := p.kraftwerkFile(t, "Containerfile")
+	file := p.fliesswerkFile(t, "Containerfile")
 	mustContain(t, "Containerfile", file, "node:22.11.0-bookworm-slim", "corepack enable pnpm", "(from .nvmrc)")
 	last := -1
-	for _, want := range []string{"debian:bookworm-slim", "git ca-certificates curl ripgrep", "id=kraftwerk-ca", "node:22.11.0", "system packages", "useradd", "USER agent", "claude.ai/install.sh"} {
+	for _, want := range []string{"debian:bookworm-slim", "git ca-certificates curl ripgrep", "id=fliesswerk-ca", "node:22.11.0", "system packages", "useradd", "USER agent", "claude.ai/install.sh"} {
 		at := strings.Index(file, want)
 		if at < 0 || at < last {
 			t.Fatalf("%q is missing or out of order:\n%s", want, file)
@@ -237,7 +237,7 @@ func TestInitContainerfileIsBuiltInOrderAtThePinnedVersion(t *testing.T) {
 	if regexp.MustCompile(`(?m)^[^#].*\bgh\b`).MatchString(file) {
 		t.Errorf("the agent's image installs gh:\n%s", file)
 	}
-	if strings.Contains(file, "TODO(kraftwerk)") {
+	if strings.Contains(file, "TODO(fliesswerk)") {
 		t.Errorf("a known language left a TODO:\n%s", file)
 	}
 }
@@ -248,9 +248,9 @@ func TestInitWritesThePromptsAndItsOwnGitignoreOnly(t *testing.T) {
 	p.init(t, p.initEnv(t), p.thenSignIn(t, acceptAll)...)
 
 	for _, step := range []string{"implement", "review", "merge"} {
-		mustContain(t, step, p.kraftwerkFile(t, "prompts/"+step+".md"), "kraftwerk: based on the built-in "+step+" prompt v")
+		mustContain(t, step, p.fliesswerkFile(t, "prompts/"+step+".md"), "fliesswerk: based on the built-in "+step+" prompt v")
 	}
-	mustContain(t, ".gitignore", p.kraftwerkFile(t, ".gitignore"), "config.local.toml", ".env", "logs/", "state/")
+	mustContain(t, ".gitignore", p.fliesswerkFile(t, ".gitignore"), "config.local.toml", ".env", "logs/", "state/")
 	root, err := os.ReadFile(filepath.Join(p.work, ".gitignore"))
 	if err != nil || string(root) != "node_modules\n" {
 		t.Errorf("the root .gitignore changed: %q, %v", root, err)
@@ -317,7 +317,7 @@ func TestInitNodeGoMonorepoInstallsBothInParallel(t *testing.T) {
 	if got := strings.Join(stringsOf(valueAt(values, "sandbox", "network", "allow")), ","); got != "proxy.golang.org,registry.npmjs.org,sum.golang.org" {
 		t.Errorf("allow = %v", got)
 	}
-	file := p.kraftwerkFile(t, "Containerfile")
+	file := p.fliesswerkFile(t, "Containerfile")
 	mustContain(t, "Containerfile", file, "node:20-bookworm-slim", "(from package.json engines)", "golang:1.23-bookworm", "(from go.mod)")
 	if strings.Contains(file, "corepack") {
 		t.Errorf("npm needs no corepack:\n%s", file)
@@ -336,7 +336,7 @@ func TestInitPythonAndRustGetTheirRecipes(t *testing.T) {
 
 	p.init(t, p.initEnv(t), p.thenSignIn(t, []string{"", "acme/etl", "", "", "", "", "", "", "", "", "", ""})...)
 
-	file := p.kraftwerkFile(t, "Containerfile")
+	file := p.fliesswerkFile(t, "Containerfile")
 	mustContain(t, "Containerfile", file, "uv python install 3.12", "--default-toolchain 1.82.0")
 	values := p.config(t)
 	hooks, _ := valueAt(values, "hooks", "sandbox_created").([]any)
@@ -360,8 +360,8 @@ func TestInitUnknownLanguageLeavesATodoThatCheckRefuses(t *testing.T) {
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d\nstderr: %s", code, exitConfigError, p.stderr)
 	}
-	mustContain(t, "Containerfile", p.kraftwerkFile(t, "Containerfile"), "TODO(kraftwerk)", "Gemfile")
-	mustContain(t, "stderr", p.stderr, ".kraftwerk/Containerfile:", "TODO(kraftwerk)", "fix the lines above")
+	mustContain(t, "Containerfile", p.fliesswerkFile(t, "Containerfile"), "TODO(fliesswerk)", "Gemfile")
+	mustContain(t, "stderr", p.stderr, ".fliesswerk/Containerfile:", "TODO(fliesswerk)", "fix the lines above")
 	if strings.Contains(p.stdout, "Ready:") {
 		t.Errorf("said Ready with a TODO left:\n%s", p.stdout)
 	}
@@ -381,14 +381,14 @@ func TestInitNoSandboxAsksAgainAndStaysOutOfTheTeamConfig(t *testing.T) {
 	if code != exitOK {
 		t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
 	}
-	mustContain(t, "stdout", p.stdout, "SSH keys", "`test` passes on main", "Ready: commit `.kraftwerk/`, label a Ticket, run `kraftwerk run`")
+	mustContain(t, "stdout", p.stdout, "SSH keys", "`test` passes on main", "Ready: commit `.fliesswerk/`, label a Ticket, run `fliesswerk run`")
 	if got := valueAt(p.config(t), "sandbox", "kind"); got != "container" {
 		t.Errorf("config.toml says kind = %v", got)
 	}
-	if strings.Contains(p.kraftwerkFile(t, "config.toml"), "i_accept") {
+	if strings.Contains(p.fliesswerkFile(t, "config.toml"), "i_accept") {
 		t.Error("the acknowledgement is in config.toml")
 	}
-	mustContain(t, "config.local.toml", p.kraftwerkFile(t, "config.local.toml"), `kind = "none"`, "i_accept_unsandboxed_risk = true", `method = "gateway"`)
+	mustContain(t, "config.local.toml", p.fliesswerkFile(t, "config.local.toml"), `kind = "none"`, "i_accept_unsandboxed_risk = true", `method = "gateway"`)
 }
 
 func TestInitDecliningNoSandboxKeepsTheContainerSandbox(t *testing.T) {
@@ -402,8 +402,8 @@ func TestInitDecliningNoSandboxKeepsTheContainerSandbox(t *testing.T) {
 	if got := valueAt(p.config(t), "sandbox", "kind"); got != "container" {
 		t.Errorf("kind = %v", got)
 	}
-	if strings.Contains(p.kraftwerkFile(t, "config.local.toml"), "i_accept_unsandboxed_risk") {
-		t.Errorf("config.local.toml accepts the risk:\n%s", p.kraftwerkFile(t, "config.local.toml"))
+	if strings.Contains(p.fliesswerkFile(t, "config.local.toml"), "i_accept_unsandboxed_risk") {
+		t.Errorf("config.local.toml accepts the risk:\n%s", p.fliesswerkFile(t, "config.local.toml"))
 	}
 }
 
@@ -419,7 +419,7 @@ func TestInitNativeSandboxGetsNoContainerfile(t *testing.T) {
 	if got := valueAt(p.config(t), "sandbox", "kind"); got != "native" {
 		t.Errorf("kind = %v", got)
 	}
-	if _, err := os.Stat(filepath.Join(p.work, ".kraftwerk", "Containerfile")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(p.work, ".fliesswerk", "Containerfile")); !os.IsNotExist(err) {
 		t.Errorf("a native project got a Containerfile: %v", err)
 	}
 }
@@ -433,21 +433,21 @@ func TestInitWritesNothingUntilEveryQuestionIsAnswered(t *testing.T) {
 		t.Fatalf("exit code = %d, want %d", code, exitConfigError)
 	}
 	mustContain(t, "stderr", p.stderr, "nothing was written")
-	if _, err := os.Stat(filepath.Join(p.work, ".kraftwerk")); !os.IsNotExist(err) {
-		t.Errorf(".kraftwerk was created: %v", err)
+	if _, err := os.Stat(filepath.Join(p.work, ".fliesswerk")); !os.IsNotExist(err) {
+		t.Errorf(".fliesswerk was created: %v", err)
 	}
 }
 
 func TestInitNeverOverwritesAFile(t *testing.T) {
 	p := initProject(t, nodePostgres())
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", ".gitignore"), "mine\n.env\nconfig.local.toml\n")
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", ".gitignore"), "mine\n.env\nconfig.local.toml\n")
 
 	p.init(t, p.initEnv(t), p.thenSignIn(t, acceptAll)...)
 
-	if got := p.kraftwerkFile(t, ".gitignore"); got != "mine\n.env\nconfig.local.toml\n" {
+	if got := p.fliesswerkFile(t, ".gitignore"); got != "mine\n.env\nconfig.local.toml\n" {
 		t.Errorf(".gitignore = %q", got)
 	}
-	mustContain(t, "stdout", p.stdout, ".kraftwerk/.gitignore (already there")
+	mustContain(t, "stdout", p.stdout, ".fliesswerk/.gitignore (already there")
 }
 
 func TestInitNeedsAGitRepository(t *testing.T) {
@@ -478,6 +478,6 @@ func TestInitPointsAtTheSettingsThatAreNotTheTeams(t *testing.T) {
 	p := initProject(t, nodePostgres())
 	p.init(t, p.initEnv(t), p.thenSignIn(t, acceptAll)...)
 
-	mustContain(t, "config.toml", p.kraftwerkFile(t, "config.toml"),
+	mustContain(t, "config.toml", p.fliesswerkFile(t, "config.toml"),
 		"# token = { stored", "# [harnesses.claude_code]", "# effort = ", "# factory = ")
 }

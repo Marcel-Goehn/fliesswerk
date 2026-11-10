@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/version"
+	"github.com/Marcel-Goehn/fliesswerk/internal/version"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -324,11 +324,11 @@ func imagePorts(exposed string) []int {
 
 var unsafeProjectChars = regexp.MustCompile(`[^a-z0-9_-]+`)
 
-// composeProjectName is `kraftwerk-<repo dir>-<hash>-<sandbox>`, in the
+// composeProjectName is `fliesswerk-<repo dir>-<hash>-<sandbox>`, in the
 // characters Compose accepts.
 func composeProjectName(root, hash, sandbox string) string {
 	clean := func(s string) string { return unsafeProjectChars.ReplaceAllString(strings.ToLower(s), "-") }
-	return "kraftwerk-" + clean(filepath.Base(root)) + "-" + hash + "-" + clean(sandbox)
+	return "fliesswerk-" + clean(filepath.Base(root)) + "-" + hash + "-" + clean(sandbox)
 }
 
 // composeResource is a top-level volume or network.

@@ -3,7 +3,7 @@ package harness
 import (
 	"fmt"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/version"
+	"github.com/Marcel-Goehn/fliesswerk/internal/version"
 )
 
 // Description is what a Harness declares about itself. It is static data:
@@ -114,11 +114,11 @@ type AuthField struct {
 	// call it ("the API key"). A field with none is never asked for.
 	Prompt string
 	// StoreKey is the name a Secret gets in the user-level credentials file.
-	// With NotStored, it is the name `kraftwerk auth set` refuses.
+	// With NotStored, it is the name `fliesswerk auth set` refuses.
 	StoreKey string
 	// NotStored, if set, says why the Secret is never kept in the user-level
 	// credentials file: `stored` is refused for it, `init` doesn't offer it,
-	// and `kraftwerk auth set` won't take StoreKey.
+	// and `fliesswerk auth set` won't take StoreKey.
 	NotStored string
 	// SuggestEnv is the environment variable `init` suggests a Secret comes
 	// from, "" for none.

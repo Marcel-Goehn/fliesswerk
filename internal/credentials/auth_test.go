@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/credentials"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness/claudecode"
+	"github.com/Marcel-Goehn/fliesswerk/internal/credentials"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness/claudecode"
 )
 
 var claude = claudecode.ClaudeCode{}.Describe()
@@ -34,7 +34,7 @@ func TestCheckAuth(t *testing.T) {
 		{"oauth_token from a command", claude, map[string]any{"method": "oauth_token", "secret": map[string]any{"command": "op read op://dev/claude"}}, ""},
 		{"oauth_token from .env", claude, map[string]any{"method": "oauth_token", "secret": map[string]any{"dotenv": "CLAUDE_CODE_OAUTH_TOKEN"}}, ""},
 		{"oauth_token stored names the allowed sources", claude, map[string]any{"method": "oauth_token", "secret": map[string]any{"stored": "claude"}}, "`{ env = \"CLAUDE_CODE_OAUTH_TOKEN\" }`, `{ command = \"op read op://…\" }` or `{ dotenv = \"CLAUDE_CODE_OAUTH_TOKEN\" }`"},
-		{"oauth_token stored says auth set won't take it", claude, map[string]any{"method": "oauth_token", "secret": map[string]any{"stored": "claude"}}, "`kraftwerk auth set` doesn't take"},
+		{"oauth_token stored says auth set won't take it", claude, map[string]any{"method": "oauth_token", "secret": map[string]any{"stored": "claude"}}, "`fliesswerk auth set` doesn't take"},
 		{"api_key stored", claude, map[string]any{"method": "api_key", "secret": map[string]any{"stored": "claude_api_key"}}, ""},
 		{"gateway with a base_url", claude, map[string]any{"method": "gateway", "base_url": "https://llm.corp.example", "secret": map[string]any{"env": "T"}}, ""},
 		{"a secret without a method", claude, map[string]any{"secret": map[string]any{"stored": "claude"}}, "set `method`"},
@@ -97,8 +97,8 @@ func TestResolveAuthWithNothingSetIsNil(t *testing.T) {
 func TestResolveAuthNamesTheFix(t *testing.T) {
 	_, err := credentials.ResolveAuth(context.Background(), project(t, ".env\n"), claude,
 		map[string]any{"method": "api_key", "secret": map[string]any{"stored": "anthropic"}})
-	if err == nil || !strings.Contains(err.Error(), "kraftwerk auth set anthropic") {
-		t.Errorf("err = %v, want it to name `kraftwerk auth set anthropic`", err)
+	if err == nil || !strings.Contains(err.Error(), "fliesswerk auth set anthropic") {
+		t.Errorf("err = %v, want it to name `fliesswerk auth set anthropic`", err)
 	}
 }
 

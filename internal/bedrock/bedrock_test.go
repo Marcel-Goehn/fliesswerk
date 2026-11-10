@@ -18,7 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts/types"
 	"github.com/aws/smithy-go"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/bedrock"
+	"github.com/Marcel-Goehn/fliesswerk/internal/bedrock"
 )
 
 var start = time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)

@@ -7,19 +7,19 @@ import (
 	"io"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
 )
 
 // runRelease drops the Claim on the Spec or standalone Ticket the one
 // argument names, so someone else's Run may take it.
 func runRelease(args []string, stdout, stderr io.Writer) int {
-	const cmd = "kraftwerk release"
+	const cmd = "fliesswerk release"
 	values, root, rest, code, ok := loadConfig(cmd, args, 1, stderr, nil)
 	if !ok {
 		return code
 	}
 	if len(rest) != 1 {
-		_, _ = fmt.Fprintf(stderr, "%s: name the Spec or standalone Ticket to release, e.g. `kraftwerk release 42`\n", cmd)
+		_, _ = fmt.Fprintf(stderr, "%s: name the Spec or standalone Ticket to release, e.g. `fliesswerk release 42`\n", cmd)
 		return exitConfigError
 	}
 	s, code, ok := secretsForRun(values, root, stderr)

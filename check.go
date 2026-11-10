@@ -10,13 +10,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/config"
-	"github.com/Marcel-Goehn/kraftwerk/internal/egress"
-	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
-	"github.com/Marcel-Goehn/kraftwerk/internal/git"
-	"github.com/Marcel-Goehn/kraftwerk/internal/memory"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox/container"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox/native"
+	"github.com/Marcel-Goehn/fliesswerk/internal/config"
+	"github.com/Marcel-Goehn/fliesswerk/internal/egress"
+	"github.com/Marcel-Goehn/fliesswerk/internal/factory"
+	"github.com/Marcel-Goehn/fliesswerk/internal/git"
+	"github.com/Marcel-Goehn/fliesswerk/internal/memory"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox/container"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox/native"
 )
 
 // localFlags are the CLI flags that override the config files. They count
@@ -71,30 +71,30 @@ func (f *localFlags) overrides(fs *flag.FlagSet) []config.Override {
 // kind. With --commands it goes on to run the project's commands in it.
 func runCheck(args []string, stdout, stderr io.Writer) int {
 	var commands bool
-	values, root, _, code, ok := loadConfig("kraftwerk check", args, 0, stderr, func(fs *flag.FlagSet) {
+	values, root, _, code, ok := loadConfig("fliesswerk check", args, 0, stderr, func(fs *flag.FlagSet) {
 		fs.BoolVar(&commands, "commands", false, "also run sandbox_created and every Feedback command once, in a Sandbox on base_branch")
 	})
 	if !ok {
 		return code
 	}
-	_, _ = fmt.Fprintln(stdout, "kraftwerk check: the config is valid")
+	_, _ = fmt.Fprintln(stdout, "fliesswerk check: the config is valid")
 	prompts, ok := loadPrompts(root, stderr)
 	if !ok {
-		_, _ = fmt.Fprintln(stderr, "kraftwerk check: fix the errors above")
+		_, _ = fmt.Fprintln(stderr, "fliesswerk check: fix the errors above")
 		return exitConfigError
 	}
 	warnAboutPrompts(prompts, stderr)
 	ctx := context.Background()
 	fail := func(err error) int {
 		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
-		_, _ = fmt.Fprintln(stderr, "kraftwerk check: fix the errors above")
+		_, _ = fmt.Fprintln(stderr, "fliesswerk check: fix the errors above")
 		return exitConfigError
 	}
 
 	if err := git.CheckVersion(ctx); err != nil {
 		return fail(err) // everything after this uses git
 	}
-	_, _ = fmt.Fprintln(stdout, "kraftwerk check: git ok")
+	_, _ = fmt.Fprintln(stdout, "fliesswerk check: git ok")
 	s, err := resolveSecrets(ctx, values, root)
 	if err != nil {
 		return fail(err)
@@ -105,15 +105,15 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	}
 	switch {
 	case s.auth != nil && s.auth.Tested():
-		_, _ = fmt.Fprintf(stdout, "kraftwerk check: %s credential (%s) ok\n", s.auth.Harness, s.auth.Method)
+		_, _ = fmt.Fprintf(stdout, "fliesswerk check: %s credential (%s) ok\n", s.auth.Harness, s.auth.Method)
 	case s.auth != nil:
-		_, _ = fmt.Fprintf(stdout, "kraftwerk check: %s credential (%s) found, not tested ahead of time: Claude Code checks it on the first Step\n", s.auth.Harness, s.auth.Method)
+		_, _ = fmt.Fprintf(stdout, "fliesswerk check: %s credential (%s) found, not tested ahead of time: Claude Code checks it on the first Step\n", s.auth.Harness, s.auth.Method)
 	}
 	for _, w := range s.authWarnings(ctx) {
 		_, _ = fmt.Fprintf(stderr, "warning: %s\n", w)
 	}
 	if len(s.project) > 0 {
-		_, _ = fmt.Fprintf(stdout, "kraftwerk check: %d project %s resolved\n", len(s.project), pluralize(len(s.project), "secret", "secrets"))
+		_, _ = fmt.Fprintf(stdout, "fliesswerk check: %d project %s resolved\n", len(s.project), pluralize(len(s.project), "secret", "secrets"))
 		if !boolAt(values, true, "sandbox", "scrub_credentials") {
 			_, _ = fmt.Fprintln(stderr, "warning: sandbox.scrub_credentials: with scrubbing off, the agent gets the project secrets ([sandbox.secrets]) and can read them")
 		}
@@ -133,7 +133,7 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	if err := checkRemote(ctx, values, root); err != nil {
 		return fail(err)
 	}
-	_, _ = fmt.Fprintf(stdout, "kraftwerk check: a dry-run push to %s ok\n", remote)
+	_, _ = fmt.Fprintf(stdout, "fliesswerk check: a dry-run push to %s ok\n", remote)
 	if err := checkSandboxTools(ctx, values, root, stdout); err != nil {
 		return fail(err)
 	}
@@ -157,7 +157,7 @@ func checkTracker(ctx context.Context, values map[string]any, s *secrets, stdout
 		if err := c.Run(ctx); err != nil {
 			return fmt.Errorf("%s: %w", c.Name, err) // later checks build on earlier ones
 		}
-		_, _ = fmt.Fprintf(stdout, "kraftwerk check: %s ok\n", c.Name)
+		_, _ = fmt.Fprintf(stdout, "fliesswerk check: %s ok\n", c.Name)
 	}
 	others, err := claimedByOthers(ctx, tr)
 	if err != nil {
@@ -177,7 +177,7 @@ func checkRemote(ctx context.Context, values map[string]any, root string) error 
 	if err := repo.Fetch(ctx, remote, base); err != nil {
 		return fmt.Errorf("can't fetch the base branch %s from %s: %w\nCheck that the remote `%s` exists and you can read it (`git remote -v`), and that `branches.base_branch` names a branch on it", base, remote, err, remote)
 	}
-	branch := stringAt(values, defaultPrefix, "branches", "prefix") + "/kraftwerk-check"
+	branch := stringAt(values, defaultPrefix, "branches", "prefix") + "/fliesswerk-check"
 	if err := repo.DryRunPush(ctx, remote, "refs/remotes/"+remote+"/"+base, branch); err != nil {
 		return fmt.Errorf("a dry-run push to %s failed, so a Run couldn't push its Spec branches: %w\nCheck this machine's git credentials for the remote: `git push --dry-run %s %s:refs/heads/%s`", remote, err, remote, base, branch)
 	}
@@ -187,7 +187,7 @@ func checkRemote(ctx context.Context, values map[string]any, root string) error 
 // checkSandboxTools checks what the configured Sandbox kind is built from,
 // without building one.
 func checkSandboxTools(ctx context.Context, values map[string]any, root string, stdout io.Writer) error {
-	say := func(what string) { _, _ = fmt.Fprintf(stdout, "kraftwerk check: %s ok\n", what) }
+	say := func(what string) { _, _ = fmt.Fprintf(stdout, "fliesswerk check: %s ok\n", what) }
 	hasServices := len(serviceNames(values)) > 0
 	switch stringAt(values, defaultSandbox, "sandbox", "kind") {
 	case "container":
@@ -240,7 +240,7 @@ func reportMemory(root string, stdout, stderr io.Writer) {
 		how = "not measured yet"
 	}
 	waits := store.LastRunWaits()
-	_, _ = fmt.Fprintf(stdout, "kraftwerk check: memory: peak estimate %d MB per Sandbox (%s), %d %s for memory in the last Run\n",
+	_, _ = fmt.Fprintf(stdout, "fliesswerk check: memory: peak estimate %d MB per Sandbox (%s), %d %s for memory in the last Run\n",
 		memory.MB(store.Estimate()), how, waits, pluralize(waits, "wait", "waits"))
 }
 
@@ -292,7 +292,7 @@ func loadConfig(cmd string, args []string, maxArgs int, stderr io.Writer, regist
 }
 
 // projectRoot is the nearest directory at or above dir that holds
-// .kraftwerk/, looking no further than the enclosing git repository. With
+// .fliesswerk/, looking no further than the enclosing git repository. With
 // none found, it is dir itself, where Load then reports the missing config.
 func projectRoot(dir string) string {
 	for d := dir; ; {

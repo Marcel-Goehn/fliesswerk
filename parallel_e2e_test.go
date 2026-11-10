@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/fake"
 )
 
 // commitsFile is the fake Harness's actions that commit one file.
@@ -34,13 +34,13 @@ func twoTicketsOfASpec() []fake.Issue {
 }
 
 func TestTwoCleanTicketsOfASpecRunAtOnceAndBothLand(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	dir := t.TempDir()
 	two, three := filepath.Join(dir, "2"), filepath.Join(dir, "3")
 	p := newRunProject(t, bin, twoTicketsOfASpec(), `{"sessions": [`+approves+`, `+
 		meetsThenCommits("Implement Ticket #2", two, three, "cart.txt")+`, `+
 		meetsThenCommits("Implement Ticket #3", three, two, "shelf.txt")+`]}`)
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), "verify = [\"test\"]\n"+noSandbox+
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), "verify = [\"test\"]\n"+noSandbox+
 		"[commands]\ntest = \"git status --short\"\n")
 
 	if code := p.run(t, "--max-parallel", "2"); code != 0 {
@@ -50,7 +50,7 @@ func TestTwoCleanTicketsOfASpecRunAtOnceAndBothLand(t *testing.T) {
 	if !issues[2].Closed || !issues[3].Closed {
 		t.Errorf("#2 closed = %v, #3 closed = %v, want both\nstdout: %s", issues[2].Closed, issues[3].Closed, p.stdout)
 	}
-	spec := "kraftwerk/spec-1-spec-shopping-cart"
+	spec := "fliesswerk/spec-1-spec-shopping-cart"
 	files := gitIn(t, p.remote, "ls-tree", "--name-only", spec)
 	for _, want := range []string{"cart.txt", "shelf.txt"} {
 		if !strings.Contains(files, want) {
@@ -67,7 +67,7 @@ func TestTwoCleanTicketsOfASpecRunAtOnceAndBothLand(t *testing.T) {
 }
 
 func TestTicketsOfTwoSpecsRunAtOnceOnTheirOwnBranches(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	dir := t.TempDir()
 	cart, search := filepath.Join(dir, "cart"), filepath.Join(dir, "search")
 	issues := append(cartIssues(),
@@ -84,8 +84,8 @@ func TestTicketsOfTwoSpecsRunAtOnceOnTheirOwnBranches(t *testing.T) {
 	if !after[2].Closed || !after[11].Closed {
 		t.Errorf("#2 closed = %v, #11 closed = %v, want both\nstdout: %s", after[2].Closed, after[11].Closed, p.stdout)
 	}
-	cartFiles := gitIn(t, p.remote, "ls-tree", "--name-only", "kraftwerk/spec-1-spec-shopping-cart")
-	searchFiles := gitIn(t, p.remote, "ls-tree", "--name-only", "kraftwerk/spec-10-spec-search")
+	cartFiles := gitIn(t, p.remote, "ls-tree", "--name-only", "fliesswerk/spec-1-spec-shopping-cart")
+	searchFiles := gitIn(t, p.remote, "ls-tree", "--name-only", "fliesswerk/spec-10-spec-search")
 	if !strings.Contains(cartFiles, "cart.txt") || strings.Contains(cartFiles, "search.txt") {
 		t.Errorf("the cart Spec's branch holds:\n%s", cartFiles)
 	}
@@ -108,14 +108,14 @@ func conflictsOnce(ticket, content, own string) string {
 const refusesMerge = `{"match": "Resolve the merge", "report": {"outcome": "cannot_do", "reason": "They can't both be kept.", "summary": "Gave up."}}`
 
 func TestAConflictResolvedByTheMergeStepEndsWithTheTicketClosed(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, twoTicketsOfASpec(), `{"sessions": [`+approves+`, {"match": "Resolve the merge", "actions": [
 		{"write": "shared.txt", "content": "from both\n"},
 		{"run": ["git", "add", "shared.txt"]},
 		{"run": ["git", "commit", "--no-edit"]}],
 		"report": {"outcome": "done", "summary": "Kept both."}}, `+
 		implementsShared("2", "from 2\n")+`, `+implementsShared("3", "from 3\n")+`]}`)
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), "verify = [\"test\"]\n"+noSandbox+
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), "verify = [\"test\"]\n"+noSandbox+
 		"[commands]\ntest = \"git status --short\"\n")
 
 	if code := p.run(t, "--max-parallel", "2"); code != 0 {
@@ -128,7 +128,7 @@ func TestAConflictResolvedByTheMergeStepEndsWithTheTicketClosed(t *testing.T) {
 	if strings.Contains(p.stdout, "re-queued") {
 		t.Errorf("a Ticket was re-queued, want the merge Step to have resolved it:\n%s", p.stdout)
 	}
-	spec := "kraftwerk/spec-1-spec-shopping-cart"
+	spec := "fliesswerk/spec-1-spec-shopping-cart"
 	if got := gitIn(t, p.remote, "show", spec+":shared.txt"); strings.TrimSpace(got) != "from both" {
 		t.Errorf("shared.txt on the Spec branch = %q, want the resolution", got)
 	}
@@ -137,7 +137,7 @@ func TestAConflictResolvedByTheMergeStepEndsWithTheTicketClosed(t *testing.T) {
 		t.Errorf("verify passed %d times, want 3\n%s", n, p.stdout)
 	}
 	// The merge Step's logs go under the Ticket whose merge it resolved.
-	logs, err := filepath.Glob(filepath.Join(p.work, ".kraftwerk", "logs", "*", "*", "merge-1.prompt.md"))
+	logs, err := filepath.Glob(filepath.Join(p.work, ".fliesswerk", "logs", "*", "*", "merge-1.prompt.md"))
 	if err != nil || len(logs) != 1 {
 		t.Fatalf("merge prompts = %v, %v, want one", logs, err)
 	}
@@ -163,12 +163,12 @@ func implementsShared(ticket, content string) string {
 }
 
 func TestAConflictingPairReQueuesOneAndBothEndUpClosed(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, twoTicketsOfASpec(), `{"sessions": [`+approves+`, `+refusesMerge+`, `+
 		conflictsOnce("2", "from 2\n", "two.txt")+`, `+
 		conflictsOnce("3", "from 3\n", "three.txt")+`]}`)
 	logPath := filepath.Join(t.TempDir(), "harness.jsonl")
-	p.extraEnv = []string{"KWK_FAKE_HARNESS_LOG=" + logPath}
+	p.extraEnv = []string{"FWK_FAKE_HARNESS_LOG=" + logPath}
 
 	if code := p.run(t, "--max-parallel", "2"); code != 0 {
 		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
@@ -188,7 +188,7 @@ func TestAConflictingPairReQueuesOneAndBothEndUpClosed(t *testing.T) {
 	if n := len(harnessCalls(t, logPath)); n != 7 {
 		t.Errorf("the Harness ran %d times, want 7\n%s", n, p.stdout)
 	}
-	files := gitIn(t, p.remote, "ls-tree", "--name-only", "kraftwerk/spec-1-spec-shopping-cart")
+	files := gitIn(t, p.remote, "ls-tree", "--name-only", "fliesswerk/spec-1-spec-shopping-cart")
 	if !strings.Contains(files, "shared.txt") || strings.Count(files, "two.txt")+strings.Count(files, "three.txt") != 1 {
 		t.Errorf("the Spec branch holds:\n%s\nwant shared.txt and the retried Ticket's own file", files)
 	}

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness/claudecode"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness/claudecode"
 )
 
 const prompt = "Implement #42.\nIt's a long prompt with \"quotes\" & newlines."
@@ -134,7 +134,7 @@ func TestCommandEnv(t *testing.T) {
 
 func TestCommandPointsClaudeCodeAtTheCredentialFile(t *testing.T) {
 	s := step()
-	s.CredentialCommand = `cat "$KRAFTWERK_CREDENTIAL_FILE"`
+	s.CredentialCommand = `cat "$FLIESSWERK_CREDENTIAL_FILE"`
 
 	got, _ := flag(claudecode.ClaudeCode{}.Command(s).Argv, "--settings")
 

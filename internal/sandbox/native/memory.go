@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/memory"
+	"github.com/Marcel-Goehn/fliesswerk/internal/memory"
 )
 
 // FreeMemory is how many bytes are free for another Sandbox: a native

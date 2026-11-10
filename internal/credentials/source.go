@@ -1,7 +1,7 @@
 // Package credentials finds the secrets the Factory needs. The config only
 // ever says where a secret comes from (a Source), never its value: an
 // environment variable, a command's stdout, the user-level credentials
-// file `kraftwerk auth set` writes, or .kraftwerk/.env. Secrets are
+// file `fliesswerk auth set` writes, or .fliesswerk/.env. Secrets are
 // resolved on the host and handed to each Step's env when it starts.
 package credentials
 
@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/git"
+	"github.com/Marcel-Goehn/fliesswerk/internal/git"
 )
 
 // The kinds of Source, as written in the config.
@@ -64,7 +64,7 @@ func (s Source) fix() string {
 	case Command:
 		return fmt.Sprintf("make `%s` print it", s.Ref)
 	case Stored:
-		return "run `kraftwerk auth set " + s.Ref + "`"
+		return "run `fliesswerk auth set " + s.Ref + "`"
 	default:
 		return "add `" + s.Ref + "=…` to " + DotenvFile
 	}
@@ -72,7 +72,7 @@ func (s Source) fix() string {
 
 // DotenvFile is the project's secrets file, relative to the project root.
 // It must be git-ignored.
-const DotenvFile = ".kraftwerk/.env"
+const DotenvFile = ".fliesswerk/.env"
 
 // commandTimeout bounds a `command` source.
 const commandTimeout = 30 * time.Second
@@ -173,7 +173,7 @@ func (r Resolver) dotenv(ctx context.Context, key string) (string, error) {
 	return v, nil
 }
 
-// CheckDotenvIgnored refuses a project whose .kraftwerk/.env git doesn't
+// CheckDotenvIgnored refuses a project whose .fliesswerk/.env git doesn't
 // ignore, whether the file exists yet or not: a secret put there must
 // never be committed.
 func CheckDotenvIgnored(ctx context.Context, root string) error {
@@ -182,7 +182,7 @@ func CheckDotenvIgnored(ctx context.Context, root string) error {
 		return fmt.Errorf("can't tell whether %s is git-ignored (is %s a git checkout?): %w", DotenvFile, root, err)
 	}
 	if !ignored {
-		return fmt.Errorf("%s is not git-ignored, so a secret put there could be committed; add `.env` to .kraftwerk/.gitignore", DotenvFile)
+		return fmt.Errorf("%s is not git-ignored, so a secret put there could be committed; add `.env` to .fliesswerk/.gitignore", DotenvFile)
 	}
 	return nil
 }

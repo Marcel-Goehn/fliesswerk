@@ -13,8 +13,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness/claudecode"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness/claudecode"
 )
 
 var (
@@ -37,7 +37,7 @@ func fakeHarnessDir(t *testing.T) string {
 		if runtime.GOOS == "windows" {
 			name += ".exe"
 		}
-		cmd := exec.Command("go", "build", "-tags", "kwkfake", "-o", filepath.Join(dir, name), "../fakeclaude")
+		cmd := exec.Command("go", "build", "-tags", "fwkfake", "-o", filepath.Join(dir, name), "../fakeclaude")
 		if out, err := cmd.CombinedOutput(); err != nil {
 			fakeErr = errors.New("go build fakeclaude: " + err.Error() + "\n" + string(out))
 			return
@@ -80,7 +80,7 @@ func runFake(t *testing.T, script string, s harness.Step) fakeRun {
 	cmd := exec.Command(bin, inv.Argv[1:]...)
 	cmd.Dir = work
 	cmd.Stdin = strings.NewReader(inv.Stdin)
-	cmd.Env = append(os.Environ(), "KWK_FAKE_HARNESS_SCRIPT="+scriptPath, "KWK_FAKE_HARNESS_LOG="+logPath)
+	cmd.Env = append(os.Environ(), "FWK_FAKE_HARNESS_SCRIPT="+scriptPath, "FWK_FAKE_HARNESS_LOG="+logPath)
 	for k, v := range inv.Env {
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}
@@ -192,6 +192,6 @@ func TestFakeHarnessEndsInEachOutcome(t *testing.T) {
 func TestFakeHarnessNeverShips(t *testing.T) {
 	out, err := exec.Command("go", "list", "-f", "{{.GoFiles}}", "../fakeclaude").CombinedOutput()
 	if err == nil && strings.TrimSpace(string(out)) != "[]" {
-		t.Errorf("fakeclaude builds without the kwkfake tag: %s", out)
+		t.Errorf("fakeclaude builds without the fwkfake tag: %s", out)
 	}
 }

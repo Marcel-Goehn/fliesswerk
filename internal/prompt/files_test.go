@@ -39,7 +39,7 @@ func TestAMissingFileMeansTheBuiltInPart(t *testing.T) {
 		if p.Exists || p.Text == "" || p.Text != Builtin(step, Latest(step)) {
 			t.Errorf("%s = %+v, want the built-in part", step, p)
 		}
-		if p.Path != ".kraftwerk/prompts/"+step+".md" {
+		if p.Path != ".fliesswerk/prompts/"+step+".md" {
 			t.Errorf("%s path = %q", step, p.Path)
 		}
 	}
@@ -60,7 +60,7 @@ func TestEveryBuiltInPartUsesOnlyKnownPlaceholders(t *testing.T) {
 
 func TestAProjectFileReplacesTheBuiltInAndItsMarkerLineIsNotSent(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "review", "<!-- kraftwerk: based on the built-in review prompt v1; this line isn't sent to the agent -->\n\n# Our review\n")
+	writeFile(t, root, "review", "<!-- fliesswerk: based on the built-in review prompt v1; this line isn't sent to the agent -->\n\n# Our review\n")
 
 	parts, err := Load(root)
 	if err != nil {
@@ -83,8 +83,8 @@ func TestAFileBasedOnAnOlderBuiltInIsImproved(t *testing.T) {
 		t.Fatalf("the history isn't read: latest %d, v1 %q", Latest("implement"), Builtin("implement", 1))
 	}
 	root := t.TempDir()
-	writeFile(t, root, "implement", "<!-- kraftwerk: based on the built-in implement prompt v1; this line isn't sent to the agent -->\nExplore.\nOur rule.\nCommit.\n")
-	writeFile(t, root, "review", "<!-- kraftwerk: based on the built-in review prompt v1; this line isn't sent to the agent -->\nOur review.\n")
+	writeFile(t, root, "implement", "<!-- fliesswerk: based on the built-in implement prompt v1; this line isn't sent to the agent -->\nExplore.\nOur rule.\nCommit.\n")
+	writeFile(t, root, "review", "<!-- fliesswerk: based on the built-in review prompt v1; this line isn't sent to the agent -->\nOur review.\n")
 	writeFile(t, root, "merge", "Our merge, no marker.\n")
 
 	parts, err := Load(root)
@@ -124,7 +124,7 @@ func TestUnifiedDiffShowsTheChangedLinesWithContext(t *testing.T) {
 
 func TestAMarkerNamingAnotherStepIsNoMarker(t *testing.T) {
 	root := t.TempDir()
-	marked := "<!-- kraftwerk: based on the built-in review prompt v1; this line isn't sent to the agent -->\n# Ours\n"
+	marked := "<!-- fliesswerk: based on the built-in review prompt v1; this line isn't sent to the agent -->\n# Ours\n"
 	writeFile(t, root, "implement", marked)
 
 	parts, err := Load(root)

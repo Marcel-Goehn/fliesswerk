@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox/native"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox/native"
 )
 
 // nativeProbeScript has the fake Harness record what the Sandbox can reach
@@ -22,7 +22,7 @@ import (
 const nativeProbeScript = `{"sessions": [` + approves + `, {"actions": [
 	{"run": ["sh", "-c", "if curl -s --noproxy '*' --max-time 3 -o /dev/null http://1.1.1.1/; then echo reached; else echo cut; fi > net.txt"]},
 	{"run": ["sh", "-c", "if test -e \"$REAL_HOME/.ssh/id_rsa\"; then echo open; else echo closed; fi > home.txt"]},
-	{"run": ["sh", "-c", "if echo x >> .kraftwerk/config.toml; then echo changed; else echo refused; fi > protected.txt"]},
+	{"run": ["sh", "-c", "if echo x >> .fliesswerk/config.toml; then echo changed; else echo refused; fi > protected.txt"]},
 	{"run": ["git", "add", "net.txt", "home.txt", "protected.txt"]},
 	{"run": ["git", "commit", "-q", "-m", "Probe the Sandbox"]}
 ], "report": {"outcome": "done", "summary": "Probed."}}]}`
@@ -31,7 +31,7 @@ func TestARunClosesATicketInsideANativeSandbox(t *testing.T) {
 	if _, err := exec.LookPath("bwrap"); err != nil && runtime.GOOS == "linux" {
 		t.Skip("no bwrap; the native job installs it")
 	}
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), nativeProbeScript)
 	// The fake Harness keeps its count of sessions beside its script.
 	fake := t.TempDir()
@@ -39,7 +39,7 @@ func TestARunClosesATicketInsideANativeSandbox(t *testing.T) {
 	writeFile(t, p.scriptPath, nativeProbeScript)
 	home := t.TempDir()
 	writeFile(t, filepath.Join(home, ".ssh", "id_rsa"), "PRIVATE KEY")
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), `verify = ["inside"]
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), `verify = ["inside"]
 
 [commands]
 inside = 'test ! -e "$REAL_HOME/.ssh/id_rsa"'
@@ -49,7 +49,7 @@ kind = "native"
 writable_paths = ["`+fake+`"]
 
 [sandbox.env]
-KWK_FAKE_HARNESS_SCRIPT = "`+p.scriptPath+`"
+FWK_FAKE_HARNESS_SCRIPT = "`+p.scriptPath+`"
 REAL_HOME = "`+home+`"
 
 [[hooks.sandbox_created]]
@@ -86,7 +86,7 @@ run = 'test ! -e "$REAL_HOME/.ssh/id_rsa"'
 	if code != 0 {
 		t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s\nrun logs:\n%s", code, p.stdout, p.stderr, capturedRunLogs(t, p.work))
 	}
-	branch := "kraftwerk/spec-1-spec-shopping-cart"
+	branch := "fliesswerk/spec-1-spec-shopping-cart"
 	for file, want := range map[string]string{"net.txt": "cut", "home.txt": "closed", "protected.txt": "refused"} {
 		if got := gitIn(t, p.remote, "show", branch+":"+file); got != want {
 			t.Errorf("%s = %q, want %q", file, got, want)
@@ -105,7 +105,7 @@ run = 'test ! -e "$REAL_HOME/.ssh/id_rsa"'
 func capturedRunLogs(t *testing.T, project string) string {
 	t.Helper()
 	var all strings.Builder
-	err := filepath.WalkDir(filepath.Join(project, ".kraftwerk", "logs"), func(path string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(filepath.Join(project, ".fliesswerk", "logs"), func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
@@ -129,18 +129,18 @@ func TestANativeRunReportsItsMemoryInTheSummaryAndToCheck(t *testing.T) {
 	if _, err := native.Check(context.Background()); err != nil {
 		t.Skipf("no native Sandbox here: %v", err)
 	}
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	script := `{"sessions": [` + approves + `, ` + implementsCart("Implement Ticket #2", `package cart\n`) + `]}`
 	p := newRunProject(t, bin, cartIssues(), script)
 	fake := t.TempDir()
 	p.scriptPath = filepath.Join(fake, "script.json")
 	writeFile(t, p.scriptPath, script)
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), `[sandbox]
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), `[sandbox]
 kind = "native"
 writable_paths = ["`+fake+`"]
 
 [sandbox.env]
-KWK_FAKE_HARNESS_SCRIPT = "`+p.scriptPath+`"
+FWK_FAKE_HARNESS_SCRIPT = "`+p.scriptPath+`"
 `)
 	git, err := exec.LookPath("git")
 	if err != nil {
@@ -169,10 +169,10 @@ KWK_FAKE_HARNESS_SCRIPT = "`+p.scriptPath+`"
 		}
 	}
 
-	if code := p.kwk(t, "check"); code != 0 {
+	if code := p.fwk(t, "check"); code != 0 {
 		t.Fatalf("check: exit code = %d\nstderr: %s", code, p.stderr)
 	}
-	if !strings.Contains(p.stdout, "kraftwerk check: memory: peak estimate") {
+	if !strings.Contains(p.stdout, "fliesswerk check: memory: peak estimate") {
 		t.Errorf("check doesn't report the memory:\n%s", p.stdout)
 	}
 }
@@ -181,7 +181,7 @@ func TestCheckProvesANativeSandboxAndRunsItsCommands(t *testing.T) {
 	if _, err := exec.LookPath("bwrap"); err != nil && runtime.GOOS == "linux" {
 		t.Skip("no bwrap; the native job installs it")
 	}
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": []}`)
 	config := func(extra string) string {
 		return `[sandbox]
@@ -191,13 +191,13 @@ kind = "native"
 allow = ["github.com"]
 
 [commands]
-sandboxed = 'test -n "$KRAFTWERK_SANDBOX"'
+sandboxed = 'test -n "$FLIESSWERK_SANDBOX"'
 ` + extra + `
 [[hooks.sandbox_created]]
-run = 'test -n "$KRAFTWERK_SANDBOX"'
+run = 'test -n "$FLIESSWERK_SANDBOX"'
 `
 	}
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), config(""))
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), config(""))
 	curl, err := exec.LookPath("curl")
 	if err != nil {
 		t.Fatal(err)
@@ -216,7 +216,7 @@ run = 'test -n "$KRAFTWERK_SANDBOX"'
 	}
 	p.extraEnv = append(p.extraEnv, "HOME="+t.TempDir(), "PATH="+strings.Join(path, string(os.PathListSeparator)))
 
-	code := p.kwk(t, "check", "--commands")
+	code := p.fwk(t, "check", "--commands")
 
 	if _, err := native.Check(context.Background()); err != nil {
 		var blocked *native.BlockedError
@@ -238,8 +238,8 @@ run = 'test -n "$KRAFTWERK_SANDBOX"'
 		"`sandboxed` passes on main",
 	)
 
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), config("broken = 'echo nope && exit 3'\n"))
-	if code := p.kwk(t, "check", "--commands"); code != exitConfigError {
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), config("broken = 'echo nope && exit 3'\n"))
+	if code := p.fwk(t, "check", "--commands"); code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d\nstderr: %s", code, exitConfigError, p.stderr)
 	}
 	mustContain(t, "stderr", p.stderr, "`broken` is already failing on main", "nope")

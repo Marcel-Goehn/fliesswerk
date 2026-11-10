@@ -15,7 +15,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/shell"
+	"github.com/Marcel-Goehn/fliesswerk/internal/shell"
 )
 
 // NonInteractiveEnv keeps git from ever waiting for a person: no
@@ -163,7 +163,7 @@ func (r Repo) DeleteBranch(ctx context.Context, branch string) error {
 // ticketBranchKey is the git config variable that marks a branch as a
 // Ticket branch. The name can't: a standalone Ticket's branch, which is
 // kept, begins with a Ticket branch's whole name.
-const ticketBranchKey = "kraftwerkticket"
+const ticketBranchKey = "fliesswerkticket"
 
 // MarkTicketBranch marks branch as a Ticket branch. Deleting the branch
 // deletes the mark.

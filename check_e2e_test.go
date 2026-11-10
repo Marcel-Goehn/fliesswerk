@@ -7,15 +7,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/fake"
 )
 
 // checkProject is a project with no Sandbox and a remote, whose local config
 // gets extra appended.
 func checkProject(t *testing.T, extra string) *runProject {
 	t.Helper()
-	p := newRunProject(t, buildTestKraftwerk(t), []fake.Issue{}, `{"sessions": []}`)
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), `[sandbox]
+	p := newRunProject(t, buildTestFliesswerk(t), []fake.Issue{}, `{"sessions": []}`)
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), `[sandbox]
 kind = "none"
 i_accept_unsandboxed_risk = true
 `+extra)
@@ -40,7 +40,7 @@ test = "echo all good"
 run = "echo created"
 `)
 
-	if code := p.kwk(t, "check", "--commands"); code != exitOK {
+	if code := p.fwk(t, "check", "--commands"); code != exitOK {
 		t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
 	}
 	mustContain(t, "stdout", p.stdout, "sandbox_created: `echo created` worked", "`test` passes on main")
@@ -54,7 +54,7 @@ test = "echo all good"
 typecheck = "echo types are wrong && exit 4"
 `)
 
-	code := p.kwk(t, "check", "--commands")
+	code := p.fwk(t, "check", "--commands")
 
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d\nstdout: %s\nstderr: %s", code, exitConfigError, p.stdout, p.stderr)
@@ -75,7 +75,7 @@ pushed = "test -f README.md && test ! -f unpushed.txt"
 	gitIn(t, p.work, "add", "unpushed.txt")
 	gitIn(t, p.work, "commit", "-q", "-m", "Not pushed")
 
-	if code := p.kwk(t, "check", "--commands"); code != exitOK {
+	if code := p.fwk(t, "check", "--commands"); code != exitOK {
 		t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
 	}
 }
@@ -89,7 +89,7 @@ test = "echo must not run"
 run = "echo install broke && exit 1"
 `)
 
-	code := p.kwk(t, "check", "--commands")
+	code := p.fwk(t, "check", "--commands")
 
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d\nstderr: %s", code, exitConfigError, p.stderr)
@@ -103,13 +103,13 @@ run = "echo install broke && exit 1"
 func TestCheckCommandsLeavesNoWorktreeBehind(t *testing.T) {
 	p := checkProject(t, "\n[commands]\ntest = \"echo fine\"\n")
 
-	if code := p.kwk(t, "check", "--commands"); code != exitOK {
+	if code := p.fwk(t, "check", "--commands"); code != exitOK {
 		t.Fatalf("exit code = %d\nstderr: %s", code, p.stderr)
 	}
 	if got := gitIn(t, p.work, "worktree", "list"); strings.Contains(got, "probe") {
 		t.Errorf("a worktree was left:\n%s", got)
 	}
-	if _, err := os.Stat(filepath.Join(p.work, ".kraftwerk", "state", "probe")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(p.work, ".fliesswerk", "state", "probe")); !os.IsNotExist(err) {
 		t.Errorf("the probe directory is still there: %v", err)
 	}
 }
@@ -117,7 +117,7 @@ func TestCheckCommandsLeavesNoWorktreeBehind(t *testing.T) {
 func TestCheckCommandsWithoutFeedbackCommandsSaysSo(t *testing.T) {
 	p := checkProject(t, "")
 
-	if code := p.kwk(t, "check", "--commands"); code != exitOK {
+	if code := p.fwk(t, "check", "--commands"); code != exitOK {
 		t.Fatalf("exit code = %d\nstderr: %s", code, p.stderr)
 	}
 	mustContain(t, "stdout", p.stdout, "[commands] is empty")
@@ -127,16 +127,16 @@ func TestCheckCommandsRefusesWhileARunIsInProgress(t *testing.T) {
 	p := checkProject(t, "\n[commands]\ntest = \"echo fine\"\n")
 	holdRunLock(t, p.work)
 
-	code := p.kwk(t, "check", "--commands")
+	code := p.fwk(t, "check", "--commands")
 
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d\nstderr: %s", code, exitConfigError, p.stderr)
 	}
-	mustContain(t, "stderr", p.stderr, "kraftwerk check --commands")
+	mustContain(t, "stderr", p.stderr, "fliesswerk check --commands")
 }
 
 func TestCheckDoesARealDryRunPush(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
 	remote := gitIn(t, root, "remote", "get-url", "origin")
 
@@ -146,13 +146,13 @@ func TestCheckDoesARealDryRunPush(t *testing.T) {
 		t.Fatalf("exit code = %d\nstderr: %s", code, stderr)
 	}
 	mustContain(t, "stdout", stdout, "dry-run push")
-	if refs := gitIn(t, remote, "for-each-ref", "--format=%(refname)"); strings.Contains(refs, "kraftwerk-check") {
+	if refs := gitIn(t, remote, "for-each-ref", "--format=%(refname)"); strings.Contains(refs, "fliesswerk-check") {
 		t.Errorf("the dry run created a branch:\n%s", refs)
 	}
 }
 
 func TestCheckNamesTheFixForARemoteItCannotUse(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
 	gitIn(t, root, "remote", "remove", "origin")
 
@@ -165,7 +165,7 @@ func TestCheckNamesTheFixForARemoteItCannotUse(t *testing.T) {
 }
 
 func TestCheckTellsWhenTheBaseBranchIsNotOnTheRemote(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n[branches]\nbase_branch = \"trunk\"\n"})
 
 	_, stderr, code := runIn(t, bin, root, checkNoSandbox...)
@@ -196,7 +196,7 @@ func fakeTool(t *testing.T, env []string, name, output string) []string {
 }
 
 func TestCheckWantsGitAtItsMinimumVersion(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
 
 	_, stderr, code := runEnv(t, bin, root, fakeTool(t, ghEnv(t, "ok"), "git", "git version 2.30.0"), checkNoSandbox...)
@@ -208,7 +208,7 @@ func TestCheckWantsGitAtItsMinimumVersion(t *testing.T) {
 }
 
 func TestCheckWantsTheHarnessAtItsMinimumVersionOnTheHostWithNoSandbox(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
 
 	_, stderr, code := runEnv(t, bin, root, fakeTool(t, ghEnv(t, "ok"), "claude", "1.0.0 (Claude Code)"), checkNoSandbox...)
@@ -223,7 +223,7 @@ func TestCheckNamesTheFixWhenThereIsNoEngine(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake engines are shell scripts")
 	}
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
 	failing := t.TempDir()
 	for _, name := range []string{"docker", "podman"} {
@@ -237,7 +237,7 @@ func TestCheckNamesTheFixWhenThereIsNoEngine(t *testing.T) {
 			env = append(env, "PATH="+failing+string(os.PathListSeparator)+p)
 		}
 	}
-	env = append(env, "KRAFTWERK_ENGINE=") // CI picks one, and this is about having neither
+	env = append(env, "FLIESSWERK_ENGINE=") // CI picks one, and this is about having neither
 
 	_, stderr, code := runEnv(t, bin, root, env, "check")
 
@@ -251,7 +251,7 @@ func TestCheckCatchesACorporateProxyOnTheHostsOwnLocalhost(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake docker is a shell script")
 	}
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
 	env := append(withFakeDocker(t, ghEnv(t, "ok"), "linux x86_64"), "HTTPS_PROXY=http://127.0.0.1:3128")
 
@@ -267,7 +267,7 @@ func TestCheckWarnsAndSkipsTheProbeWhileARunIsInProgress(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake docker is a shell script")
 	}
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
 	holdRunLock(t, root)
 
@@ -281,12 +281,12 @@ func TestCheckWarnsAndSkipsTheProbeWhileARunIsInProgress(t *testing.T) {
 
 func TestCheckRefusesWhileATodoLineIsLeft(t *testing.T) {
 	p := checkProject(t, "")
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "Containerfile"), "FROM scratch\n# TODO(kraftwerk): install Ruby\n")
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "Containerfile"), "FROM scratch\n# TODO(fliesswerk): install Ruby\n")
 
-	code := p.kwk(t, "check")
+	code := p.fwk(t, "check")
 
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d\nstderr: %s", code, exitConfigError, p.stderr)
 	}
-	mustContain(t, "stderr", p.stderr, ".kraftwerk/Containerfile:2", "TODO(kraftwerk): install Ruby")
+	mustContain(t, "stderr", p.stderr, ".fliesswerk/Containerfile:2", "TODO(fliesswerk): install Ruby")
 }

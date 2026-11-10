@@ -7,14 +7,14 @@
           "number": 33,
           "state": "CLOSED",
           "title": "Audit the history and make the repo public",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/33"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/33"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMH5A",
           "number": 37,
           "state": "OPEN",
           "title": "First Run: git, branches and loop, `kind = \"none\"`",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/37"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/37"
         },
         {
           "id": "I_x",
@@ -26,7 +26,7 @@
       ],
       "totalCount": 3
     },
-    "body": "## Parent\n\n#31\n\n## Blocked by\n\n- #33\n- #37\n- #36\n- https://github.com/Marcel-Goehn/kraftwerk/issues/41\n\n## What to build\n\nSee #12 for context.\n\nBlocked by: #40, acme/lib#5\n",
+    "body": "## Parent\n\n#31\n\n## Blocked by\n\n- #33\n- #37\n- #36\n- https://github.com/Marcel-Goehn/fliesswerk/issues/41\n\n## What to build\n\nSee #12 for context.\n\nBlocked by: #40, acme/lib#5\n",
     "labels": [
       {
         "id": "LA_kwDOVgZxAM8AAAADAtB4cw",
@@ -40,8 +40,8 @@
       "id": "I_kwDOVgZxAM8AAAABdRBsog",
       "number": 31,
       "state": "OPEN",
-      "title": "Spec: Factory v1 (Kraftwerk)",
-      "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/31"
+      "title": "Spec: Factory v1 (Fliesswerk)",
+      "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/31"
     },
     "state": "OPEN",
     "subIssues": {
@@ -49,7 +49,7 @@
       "totalCount": 0
     },
     "title": "Nightly jobs",
-    "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/64"
+    "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/64"
   },
   {
     "blockedBy": {
@@ -70,8 +70,8 @@
       "id": "I_kwDOVgZxAM8AAAABdRBsog",
       "number": 31,
       "state": "OPEN",
-      "title": "Spec: Factory v1 (Kraftwerk)",
-      "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/31"
+      "title": "Spec: Factory v1 (Fliesswerk)",
+      "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/31"
     },
     "state": "OPEN",
     "subIssues": {
@@ -79,6 +79,6 @@
       "totalCount": 0
     },
     "title": "Nothing in the way",
-    "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/66"
+    "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/66"
   }
 ]

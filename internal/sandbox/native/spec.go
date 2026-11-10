@@ -10,14 +10,14 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/forward"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/forward"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
 )
 
 // Inside a Sandbox.
 const (
-	insideDir    = "/run/kraftwerk"
-	insideSelf   = insideDir + "/kraftwerk"
+	insideDir    = "/run/fliesswerk"
+	insideSelf   = insideDir + "/fliesswerk"
 	insideSocket = insideDir + "/" + socketName
 	insideCADir  = insideDir + "/ca"
 	// insideCredentialDir holds the credential file the Factory keeps.

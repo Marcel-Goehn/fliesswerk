@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
 )
 
 // baseImage has git, a shell and wget, and an entrypoint of its own that
@@ -52,14 +52,14 @@ func newProject(t *testing.T, runArgs ...string) *project {
 	}
 	root := t.TempDir()
 	gitIn(t, root, "init", "-q", "-b", "main")
-	if err := os.MkdirAll(filepath.Join(root, ".kraftwerk", "state"), 0o750); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, ".fliesswerk", "state"), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, filepath.Join(root, ".kraftwerk", "Containerfile"), baseImage)
+	writeFile(t, filepath.Join(root, ".fliesswerk", "Containerfile"), baseImage)
 	writeFile(t, filepath.Join(root, "README.md"), "shop\n")
 	gitIn(t, root, "add", "README.md")
 	gitIn(t, root, "commit", "-q", "-m", "Initial commit")
-	worktree := filepath.Join(root, ".kraftwerk", "state", "worktrees", "ticket-1")
+	worktree := filepath.Join(root, ".fliesswerk", "state", "worktrees", "ticket-1")
 	gitIn(t, root, "worktree", "add", "-q", "-b", "ticket-1", worktree)
 	pr := &project{root: root, worktree: worktree}
 	pr.p = pr.provider(t, runArgs...)
@@ -69,7 +69,7 @@ func newProject(t *testing.T, runArgs ...string) *project {
 func (pr *project) provider(t *testing.T, runArgs ...string) *Provider {
 	t.Helper()
 	p := New(Options{
-		Root: pr.root, StateDir: filepath.Join(pr.root, ".kraftwerk", "state"),
+		Root: pr.root, StateDir: filepath.Join(pr.root, ".fliesswerk", "state"),
 		RunID: "test-" + strconv.FormatInt(time.Now().UnixNano(), 36), RunArgs: runArgs,
 		Log: func(line string) { pr.logged = append(pr.logged, line) },
 	})
@@ -147,7 +147,7 @@ func TestTheImageIsRebuiltOnlyWhenTheContainerfileChanges(t *testing.T) {
 		t.Errorf("unchanged Containerfile: image %s (was %s), logged %q", again.image, first, pr.logged)
 	}
 
-	writeFile(t, filepath.Join(pr.root, ".kraftwerk", "Containerfile"), baseImage+"LABEL changed=yes\n")
+	writeFile(t, filepath.Join(pr.root, ".fliesswerk", "Containerfile"), baseImage+"LABEL changed=yes\n")
 	changed := pr.provider(t)
 	if err := connectAndPrepare(ctx, changed); err != nil {
 		t.Fatal(err)
@@ -271,21 +271,21 @@ func TestGitCommitsFromTheSandboxButCannotChangeWhatTheHostRuns(t *testing.T) {
 		t.Error("the commit has no author")
 	}
 	id := filepath.Base(pr.worktree)
-	other := filepath.Join(pr.root, ".kraftwerk", "state", "worktrees", "ticket-2")
+	other := filepath.Join(pr.root, ".fliesswerk", "state", "worktrees", "ticket-2")
 	gitIn(t, pr.root, "worktree", "add", "-q", "-b", "ticket-2", other)
-	admin := "/kraftwerk/git/worktrees/" + id
+	admin := "/fliesswerk/git/worktrees/" + id
 	for _, attempt := range []string{
-		"echo planted >> /kraftwerk/git/config",
-		"echo planted > /kraftwerk/git/config.worktree",
-		"mkdir -p /kraftwerk/git/hooks && echo planted > /kraftwerk/git/hooks/post-commit",
-		"mkdir -p /kraftwerk/git/modules/x",
+		"echo planted >> /fliesswerk/git/config",
+		"echo planted > /fliesswerk/git/config.worktree",
+		"mkdir -p /fliesswerk/git/hooks && echo planted > /fliesswerk/git/hooks/post-commit",
+		"mkdir -p /fliesswerk/git/modules/x",
 		"echo planted >> " + admin + "/commondir",
 		"echo planted >> " + admin + "/gitdir",
 		"echo planted >> " + admin + "/config.worktree",
 		"mv " + admin + "/commondir " + admin + "/commondir.old",
-		"mv " + admin + " /kraftwerk/git/worktrees/moved",
-		"echo planted >> /kraftwerk/git/worktrees/ticket-2/commondir",
-		"mv /kraftwerk/git/worktrees/ticket-2 /kraftwerk/git/worktrees/moved",
+		"mv " + admin + " /fliesswerk/git/worktrees/moved",
+		"echo planted >> /fliesswerk/git/worktrees/ticket-2/commondir",
+		"mv /fliesswerk/git/worktrees/ticket-2 /fliesswerk/git/worktrees/moved",
 		"echo planted >> /workspace/.git",
 	} {
 		if out, ok := sh(sb, attempt); ok {

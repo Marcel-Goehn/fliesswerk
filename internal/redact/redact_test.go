@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/redact"
+	"github.com/Marcel-Goehn/fliesswerk/internal/redact"
 )
 
 const secret = "sk-ant-oat01-a+b/c=d?e&f g" //nolint:gosec // a made-up secret

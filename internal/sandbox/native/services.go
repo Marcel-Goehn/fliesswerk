@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/forward"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/forward"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
 )
 
 // insideServices holds a Sandbox's Service sockets, under bwrap.

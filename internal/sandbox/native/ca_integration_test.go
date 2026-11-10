@@ -11,14 +11,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/egress"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox/catest"
+	"github.com/Marcel-Goehn/fliesswerk/internal/egress"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox/catest"
 )
 
 func newCA(t *testing.T) (*catest.CA, string) {
 	t.Helper()
-	ca, err := catest.NewCA("Kraftwerk Test Root")
+	ca, err := catest.NewCA("Fliesswerk Test Root")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestInterceptionIsDetectedAndTheRootAndFixNamed(t *testing.T) {
 	if err == nil {
 		t.Fatalf("not detected (warning %q)", warning)
 	}
-	for _, want := range []string{"Kraftwerk Test Root", "ca_certs"} {
+	for _, want := range []string{"Fliesswerk Test Root", "ca_certs"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the error doesn't say %q: %v", want, err)
 		}

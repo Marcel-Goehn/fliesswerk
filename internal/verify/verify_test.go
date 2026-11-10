@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
+	"github.com/Marcel-Goehn/fliesswerk/internal/verify"
 )
 
 // The commands are portable between sh and cmd.exe: `echo` and `git`.
@@ -62,10 +62,10 @@ func TestTheFirstFailingCommandStopsTheRestAndKeepsItsOutput(t *testing.T) {
 
 func TestCommandsRunInTheDirWithTheGivenEnv(t *testing.T) {
 	dir := t.TempDir()
-	env := append(os.Environ(), "KWK_VERIFY_PROBE=probe-value")
-	line := "echo $KWK_VERIFY_PROBE > out.txt"
+	env := append(os.Environ(), "FWK_VERIFY_PROBE=probe-value")
+	line := "echo $FWK_VERIFY_PROBE > out.txt"
 	if runtime.GOOS == "windows" {
-		line = "echo %KWK_VERIFY_PROBE%> out.txt"
+		line = "echo %FWK_VERIFY_PROBE%> out.txt"
 	}
 
 	if f := verify.Run(context.Background(), nil, dir, env, time.Minute, []verify.Command{{Name: "probe", Line: line}}); f != nil {
@@ -111,7 +111,7 @@ func TestACommandThatHangsIsStoppedAtTheTimeoutWithWhatItStarted(t *testing.T) {
 
 func TestDoubleQuotesInACommandReachTheProgramIntact(t *testing.T) {
 	f := verify.Run(context.Background(), nil, t.TempDir(), os.Environ(), time.Minute,
-		[]verify.Command{{Name: "quoted", Line: `git -c "kwk.probe=1" --version`}})
+		[]verify.Command{{Name: "quoted", Line: `git -c "fwk.probe=1" --version`}})
 
 	if f != nil {
 		t.Fatalf("failure = %v\n%s", f, f.Output)

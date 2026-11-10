@@ -25,7 +25,7 @@ func resolve(argv []string) ([]string, error) {
 	}
 	prefix, err := readShim(bin)
 	if err != nil {
-		return nil, fmt.Errorf("%s is a shim kraftwerk can't follow (%w); put the real executable on PATH before it", bin, err)
+		return nil, fmt.Errorf("%s is a shim fliesswerk can't follow (%w); put the real executable on PATH before it", bin, err)
 	}
 	return append(prefix, argv[1:]...), nil
 }

@@ -1,8 +1,8 @@
 {
-  "$id": "https://raw.githubusercontent.com/Marcel-Goehn/kraftwerk/main/schema/config.schema.json",
+  "$id": "https://raw.githubusercontent.com/Marcel-Goehn/fliesswerk/main/schema/config.schema.json",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "additionalProperties": false,
-  "description": "Kraftwerk configuration.",
+  "description": "Fliesswerk configuration.",
   "properties": {
     "branches": {
       "additionalProperties": false,
@@ -60,7 +60,7 @@
                   "type": "string"
                 },
                 "dotenv": {
-                  "description": "Read this key from .kraftwerk/.env, which must be git-ignored.",
+                  "description": "Read this key from .fliesswerk/.env, which must be git-ignored.",
                   "type": "string"
                 },
                 "env": {
@@ -68,7 +68,7 @@
                   "type": "string"
                 },
                 "stored": {
-                  "description": "Read this key from the user-level credentials file written by `kraftwerk auth set`.",
+                  "description": "Read this key from the user-level credentials file written by `fliesswerk auth set`.",
                   "type": "string"
                 }
               },
@@ -115,7 +115,7 @@
                   "type": "string"
                 },
                 "dotenv": {
-                  "description": "Read this key from .kraftwerk/.env, which must be git-ignored.",
+                  "description": "Read this key from .fliesswerk/.env, which must be git-ignored.",
                   "type": "string"
                 },
                 "env": {
@@ -123,7 +123,7 @@
                   "type": "string"
                 },
                 "stored": {
-                  "description": "Read this key from the user-level credentials file written by `kraftwerk auth set`.",
+                  "description": "Read this key from the user-level credentials file written by `fliesswerk auth set`.",
                   "type": "string"
                 }
               },
@@ -140,7 +140,7 @@
                   "type": "string"
                 },
                 "dotenv": {
-                  "description": "Read this key from .kraftwerk/.env, which must be git-ignored.",
+                  "description": "Read this key from .fliesswerk/.env, which must be git-ignored.",
                   "type": "string"
                 },
                 "env": {
@@ -148,7 +148,7 @@
                   "type": "string"
                 },
                 "stored": {
-                  "description": "Read this key from the user-level credentials file written by `kraftwerk auth set`.",
+                  "description": "Read this key from the user-level credentials file written by `fliesswerk auth set`.",
                   "type": "string"
                 }
               },
@@ -501,7 +501,7 @@
                 "type": "string"
               },
               "dotenv": {
-                "description": "Read this key from .kraftwerk/.env, which must be git-ignored.",
+                "description": "Read this key from .fliesswerk/.env, which must be git-ignored.",
                 "type": "string"
               },
               "env": {
@@ -509,7 +509,7 @@
                 "type": "string"
               },
               "stored": {
-                "description": "Read this key from the user-level credentials file written by `kraftwerk auth set`.",
+                "description": "Read this key from the user-level credentials file written by `fliesswerk auth set`.",
                 "type": "string"
               }
             },
@@ -713,7 +713,7 @@
               "type": "string"
             },
             "dotenv": {
-              "description": "Read this key from .kraftwerk/.env, which must be git-ignored.",
+              "description": "Read this key from .fliesswerk/.env, which must be git-ignored.",
               "type": "string"
             },
             "env": {
@@ -721,7 +721,7 @@
               "type": "string"
             },
             "stored": {
-              "description": "Read this key from the user-level credentials file written by `kraftwerk auth set`.",
+              "description": "Read this key from the user-level credentials file written by `fliesswerk auth set`.",
               "type": "string"
             }
           },
@@ -731,7 +731,7 @@
       "type": "object"
     },
     "update_notice": {
-      "description": "Say when a newer Kraftwerk is out, at most once a day and never in CI. Default true.",
+      "description": "Say when a newer Fliesswerk is out, at most once a day and never in CI. Default true.",
       "type": "boolean"
     },
     "verify": {
@@ -750,6 +750,6 @@
   "required": [
     "version"
   ],
-  "title": "Kraftwerk config",
+  "title": "Fliesswerk config",
   "type": "object"
 }

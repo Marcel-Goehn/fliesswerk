@@ -3,8 +3,8 @@ package main
 import (
 	"runtime"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/github"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/github"
 )
 
 // Defaults for keys the config may leave out.
@@ -15,7 +15,7 @@ const (
 )
 
 // testTracker, when set and returning a Tracker, replaces the configured
-// one. Only a test build (the `kwkfake` tag) sets it.
+// one. Only a test build (the `fwkfake` tag) sets it.
 var testTracker func() (tracker.Tracker, error)
 
 // newTracker builds the Tracker the config names, with token (empty for

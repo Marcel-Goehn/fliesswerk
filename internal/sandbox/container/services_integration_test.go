@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
 )
 
 // A database that says when it is ready, with everything a Sandbox's copy
@@ -46,8 +46,8 @@ func psql(host, query string) string {
 func servicesProject(t *testing.T, compose string) (pr *project, worktrees []string) {
 	t.Helper()
 	pr = newProject(t)
-	writeFile(t, filepath.Join(pr.root, ".kraftwerk", "Containerfile"), psqlImage)
-	second := filepath.Join(pr.root, ".kraftwerk", "state", "worktrees", "ticket-2")
+	writeFile(t, filepath.Join(pr.root, ".fliesswerk", "Containerfile"), psqlImage)
+	second := filepath.Join(pr.root, ".fliesswerk", "state", "worktrees", "ticket-2")
 	gitIn(t, pr.root, "worktree", "add", "-q", "-b", "ticket-2", second)
 	worktrees = []string{pr.worktree, second}
 	for _, dir := range []string{pr.root, pr.worktree, second} {
@@ -102,7 +102,7 @@ func TestAServiceIsReachableEveryWayTheSandboxIsTold(t *testing.T) {
 			t.Errorf("through %s: %q", host, got)
 		}
 	}
-	if got := mustSh(t, sb, `printf '%s:%s' "$KRAFTWERK_SERVICE_POSTGRES_HOST" "$KRAFTWERK_SERVICE_POSTGRES_PORT"`); got != "postgres:5432" {
+	if got := mustSh(t, sb, `printf '%s:%s' "$FLIESSWERK_SERVICE_POSTGRES_HOST" "$FLIESSWERK_SERVICE_POSTGRES_PORT"`); got != "postgres:5432" {
 		t.Errorf("the variables say %q", got)
 	}
 	if got := mustSh(t, sb, `printf %s "$NO_PROXY"`); !strings.Contains(got, "postgres") {
@@ -190,7 +190,7 @@ func sharedProject(t *testing.T) (pr *project, worktrees []string, stop func(con
 	pr, worktrees = servicesProject(t, databaseCompose)
 	pr.p.opts.Services, pr.p.opts.Shared = nil, []string{"postgres"}
 	pr.prepare(t)
-	base := filepath.Join(pr.root, ".kraftwerk", "state", "worktrees", "shared-services")
+	base := filepath.Join(pr.root, ".fliesswerk", "state", "worktrees", "shared-services")
 	gitIn(t, pr.root, "worktree", "add", "-q", "--detach", base)
 	writeFile(t, filepath.Join(base, "compose.yaml"), databaseCompose)
 	stop, err := pr.p.StartShared(context.Background(), sandbox.Request{Name: "shared", Worktree: base})
@@ -228,8 +228,8 @@ func TestEverySandboxIsToldItsNameToSeparateItsData(t *testing.T) {
 	pr, worktrees, _ := sharedProject(t)
 	sb := pr.openOn(t, "build-1", worktrees[0])
 
-	if got := mustSh(t, sb, `printf %s "$KRAFTWERK_SANDBOX"`); got != "build-1" {
-		t.Errorf("KRAFTWERK_SANDBOX = %q", got)
+	if got := mustSh(t, sb, `printf %s "$FLIESSWERK_SANDBOX"`); got != "build-1" {
+		t.Errorf("FLIESSWERK_SANDBOX = %q", got)
 	}
 }
 
@@ -327,7 +327,7 @@ func TestAHelperOfBothOwnAndSharedServicesIsOnTheSandboxsNetworkOnce(t *testing.
 	pr, worktrees := servicesProject(t, compose)
 	pr.p.opts.Services, pr.p.opts.Shared = []string{"app"}, []string{"search"}
 	pr.prepare(t)
-	base := filepath.Join(pr.root, ".kraftwerk", "state", "worktrees", "shared-services")
+	base := filepath.Join(pr.root, ".fliesswerk", "state", "worktrees", "shared-services")
 	gitIn(t, pr.root, "worktree", "add", "-q", "--detach", base)
 	writeFile(t, filepath.Join(base, "compose.yaml"), compose)
 	stop, err := pr.p.StartShared(context.Background(), sandbox.Request{Name: "shared", Worktree: base})

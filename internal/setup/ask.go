@@ -12,7 +12,7 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
 )
 
 // none is what a person types to clear a suggestion.

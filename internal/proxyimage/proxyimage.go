@@ -27,7 +27,7 @@ func FileName(arch string) string { return "rootfs-" + arch + ".tar.gz" }
 func Rootfs(arch string) ([]byte, error) {
 	data, err := dist.ReadFile("dist/" + FileName(arch))
 	if err != nil {
-		return nil, fmt.Errorf("this kraftwerk was built without the egress proxy for linux/%s, so it can't run container Sandboxes; install a release, or run `go generate ./internal/proxyimage` in its source before building", arch)
+		return nil, fmt.Errorf("this fliesswerk was built without the egress proxy for linux/%s, so it can't run container Sandboxes; install a release, or run `go generate ./internal/proxyimage` in its source before building", arch)
 	}
 	return data, nil
 }

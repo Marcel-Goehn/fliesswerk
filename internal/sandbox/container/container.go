@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/egress"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/egress"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
 )
 
 // Inside a Sandbox.
@@ -30,7 +30,7 @@ const (
 	// gitDir is where the checkout's git directory is mounted.
 	gitDir = factoryDir + "/git"
 	// homeDir is the agent's home, writable whichever user it runs as.
-	homeDir = "/tmp/kraftwerk-home"
+	homeDir = "/tmp/fliesswerk-home"
 	// caDir holds the CA files of a Sandbox with `ca_certs`.
 	caDir = factoryDir + "/ca"
 	// credentialDir holds the credential file the Factory keeps.
@@ -199,18 +199,18 @@ func (p *Provider) cleanUp(ctx context.Context) {
 // image. The build context is empty: nothing of the project, least of all
 // `.env` or a worktree, can end up in an image.
 func (p *Provider) ensureImage(ctx context.Context) error {
-	file := filepath.Join(p.opts.Root, ".kraftwerk", "Containerfile")
+	file := filepath.Join(p.opts.Root, ".fliesswerk", "Containerfile")
 	data, err := os.ReadFile(file) //nolint:gosec // the project's own Containerfile
 	if err != nil {
-		return fmt.Errorf("the container Sandbox needs .kraftwerk/Containerfile: %w", err)
+		return fmt.Errorf("the container Sandbox needs .fliesswerk/Containerfile: %w", err)
 	}
 	sum := sha256.Sum256(append(data, p.ca.PEM...))
-	p.image = "kraftwerk-" + p.project + ":" + hex.EncodeToString(sum[:])[:12]
+	p.image = "fliesswerk-" + p.project + ":" + hex.EncodeToString(sum[:])[:12]
 	if _, err := p.engine.run(ctx, "image", "inspect", p.image); err == nil {
 		p.log("The Sandbox image %s is present", p.image)
 		return nil
 	}
-	empty, err := os.MkdirTemp("", "kraftwerk-build")
+	empty, err := os.MkdirTemp("", "fliesswerk-build")
 	if err != nil {
 		return err
 	}
@@ -225,9 +225,9 @@ func (p *Provider) ensureImage(ctx context.Context) error {
 		defer func() { _ = os.Remove(secret) }()
 		args = append(args, "--secret", "id="+caSecret+",src="+secret)
 	}
-	p.log("Building the Sandbox image from .kraftwerk/Containerfile")
+	p.log("Building the Sandbox image from .fliesswerk/Containerfile")
 	if _, err := p.engine.run(ctx, append(args, empty)...); err != nil {
-		return fmt.Errorf("building the Sandbox image from .kraftwerk/Containerfile: %w", explainBuildFailure(err))
+		return fmt.Errorf("building the Sandbox image from .fliesswerk/Containerfile: %w", explainBuildFailure(err))
 	}
 	return nil
 }
@@ -243,7 +243,7 @@ func explainBuildFailure(err error) error {
 }
 
 // caSecret is the build secret `ca_certs` go in as.
-const caSecret = "kraftwerk-ca" //nolint:gosec // the name of a build secret, not one
+const caSecret = "fliesswerk-ca" //nolint:gosec // the name of a build secret, not one
 
 // buildProxyArgs send a build through the corporate proxy, not the egress
 // proxy, which doesn't exist yet. The host's variables go by name: the engine
@@ -271,11 +271,11 @@ var unsafeName = regexp.MustCompile(`[^a-zA-Z0-9_.-]`)
 // internal network that only the proxy sidecar and the Sandbox's own
 // Services are on as well. The Services are ready when it returns.
 func (p *Provider) Create(ctx context.Context, req sandbox.Request) (sandbox.Sandbox, error) {
-	name := unsafeName.ReplaceAllString("kraftwerk-"+p.opts.RunID+"-"+req.Name, "-")
+	name := unsafeName.ReplaceAllString("fliesswerk-"+p.opts.RunID+"-"+req.Name, "-")
 	b := &box{
 		engine: p.engine, name: name, sidecar: p.sidecar, state: filepath.Join(p.opts.StateDir, "sandboxes", name),
 		workdir: path.Join(workspaceDir, filepath.ToSlash(req.Rel)),
-		env:     append(p.baseEnv(), "KRAFTWERK_SANDBOX="+req.Name),
+		env:     append(p.baseEnv(), "FLIESSWERK_SANDBOX="+req.Name),
 	}
 	mounts, err := p.mounts(req.Worktree, b.state)
 	if err != nil {
@@ -438,7 +438,7 @@ func (p *Provider) installCA(ctx context.Context, b *box) error {
 		return fmt.Errorf("reading the Sandbox's system CA list: %w", err)
 	}
 	if strings.TrimSpace(system) == "" {
-		return errors.New("the Sandbox image has no system CA list for [network] ca_certs to add to; install `ca-certificates` in .kraftwerk/Containerfile")
+		return errors.New("the Sandbox image has no system CA list for [network] ca_certs to add to; install `ca-certificates` in .fliesswerk/Containerfile")
 	}
 	if err := p.ca.Install(caStateDir(b.state), []byte(system)); err != nil {
 		return err

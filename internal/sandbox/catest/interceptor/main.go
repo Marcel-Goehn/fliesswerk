@@ -8,7 +8,7 @@ import (
 	"net"
 	"os"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox/catest"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox/catest"
 )
 
 func main() {

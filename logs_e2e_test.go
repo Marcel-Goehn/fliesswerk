@@ -19,11 +19,11 @@ func cartScript() string {
 	], "report": {"outcome": "done", "summary": "Added the cart package."}}]}`
 }
 
-// logDir is the Run directory `kraftwerk logs` names.
+// logDir is the Run directory `fliesswerk logs` names.
 func (p *runProject) logDir(t *testing.T) string {
 	t.Helper()
-	if code := p.kwk(t, "logs"); code != 0 {
-		t.Fatalf("kraftwerk logs: exit code = %d\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+	if code := p.fwk(t, "logs"); code != 0 {
+		t.Fatalf("fliesswerk logs: exit code = %d\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
 	}
 	return strings.TrimSpace(p.stdout)
 }
@@ -38,7 +38,7 @@ func readFile(t *testing.T, path string) string {
 }
 
 func TestTheDefaultViewShowsEventsAndToolCallsButNotTheAgentsText(t *testing.T) {
-	p := newRunProject(t, buildTestKraftwerk(t), cartIssues(), cartScript())
+	p := newRunProject(t, buildTestFliesswerk(t), cartIssues(), cartScript())
 
 	if code := p.run(t); code != 0 {
 		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
@@ -64,7 +64,7 @@ func TestTheDefaultViewShowsEventsAndToolCallsButNotTheAgentsText(t *testing.T) 
 }
 
 func TestVerboseShowsTheAgentsText(t *testing.T) {
-	p := newRunProject(t, buildTestKraftwerk(t), cartIssues(), cartScript())
+	p := newRunProject(t, buildTestFliesswerk(t), cartIssues(), cartScript())
 
 	if code := p.run(t, "--verbose"); code != 0 {
 		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
@@ -76,7 +76,7 @@ func TestVerboseShowsTheAgentsText(t *testing.T) {
 }
 
 func TestTheBannerShowsWhatTheRunIsAndWhereItsLogsGo(t *testing.T) {
-	p := newRunProject(t, buildTestKraftwerk(t), cartIssues(), cartScript())
+	p := newRunProject(t, buildTestFliesswerk(t), cartIssues(), cartScript())
 
 	if code := p.run(t); code != 0 {
 		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
@@ -84,7 +84,7 @@ func TestTheBannerShowsWhatTheRunIsAndWhereItsLogsGo(t *testing.T) {
 
 	id := filepath.Base(func() string { out := p.stdout; dir := p.logDir(t); p.stdout = out; return dir }())
 	for _, want := range []string{
-		"kraftwerk dev", "Run " + id, ".kraftwerk/logs/" + id, "Harness claude_code", "Sandbox none",
+		"fliesswerk dev", "Run " + id, ".fliesswerk/logs/" + id, "Harness claude_code", "Sandbox none",
 		"max_iterations 10", "max_parallel 1", "idle 10m0s", "Step 1h0m0s",
 	} {
 		if !strings.Contains(p.stdout, want) {
@@ -94,13 +94,13 @@ func TestTheBannerShowsWhatTheRunIsAndWhereItsLogsGo(t *testing.T) {
 }
 
 func TestARunLeavesAFullRecordOnDisk(t *testing.T) {
-	p := newRunProject(t, buildTestKraftwerk(t), cartIssues(), cartScript())
+	p := newRunProject(t, buildTestFliesswerk(t), cartIssues(), cartScript())
 	if code := p.run(t); code != 0 {
 		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
 	}
 	dir := p.logDir(t)
 
-	if want := filepath.Join(p.work, ".kraftwerk", "logs"); filepath.Dir(dir) != want && !strings.HasSuffix(filepath.Dir(dir), filepath.Join(".kraftwerk", "logs")) {
+	if want := filepath.Join(p.work, ".fliesswerk", "logs"); filepath.Dir(dir) != want && !strings.HasSuffix(filepath.Dir(dir), filepath.Join(".fliesswerk", "logs")) {
 		t.Errorf("logs printed %q, want a directory under %s", dir, want)
 	}
 	log := readFile(t, filepath.Join(dir, "run.log"))
@@ -155,7 +155,7 @@ func TestARunLeavesAFullRecordOnDisk(t *testing.T) {
 }
 
 func TestRunJSONPrintsTheSummaryToStdoutAndTheLiveLinesToStderr(t *testing.T) {
-	p := newRunProject(t, buildTestKraftwerk(t), cartIssues(), cartScript())
+	p := newRunProject(t, buildTestFliesswerk(t), cartIssues(), cartScript())
 
 	if code := p.run(t, "--json"); code != 0 {
 		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
@@ -174,7 +174,7 @@ func TestRunJSONPrintsTheSummaryToStdoutAndTheLiveLinesToStderr(t *testing.T) {
 }
 
 func TestARunThatCannotStartStillLeavesASummary(t *testing.T) {
-	p := newRunProject(t, buildTestKraftwerk(t), cartIssues(), cartScript())
+	p := newRunProject(t, buildTestFliesswerk(t), cartIssues(), cartScript())
 	writeFile(t, p.trackerPath, "not json")
 
 	code := p.run(t, "--json")
@@ -197,11 +197,11 @@ func TestARunThatCannotStartStillLeavesASummary(t *testing.T) {
 }
 
 func TestSecretsNeverReachTheRecord(t *testing.T) {
-	p := newRunProject(t, buildTestKraftwerk(t), cartIssues(), `{"sessions": [{"match": "Ticket #2", "expand": true, "actions": [
-		{"text": "the token is $KWK_TEST_SECRET"}
-	], "report": {"outcome": "cannot_do", "reason": "saw $KWK_TEST_SECRET", "summary": "s"}}]}`)
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), noSandbox+"scrub_credentials = false\n[sandbox.secrets]\nKWK_TEST_SECRET = { env = \"KWK_SOURCE\" }\n")
-	p.extraEnv = []string{"KWK_SOURCE=s3cr3t-hunter2"}
+	p := newRunProject(t, buildTestFliesswerk(t), cartIssues(), `{"sessions": [{"match": "Ticket #2", "expand": true, "actions": [
+		{"text": "the token is $FWK_TEST_SECRET"}
+	], "report": {"outcome": "cannot_do", "reason": "saw $FWK_TEST_SECRET", "summary": "s"}}]}`)
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), noSandbox+"scrub_credentials = false\n[sandbox.secrets]\nFWK_TEST_SECRET = { env = \"FWK_SOURCE\" }\n")
+	p.extraEnv = []string{"FWK_SOURCE=s3cr3t-hunter2"}
 
 	code := p.run(t, "--verbose")
 	if code != 1 {
@@ -227,13 +227,13 @@ func TestSecretsNeverReachTheRecord(t *testing.T) {
 
 func oldRun(t *testing.T, p *runProject) string {
 	t.Helper()
-	dir := filepath.Join(p.work, ".kraftwerk", "logs", "2001-01-01T00-00-00")
+	dir := filepath.Join(p.work, ".fliesswerk", "logs", "2001-01-01T00-00-00")
 	writeFile(t, filepath.Join(dir, "run.log"), "old\n")
 	return dir
 }
 
 func TestOldLogsArePrunedAtRunStart(t *testing.T) {
-	p := newRunProject(t, buildTestKraftwerk(t), cartIssues(), cartScript())
+	p := newRunProject(t, buildTestFliesswerk(t), cartIssues(), cartScript())
 	old := oldRun(t, p)
 
 	if code := p.run(t); code != 0 {
@@ -246,9 +246,9 @@ func TestOldLogsArePrunedAtRunStart(t *testing.T) {
 }
 
 func TestKeepDaysForeverKeepsOldLogs(t *testing.T) {
-	p := newRunProject(t, buildTestKraftwerk(t), cartIssues(), cartScript())
+	p := newRunProject(t, buildTestFliesswerk(t), cartIssues(), cartScript())
 	old := oldRun(t, p)
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), noSandbox+"[logs]\nkeep_days = \"forever\"\n")
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), noSandbox+"[logs]\nkeep_days = \"forever\"\n")
 
 	if code := p.run(t); code != 0 {
 		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
@@ -260,9 +260,9 @@ func TestKeepDaysForeverKeepsOldLogs(t *testing.T) {
 }
 
 func TestLogsWithoutARunSaysSo(t *testing.T) {
-	p := newRunProject(t, buildTestKraftwerk(t), cartIssues(), cartScript())
+	p := newRunProject(t, buildTestFliesswerk(t), cartIssues(), cartScript())
 
-	if code := p.kwk(t, "logs"); code != 1 || !strings.Contains(p.stderr, "no Run") {
+	if code := p.fwk(t, "logs"); code != 1 || !strings.Contains(p.stderr, "no Run") {
 		t.Errorf("exit code = %d, want 1 and a message\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
 	}
 }

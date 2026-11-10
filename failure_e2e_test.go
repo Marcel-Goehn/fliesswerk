@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/fake"
 )
 
 // handedBack checks that Ticket n came back to a person: open, with
@@ -26,12 +26,12 @@ func (p *runProject) handedBack(t *testing.T, n int, want ...string) string {
 		t.Fatalf("#%d has %d comments, want one\nstdout: %s", n, len(i.Comments), p.stdout)
 	}
 	c := i.Comments[0].Body
-	for _, w := range append(want, ".kraftwerk/logs/") {
+	for _, w := range append(want, ".fliesswerk/logs/") {
 		if !strings.Contains(c, w) {
 			t.Errorf("#%d's comment lacks %q:\n%s", n, w, c)
 		}
 	}
-	if gitIn(t, p.work, "branch", "--list", "kraftwerk/ticket-*") != "" {
+	if gitIn(t, p.work, "branch", "--list", "fliesswerk/ticket-*") != "" {
 		t.Errorf("the work of #%d wasn't discarded: its Ticket branch is left", n)
 	}
 	return c
@@ -48,7 +48,7 @@ func (p *runProject) untouched(t *testing.T) {
 }
 
 func TestRunHandsACannotDoTicketBackAndTheSpecCarriesOn(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	issues := append(cartIssues(),
 		fake.Issue{Number: 3, Title: "Cart totals", Labels: []string{"ready-for-agent"}, Parent: 1, BlockedBy: []int{2}},
 		fake.Issue{Number: 4, Title: "Cart page", Labels: []string{"ready-for-agent"}, Parent: 1})
@@ -81,12 +81,12 @@ func TestRunRetriesAFailedStepOnceInAFreshSession(t *testing.T) {
 		"no_report":    `"actions": [{"text": "I forgot to report."}]`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			bin := buildTestKraftwerk(t)
+			bin := buildTestFliesswerk(t)
 			p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`,
 				{"match": "Implement Ticket #2", "times": 1, `+failure+`},
 				`+implementsCart("Implement Ticket #2", `package cart\n`)+`]}`)
 			logPath := filepath.Join(t.TempDir(), "harness.jsonl")
-			p.extraEnv = []string{"KWK_FAKE_HARNESS_LOG=" + logPath}
+			p.extraEnv = []string{"FWK_FAKE_HARNESS_LOG=" + logPath}
 
 			if code := p.run(t); code != 0 {
 				t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
@@ -102,7 +102,7 @@ func TestRunRetriesAFailedStepOnceInAFreshSession(t *testing.T) {
 }
 
 func TestRunHandsATicketBackWhenItsStepFailsAgainAfterTheRetry(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [{"match": "Ticket #2", "error": "other"}]}`)
 
 	if code := p.run(t); code != 1 {
@@ -112,7 +112,7 @@ func TestRunHandsATicketBackWhenItsStepFailsAgainAfterTheRetry(t *testing.T) {
 }
 
 func TestRunRetriesATransientErrorThreeTimes(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`,
 		{"match": "Implement Ticket #2", "times": 3, "error": "transient"},
 		`+implementsCart("Implement Ticket #2", `package cart\n`)+`]}`)
@@ -126,10 +126,10 @@ func TestRunRetriesATransientErrorThreeTimes(t *testing.T) {
 }
 
 func TestRunStopsWithExit2AfterThreeTransientRetriesAndLeavesTheTicketUntouched(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [{"match": "Ticket #2", "error": "transient"}]}`)
 	logPath := filepath.Join(t.TempDir(), "harness.jsonl")
-	p.extraEnv = []string{"KWK_FAKE_HARNESS_LOG=" + logPath}
+	p.extraEnv = []string{"FWK_FAKE_HARNESS_LOG=" + logPath}
 
 	if code := p.run(t); code != 2 {
 		t.Fatalf("exit code = %d, want 2\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
@@ -144,7 +144,7 @@ func TestRunStopsWithExit2AfterThreeTransientRetriesAndLeavesTheTicketUntouched(
 }
 
 func TestRunStopsWithExit2OnAnAuthErrorAndLeavesTheTicketUntouched(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [{"match": "Ticket #2", "error": "auth"}]}`)
 
 	if code := p.run(t); code != 2 {
@@ -154,9 +154,9 @@ func TestRunStopsWithExit2OnAnAuthErrorAndLeavesTheTicketUntouched(t *testing.T)
 }
 
 func TestRunHandsATicketBackWhenVerifyFailsAgainWithTheCommandsOutput(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, `+implementsCart("Implement Ticket #2", `package cart\n`)+`]}`)
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), "verify = [\"test\"]\n"+noSandbox+
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), "verify = [\"test\"]\n"+noSandbox+
 		"[commands]\ntest = \"git grep -q fixed -- cart/cart.go || (echo cart.go lacks the fix && exit 1)\"\n")
 
 	if code := p.run(t); code != 1 {
@@ -166,16 +166,16 @@ func TestRunHandsATicketBackWhenVerifyFailsAgainWithTheCommandsOutput(t *testing
 }
 
 func TestRunRejectsACommitToAProtectedPathWithoutARetry(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, {"match": "Implement Ticket #2", "actions": [
 		{"write": ".claude/settings.json", "content": "{}"},
 		{"write": "cart/cart.go", "content": "package cart\n"},
 		{"run": ["git", "add", "."]},
 		{"run": ["git", "commit", "-q", "-m", "Add the cart"]}
 	], "report": {"outcome": "done", "summary": "Added the cart."}}]}`)
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), "protected_paths = [\".claude/\"]\n"+noSandbox)
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), "protected_paths = [\".claude/\"]\n"+noSandbox)
 	logPath := filepath.Join(t.TempDir(), "harness.jsonl")
-	p.extraEnv = []string{"KWK_FAKE_HARNESS_LOG=" + logPath}
+	p.extraEnv = []string{"FWK_FAKE_HARNESS_LOG=" + logPath}
 
 	if code := p.run(t); code != 1 {
 		t.Fatalf("exit code = %d, want 1\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
@@ -193,12 +193,12 @@ func TestRunRejectsACommitToAProtectedPathWithoutARetry(t *testing.T) {
 }
 
 func TestRunRedactsAProjectSecretInTheFailureComment(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [{"match": "Ticket #2", "expand": true,
 		"actions": [{"text": "The database password is $DB_PASSWORD."}],
 		"report": {"outcome": "cannot_do", "reason": "No database.", "summary": "Stopped."}}]}`)
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), noSandbox+"scrub_credentials = false\n[sandbox.secrets]\nDB_PASSWORD = { env = \"KWK_TEST_DB_PASSWORD\" }\n")
-	p.extraEnv = []string{"KWK_TEST_DB_PASSWORD=s3cr3t-hunter2", "KWK_FAKE_LOG_ENV=DB_PASSWORD"}
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), noSandbox+"scrub_credentials = false\n[sandbox.secrets]\nDB_PASSWORD = { env = \"FWK_TEST_DB_PASSWORD\" }\n")
+	p.extraEnv = []string{"FWK_TEST_DB_PASSWORD=s3cr3t-hunter2", "FWK_FAKE_LOG_ENV=DB_PASSWORD"}
 
 	if code := p.run(t); code != 1 {
 		t.Fatalf("exit code = %d, want 1\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
@@ -210,7 +210,7 @@ func TestRunRedactsAProjectSecretInTheFailureComment(t *testing.T) {
 }
 
 func TestRunHandsBackATicketWhoseStepIsOOMKilledTwice(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [{"match": "Implement Ticket #2", "kill": true}]}`)
 
 	code := p.run(t)

@@ -6,7 +6,7 @@ version: "2"
 # GitHub (-tags live).
 run:
   build-tags:
-    - kwkfake
+    - fwkfake
     - integration
     - live
 

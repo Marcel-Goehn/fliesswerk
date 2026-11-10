@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/prompt"
+	"github.com/Marcel-Goehn/fliesswerk/internal/prompt"
 )
 
 // loadPrompts reads the project's prompt files and prints an error for
@@ -38,10 +38,10 @@ func warnAboutPrompts(parts map[string]prompt.Part, stderr io.Writer) {
 		p := parts[step]
 		switch {
 		case p.Improved():
-			_, _ = fmt.Fprintf(stderr, "warning: %s: the %s has improved since v%d, which this file is based on; see `kraftwerk prompts diff %s`\n",
+			_, _ = fmt.Fprintf(stderr, "warning: %s: the %s has improved since v%d, which this file is based on; see `fliesswerk prompts diff %s`\n",
 				p.Path, builtinName(step, prompt.Latest(step)), p.Based, step)
 		case p.Exists && p.Based == 0:
-			_, _ = fmt.Fprintf(stderr, "warning: %s: no marker line names the built-in it is based on, so check can't tell when that improves; see `kraftwerk prompts diff %s`\n",
+			_, _ = fmt.Fprintf(stderr, "warning: %s: no marker line names the built-in it is based on, so check can't tell when that improves; see `fliesswerk prompts diff %s`\n",
 				p.Path, step)
 		}
 	}
@@ -52,26 +52,26 @@ func builtinName(step string, v int) string {
 	return fmt.Sprintf("built-in %s prompt v%d", step, v)
 }
 
-// runPrompts runs `kraftwerk prompts diff <step>`: how the built-in part
+// runPrompts runs `fliesswerk prompts diff <step>`: how the built-in part
 // changed since the version the project's file is based on.
 func runPrompts(args []string, stdout, stderr io.Writer) int {
 	if len(args) != 2 || args[0] != "diff" {
-		_, _ = fmt.Fprintln(stderr, "Usage: kraftwerk prompts diff <step>")
+		_, _ = fmt.Fprintln(stderr, "Usage: fliesswerk prompts diff <step>")
 		return exitConfigError
 	}
 	step := args[1]
 	if !slices.Contains(prompt.Steps, step) {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk prompts diff: unknown Step %q; it is one of %s\n", step, strings.Join(prompt.Steps, ", "))
+		_, _ = fmt.Fprintf(stderr, "fliesswerk prompts diff: unknown Step %q; it is one of %s\n", step, strings.Join(prompt.Steps, ", "))
 		return exitConfigError
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk prompts diff: can't find the current directory: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "fliesswerk prompts diff: can't find the current directory: %v\n", err)
 		return exitConfigError
 	}
 	parts, err := prompt.Load(projectRoot(cwd))
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk prompts diff: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "fliesswerk prompts diff: %v\n", err)
 		return exitConfigError
 	}
 	p, latest := parts[step], prompt.Latest(step)
@@ -82,7 +82,7 @@ func runPrompts(args []string, stdout, stderr io.Writer) int {
 	case p.Based == 0:
 		_, _ = fmt.Fprintf(stdout, "%s has no marker line naming the built-in it is based on, so here it is against the %s:\n\n%s",
 			p.Path, builtin, prompt.UnifiedDiff(p.Path, p.Text, builtin, prompt.Builtin(step, latest)))
-		_, _ = fmt.Fprintf(stdout, "\nMake this its first line, so `kraftwerk check` tells you when the built-in improves:\n\n%s\n", prompt.Marker(step))
+		_, _ = fmt.Fprintf(stdout, "\nMake this its first line, so `fliesswerk check` tells you when the built-in improves:\n\n%s\n", prompt.Marker(step))
 	case p.Based >= latest:
 		_, _ = fmt.Fprintf(stdout, "%s is based on the latest built-in %s prompt (v%d).\n", p.Path, step, latest)
 	default:

@@ -17,7 +17,7 @@ func StorePath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("can't find your config directory: %w", err)
 	}
-	return filepath.Join(dir, "kraftwerk", "credentials"), nil
+	return filepath.Join(dir, "fliesswerk", "credentials"), nil
 }
 
 var storeKey = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)

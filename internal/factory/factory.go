@@ -15,21 +15,21 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/frontier"
-	"github.com/Marcel-Goehn/kraftwerk/internal/git"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
-	"github.com/Marcel-Goehn/kraftwerk/internal/prompt"
-	"github.com/Marcel-Goehn/kraftwerk/internal/redact"
-	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
-	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
+	"github.com/Marcel-Goehn/fliesswerk/internal/frontier"
+	"github.com/Marcel-Goehn/fliesswerk/internal/git"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/prompt"
+	"github.com/Marcel-Goehn/fliesswerk/internal/redact"
+	"github.com/Marcel-Goehn/fliesswerk/internal/runlog"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
+	"github.com/Marcel-Goehn/fliesswerk/internal/verify"
 )
 
 // Options shape a Run.
 type Options struct {
 	Tracker tracker.Tracker
-	// Root is the project root, the directory that holds .kraftwerk/. It
+	// Root is the project root, the directory that holds .fliesswerk/. It
 	// is inside the user's checkout, which the Run never touches.
 	Root string
 	// Remote is the git remote branches are cut from and pushed to.
@@ -71,7 +71,7 @@ type Options struct {
 	Log func(runlog.Line)
 	// LinkBlockerFix comes from the Tracker's Description.
 	LinkBlockerFix func(ticket, blocker tracker.ID) string
-	// ProtectedPaths are the Protected paths besides .kraftwerk/, which
+	// ProtectedPaths are the Protected paths besides .fliesswerk/, which
 	// always is one: files, directories (ending in "/") or globs, relative
 	// to the project root.
 	ProtectedPaths []string
@@ -238,7 +238,7 @@ func (e *SetupError) Error() string { return e.Msg }
 
 // StateDir is the runtime state, relative to the project root. It must be
 // git-ignored.
-var StateDir = filepath.Join(".kraftwerk", "state")
+var StateDir = filepath.Join(".fliesswerk", "state")
 
 type run struct {
 	opts Options
@@ -508,7 +508,7 @@ func (r *run) checkCheckout(ctx context.Context) error {
 		return err
 	}
 	if !ignored {
-		return &SetupError{Msg: fmt.Sprintf("%s/ is not git-ignored, and the Factory keeps its worktrees there; add `state/` to .kraftwerk/.gitignore",
+		return &SetupError{Msg: fmt.Sprintf("%s/ is not git-ignored, and the Factory keeps its worktrees there; add `state/` to .fliesswerk/.gitignore",
 			filepath.ToSlash(StateDir))}
 	}
 	return nil
@@ -825,7 +825,7 @@ type build struct {
 	// sandbox is where its Steps, verify and Sandbox Hooks run, nil for no
 	// Sandbox.
 	sandbox sandbox.Sandbox
-	// sandboxName is what its Sandbox Hooks are told KRAFTWERK_SANDBOX is.
+	// sandboxName is what its Sandbox Hooks are told FLIESSWERK_SANDBOX is.
 	sandboxName string
 }
 
@@ -898,7 +898,7 @@ const (
 )
 
 // sandboxName is the name of one of a Ticket's Sandboxes, which it gets as
-// KRAFTWERK_SANDBOX.
+// FLIESSWERK_SANDBOX.
 func sandboxName(purpose string, tk tracker.Ticket) string {
 	return purpose + "-" + tk.ID.Branch
 }

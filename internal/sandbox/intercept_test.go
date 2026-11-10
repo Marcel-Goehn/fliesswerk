@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
 )
 
 // exitingSandbox runs every command as a shell that exits with code.
@@ -145,8 +145,8 @@ func TestVerifiedChainIsWhatTheHostVerifiedAgainst(t *testing.T) {
 // TestThePlatformVerifierReturnsTheAnchor settles, on the machines CI has,
 // what the Go source can't: that macOS and Windows put the root in the chain.
 func TestThePlatformVerifierReturnsTheAnchor(t *testing.T) {
-	if os.Getenv("KRAFTWERK_TEST_ANCHOR") == "" {
-		t.Skip("needs the network; CI sets KRAFTWERK_TEST_ANCHOR")
+	if os.Getenv("FLIESSWERK_TEST_ANCHOR") == "" {
+		t.Skip("needs the network; CI sets FLIESSWERK_TEST_ANCHOR")
 	}
 	chain, err := sandbox.VerifiedChain(nil, nil)(context.Background(), "github.com")
 	if err != nil {

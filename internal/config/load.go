@@ -1,4 +1,4 @@
-// Package config loads the Factory's configuration from .kraftwerk/ and
+// Package config loads the Factory's configuration from .fliesswerk/ and
 // validates it strictly, before any token is spent.
 //
 // Three layers are merged key by key, later ones winning: config.toml (the
@@ -22,7 +22,7 @@ import (
 const SupportedVersion = 1
 
 // Dir is the Factory's directory at the project root.
-const Dir = ".kraftwerk"
+const Dir = ".fliesswerk"
 
 // The names under which each layer is reported.
 const (
@@ -156,7 +156,7 @@ func readLayer(r *Result, path, name string, required bool) (map[string]any, boo
 	data, err := os.ReadFile(path) //nolint:gosec // the path is the project's own config file
 	if errors.Is(err, fs.ErrNotExist) {
 		if required {
-			r.add(Error, name, "", "not found; run `kraftwerk init` to set up this project")
+			r.add(Error, name, "", "not found; run `fliesswerk init` to set up this project")
 			return nil, false
 		}
 		return map[string]any{}, true
@@ -187,7 +187,7 @@ func checkVersion(layer string, values map[string]any) (Diagnostic, bool) {
 	}
 	return Diagnostic{
 		Severity: Error, Layer: layer, Key: "version",
-		Message: fmt.Sprintf("this config is version %d, but this kraftwerk only understands version %d; run `kraftwerk update --major`, or ask whoever raised it", v, SupportedVersion),
+		Message: fmt.Sprintf("this config is version %d, but this fliesswerk only understands version %d; run `fliesswerk update --major`, or ask whoever raised it", v, SupportedVersion),
 	}, true
 }
 

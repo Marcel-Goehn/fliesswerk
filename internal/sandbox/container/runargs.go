@@ -13,13 +13,13 @@ import (
 // `run_args` mount can't go on, under or above them.
 const (
 	workspaceDir = "/workspace"
-	factoryDir   = "/kraftwerk"
+	factoryDir   = "/fliesswerk"
 )
 
 // Labels on everything a Run creates.
 const (
-	labelRun     = "kraftwerk.run"
-	labelProject = "kraftwerk.project"
+	labelRun     = "fliesswerk.run"
+	labelProject = "fliesswerk.project"
 )
 
 // managed are the flags the Factory sets itself, with what breaks if
@@ -34,7 +34,7 @@ var managed = map[string]string{
 	"init":         "the Factory's first process must stay the Sandbox's first process",
 	"env-file":     "it can set credential variables, and its values would show in `inspect`",
 	"env-host":     "it would copy the host's whole env, credentials included, into the Sandbox",
-	"label-file":   "it can set the kraftwerk.* labels the Factory finds what it created by",
+	"label-file":   "it can set the fliesswerk.* labels the Factory finds what it created by",
 	"volumes-from": "it can mount over the workspace",
 }
 
@@ -68,8 +68,8 @@ func CheckRunArgs(args, credentialEnv []string) (refused, warnings []string) {
 				refused = append(refused, fmt.Sprintf("sandbox.run_args: `--env %s` is refused: the Factory delivers that credential to each Step", name))
 			}
 		case "label":
-			if strings.HasPrefix(f.value, "kraftwerk.") {
-				refused = append(refused, fmt.Sprintf("sandbox.run_args: `--label %s` is refused: the Factory finds what it created by its kraftwerk.* labels", f.value))
+			if strings.HasPrefix(f.value, "fliesswerk.") {
+				refused = append(refused, fmt.Sprintf("sandbox.run_args: `--label %s` is refused: the Factory finds what it created by its fliesswerk.* labels", f.value))
 			}
 		case "volume", "mount", "tmpfs":
 			source, target := mountOf(f)

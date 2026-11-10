@@ -105,11 +105,11 @@ jobs:
         # Proves on each OS that the platform verifier returns the root, which
         # `check` names when it finds TLS interception.
         env:
-          KRAFTWERK_TEST_ANCHOR: "1"
+          FLIESSWERK_TEST_ANCHOR: "1"
         run: go test ./...
 
   # The container Sandbox on real engines: both are on the runner, and
-  # KRAFTWERK_ENGINE picks one. -p 1 keeps the packages' engine use apart.
+  # FLIESSWERK_ENGINE picks one. -p 1 keeps the packages' engine use apart.
   container:
     name: container (${{ matrix.engine }})
     runs-on: ubuntu-latest
@@ -118,7 +118,7 @@ jobs:
       matrix:
         engine: [docker, podman]
     env:
-      KRAFTWERK_ENGINE: ${{ matrix.engine }}
+      FLIESSWERK_ENGINE: ${{ matrix.engine }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

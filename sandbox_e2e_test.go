@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox/container"
+	"github.com/Marcel-Goehn/fliesswerk/internal/runlog"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox/container"
 )
 
 // probeScript has the fake Harness write what the Sandbox can reach to a
@@ -29,13 +29,13 @@ const probeScript = `{"sessions": [` + approves + `, {"actions": [
 const inAContainer = `test -f /.dockerenv || test -f /run/.containerenv`
 
 func TestARunClosesATicketInsideASandboxThatCanReachNothing(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), probeScript)
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "Containerfile"), "FROM docker.io/alpine/git:latest\n")
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "Containerfile"), "FROM docker.io/alpine/git:latest\n")
 	gitIn(t, p.work, "add", ".")
 	gitIn(t, p.work, "commit", "-q", "-m", "Add the Containerfile")
 	gitIn(t, p.work, "push", "-q", "origin", "main")
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), `verify = ["inside"]
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), `verify = ["inside"]
 
 [commands]
 inside = '`+inAContainer+`'
@@ -45,7 +45,7 @@ kind = "container"
 run_args = ["--mount", "type=bind,source=`+filepath.Join(fakeClaudeBinDir(t), "claude")+`,target=/usr/local/bin/claude,readonly", "--mount", "type=bind,source=`+filepath.Dir(p.scriptPath)+`,target=/fake"]
 
 [sandbox.env]
-KWK_FAKE_HARNESS_SCRIPT = "/fake/script.json"
+FWK_FAKE_HARNESS_SCRIPT = "/fake/script.json"
 
 [[hooks.sandbox_created]]
 run = '`+inAContainer+`'
@@ -58,7 +58,7 @@ run = '`+inAContainer+`'
 	if code != 0 {
 		t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
 	}
-	branch := "kraftwerk/spec-1-spec-shopping-cart"
+	branch := "fliesswerk/spec-1-spec-shopping-cart"
 	for file, want := range map[string]string{"net.txt": "cut", "engine.txt": "no-engine", "where.txt": "container"} {
 		if got := gitIn(t, p.remote, "show", branch+":"+file); got != want {
 			t.Errorf("%s = %q, want %q", file, got, want)
@@ -87,7 +87,7 @@ func assertNothingLeft(t *testing.T, root string) {
 		t.Fatal(err)
 	}
 	for _, kind := range [][]string{{"ps", "-a"}, {"network", "ls"}} {
-		args := append(append([]string{engine.Binary}, kind...), "--filter", "label=kraftwerk.run="+filepath.Base(dir), "--format", "{{.Names}}")
+		args := append(append([]string{engine.Binary}, kind...), "--filter", "label=fliesswerk.run="+filepath.Base(dir), "--format", "{{.Names}}")
 		if kind[0] == "network" {
 			args[len(args)-1] = "{{.Name}}"
 		}
@@ -140,18 +140,18 @@ run = '` + inAContainer + `'
 }
 
 func TestCheckProvesAContainerSandboxAndRunsItsCommands(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": []}`)
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "Containerfile"), "FROM docker.io/curlimages/curl:latest\n")
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "Containerfile"), "FROM docker.io/curlimages/curl:latest\n")
 	writeFile(t, filepath.Join(p.work, "compose.yaml"), checkCompose)
 	gitIn(t, p.work, "add", ".")
 	gitIn(t, p.work, "commit", "-q", "-m", "Add the Containerfile and the Service")
 	gitIn(t, p.work, "push", "-q", "origin", "main")
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), checkContainerConfig(t, ""))
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), checkContainerConfig(t, ""))
 	// Podman and Docker need more than the tests' minimal PATH offers.
 	p.extraEnv = append(p.extraEnv, "PATH="+fakeClaudeBinDir(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	if code := p.kwk(t, "check", "--commands"); code != exitOK {
+	if code := p.fwk(t, "check", "--commands"); code != exitOK {
 		t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
 	}
 	mustContain(t, "stdout", p.stdout,
@@ -164,13 +164,13 @@ func TestCheckProvesAContainerSandboxAndRunsItsCommands(t *testing.T) {
 	)
 	assertNoCheckLeftBehind(t)
 
-	if code := p.kwk(t, "check"); code != exitOK {
+	if code := p.fwk(t, "check"); code != exitOK {
 		t.Fatalf("second check: exit code = %d\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
 	}
 	mustContain(t, "stdout", p.stdout, "is present")
 
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), checkContainerConfig(t, "broken = 'echo nope && exit 3'\n"))
-	code := p.kwk(t, "check", "--commands")
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), checkContainerConfig(t, "broken = 'echo nope && exit 3'\n"))
+	code := p.fwk(t, "check", "--commands")
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d\nstdout: %s\nstderr: %s", code, exitConfigError, p.stdout, p.stderr)
 	}
@@ -188,7 +188,7 @@ func assertNoCheckLeftBehind(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, kind := range [][]string{{"ps", "-a"}, {"network", "ls"}} {
-		args := append(append([]string{engine.Binary}, kind...), "--filter", "name=kraftwerk-check-", "--format", "{{.Names}}")
+		args := append(append([]string{engine.Binary}, kind...), "--filter", "name=fliesswerk-check-", "--format", "{{.Names}}")
 		if kind[0] == "network" {
 			args[len(args)-1] = "{{.Name}}"
 		}

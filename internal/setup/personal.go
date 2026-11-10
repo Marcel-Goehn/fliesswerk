@@ -14,10 +14,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/config"
-	"github.com/Marcel-Goehn/kraftwerk/internal/credentials"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
+	"github.com/Marcel-Goehn/fliesswerk/internal/config"
+	"github.com/Marcel-Goehn/fliesswerk/internal/credentials"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
 )
 
 // PersonalInput is what the personal questions are asked from.

@@ -79,8 +79,8 @@ var (
 var secretSource = &node{kind: kTable, oneOf: []string{"env", "command", "stored", "dotenv"}, fields: map[string]*node{
 	"env":     str("Read from this environment variable."),
 	"command": str("Run this command and use its stdout."),
-	"stored":  str("Read this key from the user-level credentials file written by `kraftwerk auth set`."),
-	"dotenv":  str("Read this key from .kraftwerk/.env, which must be git-ignored."),
+	"stored":  str("Read this key from the user-level credentials file written by `fliesswerk auth set`."),
+	"dotenv":  str("Read this key from .fliesswerk/.env, which must be git-ignored."),
 }}
 
 func stepTable(name string) *node {
@@ -132,10 +132,10 @@ func containsStar(v any) bool {
 	return false
 }
 
-var schema = table("Kraftwerk configuration.", map[string]*node{
+var schema = table("Fliesswerk configuration.", map[string]*node{
 	"version":         {kind: kVersion, doc: "The config format version. Must be 1."},
 	"factory":         str("A semver range the Factory's version must match, e.g. \"1\"."),
-	"update_notice":   boolean("Say when a newer Kraftwerk is out, at most once a day and never in CI. Default true."),
+	"update_notice":   boolean("Say when a newer Fliesswerk is out, at most once a day and never in CI. Default true."),
 	"harness":         enum("The Harness every Step uses unless the Step sets its own.", harnessNames...),
 	"model":           str("The model every Step uses unless the Step sets its own."),
 	"effort":          str("The reasoning effort every Step uses unless the Step sets its own."),

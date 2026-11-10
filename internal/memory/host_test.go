@@ -3,7 +3,7 @@ package memory_test
 import (
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/memory"
+	"github.com/Marcel-Goehn/fliesswerk/internal/memory"
 )
 
 const meminfo = `MemTotal:       32562612 kB

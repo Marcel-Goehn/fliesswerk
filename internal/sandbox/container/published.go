@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
 )
 
 // PublishedOptions are what every Sandbox of a Run shares.

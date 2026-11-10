@@ -13,13 +13,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/egress"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/egress"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
 )
 
 const secret = "sk-very-secret-value" //nolint:gosec // a test value
 
-// TestMain lets the test binary be what a Sandbox runs, as kraftwerk is.
+// TestMain lets the test binary be what a Sandbox runs, as fliesswerk is.
 func TestMain(m *testing.M) {
 	if code, ok := RunHelper(os.Args[1:]); ok {
 		os.Exit(code)
@@ -101,11 +101,11 @@ func newProject(t *testing.T, files map[string]string, change func(*Options)) *p
 	}
 	gitIn(t, root, "add", ".")
 	gitIn(t, root, "commit", "-q", "-m", "Initial commit")
-	worktree := filepath.Join(root, ".kraftwerk", "state", "worktrees", "ticket-1")
+	worktree := filepath.Join(root, ".fliesswerk", "state", "worktrees", "ticket-1")
 	gitIn(t, root, "worktree", "add", "-q", "-b", "ticket-1", worktree)
 
 	pr := &project{root: root, worktree: worktree, home: home}
-	opts := Options{Root: root, StateDir: filepath.Join(root, ".kraftwerk", "state"), Log: func(l string) { pr.logged = append(pr.logged, l) }}
+	opts := Options{Root: root, StateDir: filepath.Join(root, ".fliesswerk", "state"), Log: func(l string) { pr.logged = append(pr.logged, l) }}
 	if change != nil {
 		change(&opts)
 	}
@@ -196,7 +196,7 @@ func TestReadsAreClosedAndWritesReachOnlyTheWorktree(t *testing.T) {
 func TestHomeAndTmpArePrivateAndLastAcrossCommands(t *testing.T) {
 	pr := newProject(t, nil, nil)
 	sb := pr.open(t)
-	marker := filepath.Join(os.TempDir(), "kraftwerk-host-marker-"+filepath.Base(pr.home)+filepath.Base(filepath.Dir(pr.home)))
+	marker := filepath.Join(os.TempDir(), "fliesswerk-host-marker-"+filepath.Base(pr.home)+filepath.Base(filepath.Dir(pr.home)))
 	writeFile(t, marker, "host")
 	t.Cleanup(func() { _ = os.Remove(marker) })
 
@@ -310,26 +310,26 @@ func TestGitControlFilesAreReadOnly(t *testing.T) {
 
 func TestProtectedPathsAreReadOnly(t *testing.T) {
 	pr := newProject(t, map[string]string{
-		".kraftwerk/config.toml": "version = 1\n",
-		"docs/standards.md":      "be nice\n",
-		"secrets/a.pem":          "A\n",
-		"src/app.go":             "package app\n",
+		".fliesswerk/config.toml": "version = 1\n",
+		"docs/standards.md":       "be nice\n",
+		"secrets/a.pem":           "A\n",
+		"src/app.go":              "package app\n",
 	}, nil)
-	sb := pr.open(t, ".kraftwerk/", "docs/standards.md", "secrets/*.pem")
+	sb := pr.open(t, ".fliesswerk/", "docs/standards.md", "secrets/*.pem")
 
-	for _, file := range []string{".kraftwerk/config.toml", "docs/standards.md", "secrets/a.pem"} {
+	for _, file := range []string{".fliesswerk/config.toml", "docs/standards.md", "secrets/a.pem"} {
 		mustFail(t, sb, "echo x >> "+file)
 		if got := mustSh(t, sb, "wc -l < "+file); got != "1" {
 			t.Errorf("%s isn't readable as it was: %q", file, got)
 		}
 	}
-	mustFail(t, sb, "touch .kraftwerk/new")
+	mustFail(t, sb, "touch .fliesswerk/new")
 	mustSh(t, sb, "echo x >> src/app.go")
 }
 
 func TestAProtectedPathIsReadOnlyInASubdirectoryProject(t *testing.T) {
-	pr := newProject(t, map[string]string{"web/.kraftwerk/config.toml": "version = 1\n", "web/app.go": "x\n"}, nil)
-	sb, err := pr.p.Create(context.Background(), sandbox.Request{Name: "sub", Worktree: pr.worktree, Rel: "web", Protected: []string{".kraftwerk/"}})
+	pr := newProject(t, map[string]string{"web/.fliesswerk/config.toml": "version = 1\n", "web/app.go": "x\n"}, nil)
+	sb, err := pr.p.Create(context.Background(), sandbox.Request{Name: "sub", Worktree: pr.worktree, Rel: "web", Protected: []string{".fliesswerk/"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,7 +338,7 @@ func TestAProtectedPathIsReadOnlyInASubdirectoryProject(t *testing.T) {
 	if got := mustSh(t, sb, "pwd"); got != filepath.Join(pr.worktree, "web") {
 		t.Errorf("pwd = %q", got)
 	}
-	mustFail(t, sb, "echo x >> .kraftwerk/config.toml")
+	mustFail(t, sb, "echo x >> .fliesswerk/config.toml")
 	mustSh(t, sb, "echo x >> app.go")
 }
 
@@ -420,18 +420,18 @@ func TestAddedPathsAreReadOnlyOrWritableAsConfigured(t *testing.T) {
 }
 
 func TestAnAddedPathNeverExposesAKeychain(t *testing.T) {
-	pr := newProject(t, map[string]string{".kraftwerk/config.toml": "version = 1\n"}, func(o *Options) {
+	pr := newProject(t, map[string]string{".fliesswerk/config.toml": "version = 1\n"}, func(o *Options) {
 		o.Writable = []string{"~"}
 	})
 	keyring := filepath.Join(os.Getenv("HOME"), ".local", "share", "keyrings", "login.keyring")
 	gnupg := filepath.Join(os.Getenv("HOME"), ".gnupg", "private-keys")
 	writeFile(t, keyring, "KEY")
 	writeFile(t, gnupg, "KEY")
-	sb := pr.open(t, ".kraftwerk/")
+	sb := pr.open(t, ".fliesswerk/")
 
 	mustFail(t, sb, "cat "+keyring)
 	mustFail(t, sb, "cat "+gnupg)
-	mustFail(t, sb, "echo x >> .kraftwerk/config.toml")
+	mustFail(t, sb, "echo x >> .fliesswerk/config.toml")
 	mustFail(t, sb, "echo x > .git")
 }
 
@@ -447,8 +447,8 @@ func TestAProtectedPathsParentsCannotBeMovedAside(t *testing.T) {
 }
 
 func TestASubdirectoryProjectCannotBeMovedAside(t *testing.T) {
-	pr := newProject(t, map[string]string{"web/.kraftwerk/config.toml": "version = 1\n"}, nil)
-	sb, err := pr.p.Create(context.Background(), sandbox.Request{Name: "sub", Worktree: pr.worktree, Rel: "web", Protected: []string{".kraftwerk/"}})
+	pr := newProject(t, map[string]string{"web/.fliesswerk/config.toml": "version = 1\n"}, nil)
+	sb, err := pr.p.Create(context.Background(), sandbox.Request{Name: "sub", Worktree: pr.worktree, Rel: "web", Protected: []string{".fliesswerk/"}})
 	if err != nil {
 		t.Fatal(err)
 	}

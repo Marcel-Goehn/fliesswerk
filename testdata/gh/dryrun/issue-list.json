@@ -7,14 +7,14 @@
           "number": 33,
           "state": "CLOSED",
           "title": "Audit the history and make the repo public",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/33"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/33"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMH5A",
           "number": 37,
           "state": "OPEN",
           "title": "First Run: git, branches and loop, `kind = \"none\"`",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/37"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/37"
         },
         {
           "id": "I_x",
@@ -26,7 +26,7 @@
       ],
       "totalCount": 3
     },
-    "body": "## Parent\n\n#31\n\n## Blocked by\n\n- #33\n- #37\n- #36\n- https://github.com/Marcel-Goehn/kraftwerk/issues/41\n\n## What to build\n\nSee #12 for context.\n\nBlocked by: #40, acme/lib#5\n",
+    "body": "## Parent\n\n#31\n\n## Blocked by\n\n- #33\n- #37\n- #36\n- https://github.com/Marcel-Goehn/fliesswerk/issues/41\n\n## What to build\n\nSee #12 for context.\n\nBlocked by: #40, acme/lib#5\n",
     "labels": [
       {
         "id": "LA_kwDOVgZxAM8AAAADAtB4cw",
@@ -40,8 +40,8 @@
       "id": "I_kwDOVgZxAM8AAAABdRBsog",
       "number": 31,
       "state": "OPEN",
-      "title": "Spec: Factory v1 (Kraftwerk)",
-      "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/31"
+      "title": "Spec: Factory v1 (Fliesswerk)",
+      "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/31"
     },
     "state": "OPEN",
     "subIssues": {
@@ -49,7 +49,7 @@
       "totalCount": 0
     },
     "title": "Nightly jobs",
-    "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/64"
+    "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/64"
   },
   {
     "blockedBy": {
@@ -59,19 +59,19 @@
           "number": 36,
           "state": "OPEN",
           "title": "Harness boundary: Claude Code adapter and scripted fake Harness",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/36"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/36"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMECg",
           "number": 35,
           "state": "OPEN",
           "title": "Tracker boundary, GitHub adapter and `run --dry-run`",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/35"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/35"
         }
       ],
       "totalCount": 2
     },
-    "body": "## Parent\n\n#31 Spec: Factory v1 (Kraftwerk)\n\n## What to build\n\nA user labels a Ticket and runs `kraftwerk run` (with `kind = \"none\"` and its local acknowledgement), and the Factory implements it end to end: a Spec branch cut from the remote `base_branch`, a Ticket branch in a Factory-owned worktree, the implement Step with a minimal built-in prompt, a fast-forward into the Spec branch, a push, and the Ticket closed with a comment. Sequential only, implement only. The process runner here only needs to start a Step, pipe the prompt and kill the direct child; hardening is the next ticket.\n\n## Acceptance criteria\n\n- [ ] The user's checkout is never touched; all work happens in Factory-owned worktrees under the git-ignored runtime state\n- [ ] Spec branch `<prefix>/spec-<N>-<slug>`, internal Ticket branch `<prefix>/ticket-<N>`, standalone Ticket branch `<prefix>/ticket-<N>-<slug>`; branches are looked up by number only, so renaming an issue never creates a second branch\n- [ ] Branches are cut from the remote ref; an existing Spec branch is reused from its tip (locally, or fetched when it exists only on the remote) and never rebased\n- [ ] On success the Ticket branch fast-forwards into the Spec branch, the Spec branch is pushed (never forced) with the host's git credentials, then the Ticket is closed with the report's summary, the commits and the branch name\n- [ ] `base_branch` and internal Ticket branches are never pushed; Ticket branches and worktrees are deleted on success, kept on failure; Spec worktrees are removed at Run end\n- [ ] An implement `done` without commits counts as a failure; the Ticket stays open\n- [ ] The Run ends when the frontier is empty or after `max_iterations` (default 10); exit 0 in both cases, 1 when a Ticket failed\n- [ ] The Factory never closes a Spec\n- [ ] An E2E test runs the real binary against a fixture repo with a bare remote, the fake Harness and a fake Tracker, and checks branches, push and close\n",
+    "body": "## Parent\n\n#31 Spec: Factory v1 (Fliesswerk)\n\n## What to build\n\nA user labels a Ticket and runs `fliesswerk run` (with `kind = \"none\"` and its local acknowledgement), and the Factory implements it end to end: a Spec branch cut from the remote `base_branch`, a Ticket branch in a Factory-owned worktree, the implement Step with a minimal built-in prompt, a fast-forward into the Spec branch, a push, and the Ticket closed with a comment. Sequential only, implement only. The process runner here only needs to start a Step, pipe the prompt and kill the direct child; hardening is the next ticket.\n\n## Acceptance criteria\n\n- [ ] The user's checkout is never touched; all work happens in Factory-owned worktrees under the git-ignored runtime state\n- [ ] Spec branch `<prefix>/spec-<N>-<slug>`, internal Ticket branch `<prefix>/ticket-<N>`, standalone Ticket branch `<prefix>/ticket-<N>-<slug>`; branches are looked up by number only, so renaming an issue never creates a second branch\n- [ ] Branches are cut from the remote ref; an existing Spec branch is reused from its tip (locally, or fetched when it exists only on the remote) and never rebased\n- [ ] On success the Ticket branch fast-forwards into the Spec branch, the Spec branch is pushed (never forced) with the host's git credentials, then the Ticket is closed with the report's summary, the commits and the branch name\n- [ ] `base_branch` and internal Ticket branches are never pushed; Ticket branches and worktrees are deleted on success, kept on failure; Spec worktrees are removed at Run end\n- [ ] An implement `done` without commits counts as a failure; the Ticket stays open\n- [ ] The Run ends when the frontier is empty or after `max_iterations` (default 10); exit 0 in both cases, 1 when a Ticket failed\n- [ ] The Factory never closes a Spec\n- [ ] An E2E test runs the real binary against a fixture repo with a bare remote, the fake Harness and a fake Tracker, and checks branches, push and close\n",
     "labels": [
       {
         "id": "LA_kwDOVgZxAM8AAAADAtB4cw",
@@ -85,8 +85,8 @@
       "id": "I_kwDOVgZxAM8AAAABdRBsog",
       "number": 31,
       "state": "OPEN",
-      "title": "Spec: Factory v1 (Kraftwerk)",
-      "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/31"
+      "title": "Spec: Factory v1 (Fliesswerk)",
+      "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/31"
     },
     "state": "OPEN",
     "subIssues": {
@@ -94,7 +94,7 @@
       "totalCount": 0
     },
     "title": "First Run: git, branches and loop, `kind = \"none\"`",
-    "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/37"
+    "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/37"
   },
   {
     "blockedBy": {
@@ -104,12 +104,12 @@
           "number": 32,
           "state": "CLOSED",
           "title": "Walking skeleton and CI",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/32"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/32"
         }
       ],
       "totalCount": 1
     },
-    "body": "## Parent\n\n#31 Spec: Factory v1 (Kraftwerk)\n\n## What to build\n\nIntroduce the Harness boundary (`Command`, `Parse`, `Describe`, no I/O in adapters), the Claude Code adapter, and a scripted fake Harness that later end-to-end tests use instead of a real one. Verifiable on its own through contract tests on recorded Claude Code `stream-json` transcripts.\n\n## Acceptance criteria\n\n- [ ] `Command` returns argv, env and stdin as data; the prompt goes on stdin, never argv\n- [ ] Claude Code's `Command` pins `bypassPermissions`, `--permission-prompts none`, its built-in sandbox off, the report schema via `--json-schema`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` (unless scrub is off), `--effort` only when set, and never `--bare`\n- [ ] `Parse` turns one JSONL line into common events (`text`, `tool_call` with a one-line summary, `usage`, `error` with class `auth`/`transient`/`other`, `final` with the report) and marks the terminal event\n- [ ] Each Step resolves to exactly one of `report`, `no_report` or `error(class)`; failures are read from the stream, not just the exit code\n- [ ] Usage is normalised to input, output, cache read, cache write, plus cost and its unit when reported\n- [ ] `Describe` declares binary name and minimum version, install snippet and host hint, auth methods with endpoints and test calls, fixed env flags, credential env names to redact, credential-file mechanism, home seeding, capabilities\n- [ ] Contract tests feed golden `stream-json` transcripts into `Parse` (a table test, including a recorded `result` line)\n- [ ] A scripted fake Harness speaks Claude Code's event format, edits files as scripted and emits a report; it is selected by a test-only build tag and never ships in a release\n",
+    "body": "## Parent\n\n#31 Spec: Factory v1 (Fliesswerk)\n\n## What to build\n\nIntroduce the Harness boundary (`Command`, `Parse`, `Describe`, no I/O in adapters), the Claude Code adapter, and a scripted fake Harness that later end-to-end tests use instead of a real one. Verifiable on its own through contract tests on recorded Claude Code `stream-json` transcripts.\n\n## Acceptance criteria\n\n- [ ] `Command` returns argv, env and stdin as data; the prompt goes on stdin, never argv\n- [ ] Claude Code's `Command` pins `bypassPermissions`, `--permission-prompts none`, its built-in sandbox off, the report schema via `--json-schema`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` (unless scrub is off), `--effort` only when set, and never `--bare`\n- [ ] `Parse` turns one JSONL line into common events (`text`, `tool_call` with a one-line summary, `usage`, `error` with class `auth`/`transient`/`other`, `final` with the report) and marks the terminal event\n- [ ] Each Step resolves to exactly one of `report`, `no_report` or `error(class)`; failures are read from the stream, not just the exit code\n- [ ] Usage is normalised to input, output, cache read, cache write, plus cost and its unit when reported\n- [ ] `Describe` declares binary name and minimum version, install snippet and host hint, auth methods with endpoints and test calls, fixed env flags, credential env names to redact, credential-file mechanism, home seeding, capabilities\n- [ ] Contract tests feed golden `stream-json` transcripts into `Parse` (a table test, including a recorded `result` line)\n- [ ] A scripted fake Harness speaks Claude Code's event format, edits files as scripted and emits a report; it is selected by a test-only build tag and never ships in a release\n",
     "labels": [
       {
         "id": "LA_kwDOVgZxAM8AAAADAtB4cw",
@@ -123,8 +123,8 @@
       "id": "I_kwDOVgZxAM8AAAABdRBsog",
       "number": 31,
       "state": "OPEN",
-      "title": "Spec: Factory v1 (Kraftwerk)",
-      "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/31"
+      "title": "Spec: Factory v1 (Fliesswerk)",
+      "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/31"
     },
     "state": "OPEN",
     "subIssues": {
@@ -132,7 +132,7 @@
       "totalCount": 0
     },
     "title": "Harness boundary: Claude Code adapter and scripted fake Harness",
-    "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/36"
+    "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/36"
   },
   {
     "blockedBy": {
@@ -142,12 +142,12 @@
           "number": 34,
           "state": "CLOSED",
           "title": "Config loading, layering and strict validation",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/34"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/34"
         }
       ],
       "totalCount": 1
     },
-    "body": "## Parent\n\n#31 Spec: Factory v1 (Kraftwerk)\n\n## What to build\n\nA user runs `kraftwerk run --dry-run` and sees which Tickets Iteration 1 would take, in which Spec, and which Tickets are skipped and why. This introduces the Tracker boundary (`Snapshot`, `Comments`, `Comment`, `Close`, `SetLabels`, `Describe` on opaque ids), the GitHub adapter through `gh`, and readiness computed in the core.\n\n## Acceptance criteria\n\n- [ ] The Tracker boundary is a compiled-in Go interface; ids are opaque strings with a display form and a branch-safe form, and the core never parses them\n- [ ] The GitHub adapter uses `gh` only; a configured token reaches `gh` as `GH_TOKEN` in the env, never in argv\n- [ ] `check` verifies `gh` is installed at a version that returns `parent`, `subIssues` and `blockedBy`, and is logged in, and names the install command for the OS otherwise\n- [ ] Readiness is computed in the core: open, ready label, not a Spec (has no sub-issues), every Blocker closed for any reason; Blockers come only from native issue dependencies\n- [ ] A Ticket with a `## Blocked by` section or `Blocked by:` line naming an issue without a matching native link is skipped, with the fix shown\n- [ ] A Blocker outside the Ticket's Spec is respected and warned about\n- [ ] `--dry-run` prints Iteration 1 (up to `max_parallel` Tickets, Tickets ordered by Spec number then Ticket number) plus skipped Tickets with reasons, and writes nothing\n- [ ] Contract tests run the adapter offline against recorded `gh … --json` fixtures; unit tests cover readiness with an in-memory fake Tracker\n",
+    "body": "## Parent\n\n#31 Spec: Factory v1 (Fliesswerk)\n\n## What to build\n\nA user runs `fliesswerk run --dry-run` and sees which Tickets Iteration 1 would take, in which Spec, and which Tickets are skipped and why. This introduces the Tracker boundary (`Snapshot`, `Comments`, `Comment`, `Close`, `SetLabels`, `Describe` on opaque ids), the GitHub adapter through `gh`, and readiness computed in the core.\n\n## Acceptance criteria\n\n- [ ] The Tracker boundary is a compiled-in Go interface; ids are opaque strings with a display form and a branch-safe form, and the core never parses them\n- [ ] The GitHub adapter uses `gh` only; a configured token reaches `gh` as `GH_TOKEN` in the env, never in argv\n- [ ] `check` verifies `gh` is installed at a version that returns `parent`, `subIssues` and `blockedBy`, and is logged in, and names the install command for the OS otherwise\n- [ ] Readiness is computed in the core: open, ready label, not a Spec (has no sub-issues), every Blocker closed for any reason; Blockers come only from native issue dependencies\n- [ ] A Ticket with a `## Blocked by` section or `Blocked by:` line naming an issue without a matching native link is skipped, with the fix shown\n- [ ] A Blocker outside the Ticket's Spec is respected and warned about\n- [ ] `--dry-run` prints Iteration 1 (up to `max_parallel` Tickets, Tickets ordered by Spec number then Ticket number) plus skipped Tickets with reasons, and writes nothing\n- [ ] Contract tests run the adapter offline against recorded `gh … --json` fixtures; unit tests cover readiness with an in-memory fake Tracker\n",
     "labels": [
       {
         "id": "LA_kwDOVgZxAM8AAAADAtB4cw",
@@ -161,8 +161,8 @@
       "id": "I_kwDOVgZxAM8AAAABdRBsog",
       "number": 31,
       "state": "OPEN",
-      "title": "Spec: Factory v1 (Kraftwerk)",
-      "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/31"
+      "title": "Spec: Factory v1 (Fliesswerk)",
+      "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/31"
     },
     "state": "OPEN",
     "subIssues": {
@@ -170,7 +170,7 @@
       "totalCount": 0
     },
     "title": "Tracker boundary, GitHub adapter and `run --dry-run`",
-    "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/35"
+    "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/35"
   },
   {
     "blockedBy": {
@@ -196,243 +196,243 @@
           "number": 32,
           "state": "CLOSED",
           "title": "Walking skeleton and CI",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/32"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/32"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMARw",
           "number": 33,
           "state": "CLOSED",
           "title": "Audit the history and make the repo public",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/33"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/33"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMBzA",
           "number": 34,
           "state": "CLOSED",
           "title": "Config loading, layering and strict validation",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/34"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/34"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMECg",
           "number": 35,
           "state": "OPEN",
           "title": "Tracker boundary, GitHub adapter and `run --dry-run`",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/35"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/35"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMGMQ",
           "number": 36,
           "state": "OPEN",
           "title": "Harness boundary: Claude Code adapter and scripted fake Harness",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/36"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/36"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMH5A",
           "number": 37,
           "state": "OPEN",
           "title": "First Run: git, branches and loop, `kind = \"none\"`",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/37"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/37"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMJ4A",
           "number": 38,
           "state": "OPEN",
           "title": "Hardened process runner: timeouts, grace and tree-kill per OS",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/38"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/38"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMLUg",
           "number": 39,
           "state": "OPEN",
           "title": "Credential sources, per-Step delivery and redaction",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/39"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/39"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMM1A",
           "number": 40,
           "state": "OPEN",
           "title": "Review Step and `verify`",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/40"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/40"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMOww",
           "number": 41,
           "state": "OPEN",
           "title": "Failure handling and `cannot_do`",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/41"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/41"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMQ5A",
           "number": 42,
           "state": "OPEN",
           "title": "Project prompt files and the full prompt contract",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/42"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/42"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMSbA",
           "number": 43,
           "state": "OPEN",
           "title": "Spec claims and \"finish what's started\" ordering",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/43"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/43"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMT7w",
           "number": 44,
           "state": "OPEN",
           "title": "Hooks",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/44"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/44"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMVOQ",
           "number": 45,
           "state": "OPEN",
           "title": "Run logs, terminal view and Run summary",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/45"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/45"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMWrg",
           "number": 46,
           "state": "OPEN",
           "title": "Run robustness: lock, crash cleanup, Ctrl-C and replayed writes",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/46"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/46"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMYTg",
           "number": 47,
           "state": "OPEN",
           "title": "Parallel Runs and the merge queue, clean merges only",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/47"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/47"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMZ4A",
           "number": 48,
           "state": "OPEN",
           "title": "Merge Step for real conflicts",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/48"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/48"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMbMw",
           "number": 49,
           "state": "OPEN",
           "title": "Egress proxy",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/49"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/49"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMcnQ",
           "number": 50,
           "state": "OPEN",
           "title": "Container Sandbox with the network fully cut",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/50"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/50"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMemw",
           "number": 51,
           "state": "OPEN",
           "title": "Proxy sidecar: allowlisted egress for container Sandboxes",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/51"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/51"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMgMg",
           "number": 52,
           "state": "OPEN",
           "title": "Native Sandbox on Linux (bwrap)",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/52"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/52"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMiKg",
           "number": 53,
           "state": "OPEN",
           "title": "Native Sandbox on macOS (Seatbelt)",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/53"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/53"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMkGw",
           "number": 54,
           "state": "OPEN",
           "title": "Own Services per container Sandbox",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/54"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/54"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMlgw",
           "number": 55,
           "state": "OPEN",
           "title": "Services in native Sandboxes",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/55"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/55"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMngw",
           "number": 56,
           "state": "OPEN",
           "title": "Shared Services and memory admission",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/56"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/56"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMpNQ",
           "number": 57,
           "state": "OPEN",
           "title": "Corporate proxy and `ca_certs`",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/57"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/57"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMq5w",
           "number": 58,
           "state": "OPEN",
           "title": "Bedrock auth",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/58"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/58"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMsZA",
           "number": 59,
           "state": "OPEN",
           "title": "Full `check`: live probe and `--commands` dry run",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/59"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/59"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMt0A",
           "number": 60,
           "state": "OPEN",
           "title": "`init`: project setup",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/60"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/60"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMwDw",
           "number": 61,
           "state": "OPEN",
           "title": "`init`: personal setup and re-runs",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/61"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/61"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMxww",
           "number": 62,
           "state": "OPEN",
           "title": "Releases and install scripts",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/62"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/62"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRMzqA",
           "number": 63,
           "state": "OPEN",
           "title": "Updates and config evolution",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/63"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/63"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRM1_A",
           "number": 64,
           "state": "OPEN",
           "title": "Nightly jobs",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/64"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/64"
         },
         {
           "id": "I_kwDOVgZxAM8AAAABdRM37Q",
           "number": 65,
           "state": "OPEN",
           "title": "Setup and usage guides, config reference and support matrix",
-          "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/65"
+          "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/65"
         }
       ],
       "totalCount": 34
     },
-    "title": "Spec: Factory v1 (Kraftwerk)",
-    "url": "https://github.com/Marcel-Goehn/kraftwerk/issues/31"
+    "title": "Spec: Factory v1 (Fliesswerk)",
+    "url": "https://github.com/Marcel-Goehn/fliesswerk/issues/31"
   }
 ]

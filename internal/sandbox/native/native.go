@@ -22,9 +22,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/egress"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/egress"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
 )
 
 // destroyTimeout bounds removing a Sandbox that failed part way.
@@ -138,10 +138,10 @@ func (p *Provider) Prepare(ctx context.Context) error {
 	}
 	self, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("finding the kraftwerk binary: %w", err)
+		return fmt.Errorf("finding the fliesswerk binary: %w", err)
 	}
 	if p.self, err = filepath.EvalSymlinks(self); err != nil {
-		return fmt.Errorf("finding the kraftwerk binary: %w", err)
+		return fmt.Errorf("finding the fliesswerk binary: %w", err)
 	}
 	p.identity = sandbox.CommitIdentity(ctx, p.opts.Root)
 	if err := p.opts.Egress.Validate(); err != nil {
@@ -150,7 +150,7 @@ func (p *Provider) Prepare(ctx context.Context) error {
 	o := p.opts.Egress
 	o.Log = p.logDenied
 	if !p.host.Mac {
-		if p.socketDir, err = os.MkdirTemp("", "kwk-"); err != nil {
+		if p.socketDir, err = os.MkdirTemp("", "fwk-"); err != nil {
 			return err
 		}
 		o.Socket = filepath.Join(p.socketDir, socketName)
@@ -254,7 +254,7 @@ func (p *Provider) Create(ctx context.Context, req sandbox.Request) (sandbox.San
 		}
 	}
 	b := &box{self: p.self, state: state, plan: filepath.Join(state, "plan.json"), groupDir: groupDir, env: p.baseEnv(path, home, tmp), ownServices: p.opts.Services}
-	b.setEnv([]string{"KRAFTWERK_SANDBOX=" + req.Name})
+	b.setEnv([]string{"FLIESSWERK_SANDBOX=" + req.Name})
 	if p.opts.CredentialDir != "" {
 		s.CredentialDir = p.opts.CredentialDir
 		inside := insideCredentialDir

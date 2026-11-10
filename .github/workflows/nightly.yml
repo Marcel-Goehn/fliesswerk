@@ -6,10 +6,10 @@
 # `ready-for-agent`, so no Run picks it up before a human has looked.
 #
 # The real-GitHub job needs, set up once in the repository's settings:
-#   - the variable KRAFTWERK_LIVE_REPO: owner/name of a repository that
+#   - the variable FLIESSWERK_LIVE_REPO: owner/name of a repository that
 #     exists only for this job. Everything in it is closed or deleted each
 #     night.
-#   - the secret KRAFTWERK_LIVE_TOKEN: a fine-grained token with access to
+#   - the secret FLIESSWERK_LIVE_TOKEN: a fine-grained token with access to
 #     only that repository, with Issues and Contents read/write (Metadata
 #     read comes with it).
 #
@@ -44,7 +44,7 @@ jobs:
         run: go generate ./internal/proxyimage
       - name: go test
         env:
-          KRAFTWERK_TEST_ANCHOR: "1"
+          FLIESSWERK_TEST_ANCHOR: "1"
         run: go test ./...
 
   # As ci.yml's container job, on arm64: the sidecar image is the arm64 one.
@@ -56,7 +56,7 @@ jobs:
       matrix:
         engine: [docker, podman]
     env:
-      KRAFTWERK_ENGINE: ${{ matrix.engine }}
+      FLIESSWERK_ENGINE: ${{ matrix.engine }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -116,7 +116,7 @@ jobs:
     name: real GitHub
     runs-on: ubuntu-latest
     env:
-      KRAFTWERK_LIVE_REPO: ${{ vars.KRAFTWERK_LIVE_REPO }}
+      FLIESSWERK_LIVE_REPO: ${{ vars.FLIESSWERK_LIVE_REPO }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -127,14 +127,14 @@ jobs:
       # The token reaches only the steps that use it.
       - name: go test (live)
         env:
-          KRAFTWERK_LIVE_TOKEN: ${{ secrets.KRAFTWERK_LIVE_TOKEN }}
+          FLIESSWERK_LIVE_TOKEN: ${{ secrets.FLIESSWERK_LIVE_TOKEN }}
         run: go test -tags live -v -count=1 -timeout 10m ./internal/tracker/github/
       - name: Reset the test repository
-        if: ${{ always() && env.KRAFTWERK_LIVE_REPO != '' }}
+        if: ${{ always() && env.FLIESSWERK_LIVE_REPO != '' }}
         env:
-          GH_TOKEN: ${{ secrets.KRAFTWERK_LIVE_TOKEN }}
+          GH_TOKEN: ${{ secrets.FLIESSWERK_LIVE_TOKEN }}
         run: |
-          repo=$KRAFTWERK_LIVE_REPO
+          repo=$FLIESSWERK_LIVE_REPO
           for n in $(gh issue list --repo "$repo" --state open --limit 1000 --json number --jq '.[].number'); do
             gh issue close "$n" --repo "$repo" --reason "not planned"
           done

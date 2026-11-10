@@ -1,4 +1,4 @@
-//go:build kwkfake
+//go:build fwkfake
 
 package config
 

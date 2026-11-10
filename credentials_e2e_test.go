@@ -15,7 +15,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/fake"
 )
 
 // configHome is an environment whose user config directory (where `auth
@@ -26,7 +26,7 @@ func configHome(t *testing.T) []string {
 	return []string{"HOME=" + home, "XDG_CONFIG_HOME=" + filepath.Join(home, ".config"), "AppData=" + filepath.Join(home, "AppData")}
 }
 
-// authSet runs `kraftwerk auth set key` with value piped to stdin.
+// authSet runs `fliesswerk auth set key` with value piped to stdin.
 func authSet(t *testing.T, bin string, env []string, key, value string) (stdout, stderr string, code int) {
 	t.Helper()
 	cmd := exec.Command(bin, "auth", "set", key)
@@ -60,7 +60,7 @@ func findCredentialsFile(t *testing.T, dir string) string {
 }
 
 func TestAuthSetStoresASecretInAUserOnlyFile(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	env := configHome(t)
 
 	stdout, stderr, code := authSet(t, bin, env, "claude_api_key", "sk-ant-api03-secret")
@@ -86,7 +86,7 @@ func TestAuthSetStoresASecretInAUserOnlyFile(t *testing.T) {
 }
 
 func TestAuthSetRefusesBadInput(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	env := configHome(t)
 
 	for _, tt := range []struct {
@@ -105,7 +105,7 @@ func TestAuthSetRefusesBadInput(t *testing.T) {
 }
 
 func TestAuthSetRefusesASubscriptionTokenAndWritesNothing(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	env := configHome(t)
 	if _, stderr, code := authSet(t, bin, env, "claude_api_key", "an-api-key"); code != 0 {
 		t.Fatalf("auth set: %s", stderr)
@@ -121,7 +121,7 @@ func TestAuthSetRefusesASubscriptionTokenAndWritesNothing(t *testing.T) {
 	if code != 3 {
 		t.Errorf("exit code = %d, want 3; stderr: %s", code, stderr)
 	}
-	for _, want := range []string{"`kraftwerk auth set` doesn't take it", `{ env = "CLAUDE_CODE_OAUTH_TOKEN" }`} {
+	for _, want := range []string{"`fliesswerk auth set` doesn't take it", `{ env = "CLAUDE_CODE_OAUTH_TOKEN" }`} {
 		mustContain(t, "stderr", stderr, want)
 	}
 	if after, err := os.ReadFile(path); err != nil || string(after) != string(before) { //nolint:gosec // the test's own temp file
@@ -130,12 +130,12 @@ func TestAuthSetRefusesASubscriptionTokenAndWritesNothing(t *testing.T) {
 }
 
 func TestCheckRefusesADotenvThatIsNotGitIgnored(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n", ".gitignore": "config.local.toml\n"})
 
 	_, stderr, code := runIn(t, bin, root, "check")
 
-	if code != 3 || !strings.Contains(stderr, ".kraftwerk/.env is not git-ignored") {
+	if code != 3 || !strings.Contains(stderr, ".fliesswerk/.env is not git-ignored") {
 		t.Fatalf("exit code = %d, want 3 refusing the .env; stderr: %s", code, stderr)
 	}
 }
@@ -174,7 +174,7 @@ func gatewayConfig(base string) string {
 }
 
 func TestCheckSendsNoClaudeCredentialAndSaysClaudeCodeChecksIt(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	endpoint, proxy, requests := fakeAnthropic(t)
 	for _, tt := range []struct{ method, config string }{
 		{"oauth_token", "[harnesses.claude_code]\nmethod = \"oauth_token\"\nsecret = { env = \"CLAUDE_CODE_OAUTH_TOKEN\" }\n"},
@@ -206,8 +206,8 @@ func TestCheckSendsNoClaudeCredentialAndSaysClaudeCodeChecksIt(t *testing.T) {
 	t.Run("a missing credential still stops check and names how to store it", func(t *testing.T) {
 		root := projectDir(t, map[string]string{"config.toml": "version = 1\n", "config.local.toml": gatewayConfig(endpoint)})
 		_, stderr, code := runEnv(t, bin, root, append(ghEnv(t, "ok"), configHome(t)...), "check")
-		if code != 3 || !strings.Contains(stderr, "kraftwerk auth set gw") {
-			t.Fatalf("exit code = %d, want 3 naming `kraftwerk auth set gw`; stderr: %s", code, stderr)
+		if code != 3 || !strings.Contains(stderr, "fliesswerk auth set gw") {
+			t.Fatalf("exit code = %d, want 3 naming `fliesswerk auth set gw`; stderr: %s", code, stderr)
 		}
 	})
 
@@ -266,18 +266,18 @@ func harnessCalls(t *testing.T, path string) []struct {
 const noSandbox = "[sandbox]\nkind = \"none\"\ni_accept_unsandboxed_risk = true\n"
 
 func TestARunDeliversSecretsToTheStepAndRedactsThemEverywhere(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	srv := fakeGateway(t)
 	// The agent leaks both secrets: into a tool call the terminal shows,
 	// and into its report, which becomes the close comment.
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, {"match": "Ticket #2", "expand": true, "actions": [
 		{"run": ["git", "commit", "-q", "--allow-empty", "-m", "token $ANTHROPIC_AUTH_TOKEN db $DB_PASSWORD"]}
 	], "report": {"outcome": "done", "summary": "Used $ANTHROPIC_AUTH_TOKEN and $DB_PASSWORD."}}]}`)
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), noSandbox+"scrub_credentials = false\n"+
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), noSandbox+"scrub_credentials = false\n"+
 		"[sandbox.secrets]\nDB_PASSWORD = { dotenv = \"DB_PASSWORD\" }\n"+gatewayConfig(srv.URL))
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", ".env"), "DB_PASSWORD=db-secret-pw\n")
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", ".env"), "DB_PASSWORD=db-secret-pw\n")
 	logPath := filepath.Join(t.TempDir(), "harness.jsonl")
-	p.extraEnv = append(configHome(t), "KWK_FAKE_HARNESS_LOG="+logPath, "KWK_FAKE_LOG_ENV=DB_PASSWORD")
+	p.extraEnv = append(configHome(t), "FWK_FAKE_HARNESS_LOG="+logPath, "FWK_FAKE_LOG_ENV=DB_PASSWORD")
 	authSet(t, bin, p.extraEnv, "gw", "gw-secret-token")
 
 	code := p.run(t)
@@ -313,17 +313,17 @@ func TestARunDeliversSecretsToTheStepAndRedactsThemEverywhere(t *testing.T) {
 }
 
 func TestWithScrubbingOnTheAgentGetsNoProjectSecretOrTrackerToken(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, {"match": "Ticket #2", "actions": [
 		{"run": ["git", "commit", "-q", "--allow-empty", "-m", "work"]}
 	], "report": {"outcome": "done", "summary": "ok"}}]}`)
 	// Both secrets come from the Factory's own env, which the Step would
 	// otherwise inherit.
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), noSandbox+
-		"[sandbox.secrets]\nDB_PASSWORD = { env = \"DB_PASSWORD\" }\n[tracker]\ntoken = { env = \"KWK_GH_PAT\" }\n")
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), noSandbox+
+		"[sandbox.secrets]\nDB_PASSWORD = { env = \"DB_PASSWORD\" }\n[tracker]\ntoken = { env = \"FWK_GH_PAT\" }\n")
 	logPath := filepath.Join(t.TempDir(), "harness.jsonl")
-	p.extraEnv = append(configHome(t), "KWK_FAKE_HARNESS_LOG="+logPath, "KWK_FAKE_LOG_ENV=DB_PASSWORD,KWK_GH_PAT,GH_TOKEN",
-		"DB_PASSWORD=db-secret-pw", "KWK_GH_PAT=gh-secret-pat", "GH_TOKEN=gh-secret-env")
+	p.extraEnv = append(configHome(t), "FWK_FAKE_HARNESS_LOG="+logPath, "FWK_FAKE_LOG_ENV=DB_PASSWORD,FWK_GH_PAT,GH_TOKEN",
+		"DB_PASSWORD=db-secret-pw", "FWK_GH_PAT=gh-secret-pat", "GH_TOKEN=gh-secret-env")
 
 	if code := p.run(t); code != 0 {
 		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
@@ -333,7 +333,7 @@ func TestWithScrubbingOnTheAgentGetsNoProjectSecretOrTrackerToken(t *testing.T) 
 		t.Fatalf("the Harness ran %d times, want twice: implement and review", len(calls))
 	}
 	for _, c := range calls {
-		for _, name := range []string{"DB_PASSWORD", "KWK_GH_PAT", "GH_TOKEN"} {
+		for _, name := range []string{"DB_PASSWORD", "FWK_GH_PAT", "GH_TOKEN"} {
 			if _, ok := c.Env[name]; ok {
 				t.Errorf("the agent got %s with scrubbing on", name)
 			}
@@ -345,12 +345,12 @@ func TestWithScrubbingOnTheAgentGetsNoProjectSecretOrTrackerToken(t *testing.T) 
 // CLAUDE_CODE_OAUTH_TOKEN, and that Claude Code rejects at every Step script matches.
 func rejectedRun(t *testing.T, issues []fake.Issue, script string) (*runProject, string) {
 	t.Helper()
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, issues, script)
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), noSandbox+
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), noSandbox+
 		"[harnesses.claude_code]\nmethod = \"oauth_token\"\nsecret = { env = \"CLAUDE_CODE_OAUTH_TOKEN\" }\n")
 	logPath := filepath.Join(t.TempDir(), "harness.jsonl")
-	p.extraEnv = append(configHome(t), "KWK_FAKE_HARNESS_LOG="+logPath, "CLAUDE_CODE_OAUTH_TOKEN=an-expired-token")
+	p.extraEnv = append(configHome(t), "FWK_FAKE_HARNESS_LOG="+logPath, "CLAUDE_CODE_OAUTH_TOKEN=an-expired-token")
 	return p, logPath
 }
 
@@ -363,7 +363,7 @@ func (p *runProject) stoppedForTheCredential(t *testing.T, code int) {
 		t.Fatalf("exit code = %d, want %d\nstdout: %s\nstderr: %s", code, exitStopped, p.stdout, p.stderr)
 	}
 	mustContain(t, "stderr", p.stderr, "reported an auth error", "claude setup-token", "set the environment variable CLAUDE_CODE_OAUTH_TOKEN")
-	if n := strings.Count(p.stderr, "kraftwerk run: stopped:"); n != 1 {
+	if n := strings.Count(p.stderr, "fliesswerk run: stopped:"); n != 1 {
 		t.Errorf("the Run says it stopped %d times, want once:\n%s", n, p.stderr)
 	}
 	for n, i := range p.issues(t) {
@@ -403,15 +403,15 @@ func TestParallelStepsWhoseCredentialClaudeCodeRejectsStopTheRunOnce(t *testing.
 }
 
 func TestARunWithAMissingCredentialStopsBeforeAnyStep(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [{"report": {"outcome": "done", "summary": "ok"}}]}`)
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), noSandbox+gatewayConfig(fakeGateway(t).URL))
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), noSandbox+gatewayConfig(fakeGateway(t).URL))
 	logPath := filepath.Join(t.TempDir(), "harness.jsonl")
-	p.extraEnv = append(configHome(t), "KWK_FAKE_HARNESS_LOG="+logPath)
+	p.extraEnv = append(configHome(t), "FWK_FAKE_HARNESS_LOG="+logPath)
 
 	code := p.run(t)
 
-	if code != exitConfigError || !strings.Contains(p.stderr, "kraftwerk auth set gw") {
+	if code != exitConfigError || !strings.Contains(p.stderr, "fliesswerk auth set gw") {
 		t.Fatalf("exit code = %d, want %d naming the fix\nstdout: %s\nstderr: %s", code, exitConfigError, p.stdout, p.stderr)
 	}
 	if calls := harnessCalls(t, logPath); len(calls) != 0 {
@@ -421,14 +421,14 @@ func TestARunWithAMissingCredentialStopsBeforeAnyStep(t *testing.T) {
 }
 
 func TestARunRefusesADotenvThatIsNotGitIgnored(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": []}`)
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", ".gitignore"), "config.local.toml\nstate/\n")
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", ".gitignore"), "config.local.toml\nstate/\n")
 	p.extraEnv = configHome(t)
 
 	code := p.run(t)
 
-	if code != 3 || !strings.Contains(p.stderr, ".kraftwerk/.env is not git-ignored") {
+	if code != 3 || !strings.Contains(p.stderr, ".fliesswerk/.env is not git-ignored") {
 		t.Fatalf("exit code = %d, want 3 refusing the .env\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
 	}
 }

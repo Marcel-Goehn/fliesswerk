@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/notices"
+	"github.com/Marcel-Goehn/fliesswerk/internal/notices"
 )
 
 // The notices every release archive ships next to LICENSE.
@@ -24,7 +24,7 @@ func TestCommittedNoticesMatchTheModuleGraph(t *testing.T) {
 	}
 	got = bytes.ReplaceAll(got, []byte("\r\n"), []byte("\n"))
 	if !bytes.Equal(got, want) {
-		t.Fatal("THIRD_PARTY_NOTICES is out of date with the modules linked into kraftwerk and the egress proxy; run `go generate ./internal/notices` and commit the result")
+		t.Fatal("THIRD_PARTY_NOTICES is out of date with the modules linked into fliesswerk and the egress proxy; run `go generate ./internal/notices` and commit the result")
 	}
 }
 

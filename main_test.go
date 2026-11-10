@@ -16,10 +16,10 @@ var (
 	built   = map[string]string{}
 )
 
-// builtKraftwerk compiles kraftwerk once per test binary for each set of
+// builtFliesswerk compiles fliesswerk once per test binary for each set of
 // flags, because linking it for every test takes minutes on Windows, and
 // returns the shared result.
-func builtKraftwerk(t *testing.T, tags, ldflags string) string {
+func builtFliesswerk(t *testing.T, tags, ldflags string) string {
 	t.Helper()
 	builtMu.Lock()
 	defer builtMu.Unlock()
@@ -27,11 +27,11 @@ func builtKraftwerk(t *testing.T, tags, ldflags string) string {
 	if bin, ok := built[key]; ok {
 		return bin
 	}
-	dir, err := os.MkdirTemp("", "kraftwerk-build")
+	dir, err := os.MkdirTemp("", "fliesswerk-build")
 	if err != nil {
 		t.Fatal(err)
 	}
-	name := "kraftwerk"
+	name := "fliesswerk"
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
@@ -67,48 +67,48 @@ func ownCopy(t *testing.T, shared string) string {
 	return bin
 }
 
-// buildKraftwerk gives the test a kraftwerk binary built with ldflags passed
+// buildFliesswerk gives the test a fliesswerk binary built with ldflags passed
 // through to `go build`, and returns its path.
-func buildKraftwerk(t *testing.T, ldflags string) string {
+func buildFliesswerk(t *testing.T, ldflags string) string {
 	t.Helper()
-	return ownCopy(t, builtKraftwerk(t, "", ldflags))
+	return ownCopy(t, builtFliesswerk(t, "", ldflags))
 }
 
-func runKraftwerk(t *testing.T, bin string, args ...string) (stdout, stderr string, code int) {
+func runFliesswerk(t *testing.T, bin string, args ...string) (stdout, stderr string, code int) {
 	t.Helper()
 	return runIn(t, bin, "", args...)
 }
 
 func TestVersionPrintsInjectedVersion(t *testing.T) {
-	bin := buildKraftwerk(t, "-X main.version=1.2.3")
+	bin := buildFliesswerk(t, "-X main.version=1.2.3")
 
-	stdout, stderr, code := runKraftwerk(t, bin, "--version")
+	stdout, stderr, code := runFliesswerk(t, bin, "--version")
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr: %s", code, stderr)
 	}
-	if stdout != "kraftwerk 1.2.3\n" {
-		t.Fatalf("stdout = %q, want %q", stdout, "kraftwerk 1.2.3\n")
+	if stdout != "fliesswerk 1.2.3\n" {
+		t.Fatalf("stdout = %q, want %q", stdout, "fliesswerk 1.2.3\n")
 	}
 }
 
 func TestVersionOfDevBuildSaysDev(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 
-	stdout, stderr, code := runKraftwerk(t, bin, "--version")
+	stdout, stderr, code := runFliesswerk(t, bin, "--version")
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr: %s", code, stderr)
 	}
-	if !strings.HasPrefix(stdout, "kraftwerk dev") {
-		t.Fatalf("stdout = %q, want it to start with %q", stdout, "kraftwerk dev")
+	if !strings.HasPrefix(stdout, "fliesswerk dev") {
+		t.Fatalf("stdout = %q, want it to start with %q", stdout, "fliesswerk dev")
 	}
 }
 
 func TestUnknownArgumentFailsWithUsage(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 
-	stdout, stderr, code := runKraftwerk(t, bin, "frobnicate")
+	stdout, stderr, code := runFliesswerk(t, bin, "frobnicate")
 
 	if code != 3 {
 		t.Fatalf("exit code = %d, want 3 (config failure)", code)
@@ -226,8 +226,8 @@ func baseEnv(path string) []string {
 	return append(env, "PATH="+path)
 }
 
-// projectDir writes .kraftwerk/<name> for every file into a new git
-// checkout whose .kraftwerk/.gitignore ignores .env (unless files has its
+// projectDir writes .fliesswerk/<name> for every file into a new git
+// checkout whose .fliesswerk/.gitignore ignores .env (unless files has its
 // own), and returns the project root.
 func projectDir(t *testing.T, files map[string]string) string {
 	t.Helper()
@@ -239,11 +239,11 @@ func projectDir(t *testing.T, files map[string]string) string {
 	if _, ok := files[".gitignore"]; !ok {
 		files[".gitignore"] = "config.local.toml\n.env\nstate/\nlogs/\n"
 	}
-	if err := os.MkdirAll(filepath.Join(root, ".kraftwerk"), 0o750); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, ".fliesswerk"), 0o750); err != nil {
 		t.Fatal(err)
 	}
 	for name, content := range files {
-		path := filepath.Join(root, ".kraftwerk", filepath.FromSlash(name))
+		path := filepath.Join(root, ".fliesswerk", filepath.FromSlash(name))
 		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 			t.Fatal(err)
 		}
@@ -275,7 +275,7 @@ func giveRemote(t *testing.T, root string) {
 var checkNoSandbox = []string{"check", "--sandbox", "none", "--i-accept-unsandboxed-risk"}
 
 func TestCheck(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 
 	t.Run("valid config exits 0", func(t *testing.T) {
 		root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
@@ -309,9 +309,9 @@ func TestCheck(t *testing.T) {
 			t.Fatalf("exit code = %d, want 3; stderr: %s", code, stderr)
 		}
 		for _, want := range []string{
-			`error: .kraftwerk/config.toml: max_paralel: unknown key; did you mean "max_parallel"?`,
-			"error: .kraftwerk/config.local.toml: logs.keep_days:",
-			"warning: .kraftwerk/config.toml: sandbox.env.API_TOKEN: looks like a secret",
+			`error: .fliesswerk/config.toml: max_paralel: unknown key; did you mean "max_parallel"?`,
+			"error: .fliesswerk/config.local.toml: logs.keep_days:",
+			"warning: .fliesswerk/config.toml: sandbox.env.API_TOKEN: looks like a secret",
 		} {
 			if !strings.Contains(stderr, want) {
 				t.Errorf("stderr lacks %q:\n%s", want, stderr)
@@ -329,7 +329,7 @@ func TestCheck(t *testing.T) {
 
 	t.Run("no project exits 3 naming init", func(t *testing.T) {
 		_, stderr, code := runIn(t, bin, t.TempDir(), "check")
-		if code != 3 || !strings.Contains(stderr, "kraftwerk init") {
+		if code != 3 || !strings.Contains(stderr, "fliesswerk init") {
 			t.Fatalf("exit code = %d, want 3 naming init; stderr: %s", code, stderr)
 		}
 	})

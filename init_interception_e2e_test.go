@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox/catest"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox/catest"
 )
 
 const interceptedGateway = "https://intercepted.example"
@@ -44,13 +44,13 @@ func testCA(t *testing.T, name string) *catest.CA {
 
 func TestInitOffersToExportAnInterceptingRoot(t *testing.T) {
 	p := teamProject(t, map[string]string{"config.toml": teamConfig})
-	ca := testCA(t, "Kraftwerk Test Root")
+	ca := testCA(t, "Fliesswerk Test Root")
 
 	p.init(t, p.interceptedEnv(t, ca), "gateway", interceptedGateway, "", gatewaySecret, "", gitHubSecret, "")
 
-	mustContain(t, "stdout", p.stdout, "intercepted.example", "Kraftwerk Test Root")
+	mustContain(t, "stdout", p.stdout, "intercepted.example", "Fliesswerk Test Root")
 	certs := stringsOf(valueAt(p.localConfig(t), "network", "ca_certs"))
-	if len(certs) != 1 || !strings.HasPrefix(certs[0], filepath.Join(p.home, ".config", "kraftwerk")+string(filepath.Separator)) {
+	if len(certs) != 1 || !strings.HasPrefix(certs[0], filepath.Join(p.home, ".config", "fliesswerk")+string(filepath.Separator)) {
 		t.Fatalf("ca_certs = %v", certs)
 	}
 	data, err := os.ReadFile(certs[0])
@@ -62,7 +62,7 @@ func TestInitOffersToExportAnInterceptingRoot(t *testing.T) {
 	if got == nil || !bytes.Equal(got.Bytes, want.Bytes) {
 		t.Errorf("exported %q", data)
 	}
-	if got := p.kraftwerkFile(t, "config.toml"); got != teamConfig {
+	if got := p.fliesswerkFile(t, "config.toml"); got != teamConfig {
 		t.Errorf("config.toml changed: %q", got)
 	}
 }
@@ -70,12 +70,12 @@ func TestInitOffersToExportAnInterceptingRoot(t *testing.T) {
 func TestInitDecliningTheRootExportsNothing(t *testing.T) {
 	p := teamProject(t, map[string]string{"config.toml": teamConfig})
 
-	p.init(t, p.interceptedEnv(t, testCA(t, "Kraftwerk Test Root")), "gateway", interceptedGateway, "", gatewaySecret, "", gitHubSecret, "n")
+	p.init(t, p.interceptedEnv(t, testCA(t, "Fliesswerk Test Root")), "gateway", interceptedGateway, "", gatewaySecret, "", gitHubSecret, "n")
 
 	if got := valueAt(p.localConfig(t), "network", "ca_certs"); got != nil {
 		t.Errorf("ca_certs = %v", got)
 	}
-	matches, _ := filepath.Glob(filepath.Join(p.home, ".config", "kraftwerk", "*.pem"))
+	matches, _ := filepath.Glob(filepath.Join(p.home, ".config", "fliesswerk", "*.pem"))
 	if len(matches) != 0 {
 		t.Errorf("exported %v", matches)
 	}
@@ -89,7 +89,7 @@ func TestInitExportedRootJoinsTheTeamsCACerts(t *testing.T) {
 	})
 	writeFile(t, filepath.Join(p.work, "team.pem"), string(other.CertPEM))
 
-	p.init(t, p.interceptedEnv(t, testCA(t, "Kraftwerk Test Root")), "gateway", interceptedGateway, "", gatewaySecret, "", gitHubSecret, "")
+	p.init(t, p.interceptedEnv(t, testCA(t, "Fliesswerk Test Root")), "gateway", interceptedGateway, "", gatewaySecret, "", gitHubSecret, "")
 
 	certs := stringsOf(valueAt(p.localConfig(t), "network", "ca_certs"))
 	if len(certs) != 2 || !slices.Contains(certs, "team.pem") {
@@ -98,7 +98,7 @@ func TestInitExportedRootJoinsTheTeamsCACerts(t *testing.T) {
 }
 
 func TestInitOffersNothingWhenTheTeamAlreadyTrustsTheRoot(t *testing.T) {
-	ca := testCA(t, "Kraftwerk Test Root")
+	ca := testCA(t, "Fliesswerk Test Root")
 	p := teamProject(t, map[string]string{
 		"config.toml": teamConfig + "\n[network]\nca_certs = [\"team.pem\"]\n",
 	})
@@ -106,7 +106,7 @@ func TestInitOffersNothingWhenTheTeamAlreadyTrustsTheRoot(t *testing.T) {
 
 	p.init(t, p.interceptedEnv(t, ca), "gateway", interceptedGateway, "", gatewaySecret, "", gitHubSecret)
 
-	if strings.Contains(p.stdout, "Kraftwerk Test Root") {
+	if strings.Contains(p.stdout, "Fliesswerk Test Root") {
 		t.Errorf("offered a root the team trusts:\n%s", p.stdout)
 	}
 	if got := valueAt(p.localConfig(t), "network", "ca_certs"); got != nil {

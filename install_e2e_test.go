@@ -22,9 +22,9 @@ import (
 
 // releaseArchives are the six archives of a release.
 var releaseArchives = []string{
-	"kraftwerk_linux_amd64.tar.gz", "kraftwerk_linux_arm64.tar.gz",
-	"kraftwerk_darwin_amd64.tar.gz", "kraftwerk_darwin_arm64.tar.gz",
-	"kraftwerk_windows_amd64.zip", "kraftwerk_windows_arm64.zip",
+	"fliesswerk_linux_amd64.tar.gz", "fliesswerk_linux_arm64.tar.gz",
+	"fliesswerk_darwin_amd64.tar.gz", "fliesswerk_darwin_arm64.tar.gz",
+	"fliesswerk_windows_amd64.zip", "fliesswerk_windows_arm64.zip",
 }
 
 // fakeRelease serves a release the way GitHub does, under both the latest
@@ -65,9 +65,9 @@ func (r *fakeRelease) replace(t *testing.T, name string, binary []byte) {
 	t.Helper()
 	r.binaries[name] = binary
 	if strings.HasSuffix(name, ".zip") {
-		r.files[name] = zipWith(t, "kraftwerk.exe", binary)
+		r.files[name] = zipWith(t, "fliesswerk.exe", binary)
 	} else {
-		r.files[name] = tarGzWith(t, "kraftwerk", binary)
+		r.files[name] = tarGzWith(t, "fliesswerk", binary)
 	}
 	var sums strings.Builder
 	for _, archive := range releaseArchives {
@@ -117,7 +117,7 @@ func zipWith(t *testing.T, name string, content []byte) []byte {
 }
 
 // shInstall is one machine running install.sh: a fresh home, and a PATH with
-// only what a stock system has, so a kraftwerk or kwk of the developer's own
+// only what a stock system has, so a fliesswerk or fwk of the developer's own
 // can't be seen.
 type shInstall struct {
 	home   string
@@ -179,7 +179,7 @@ func (s *shInstall) run(t *testing.T, release *fakeRelease) int {
 	cmd := exec.Command(shell, "-s")
 	cmd.Dir = s.home
 	cmd.Stdin = bytes.NewReader(script)
-	cmd.Env = append([]string{"HOME=" + s.home, "PATH=" + s.tools, "SHELL=/bin/sh", "KRAFTWERK_DOWNLOAD_URL=" + release.url}, s.extra...)
+	cmd.Env = append([]string{"HOME=" + s.home, "PATH=" + s.tools, "SHELL=/bin/sh", "FLIESSWERK_DOWNLOAD_URL=" + release.url}, s.extra...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err = cmd.Run()
@@ -203,10 +203,10 @@ func (s *shInstall) mustInstall(t *testing.T, release *fakeRelease) {
 
 func TestInstallShPicksTheArchiveAndInstallsItsBinaryUnchanged(t *testing.T) {
 	tests := []struct{ kernel, machine, archive string }{
-		{"Linux", "x86_64", "kraftwerk_linux_amd64.tar.gz"},
-		{"Linux", "aarch64", "kraftwerk_linux_arm64.tar.gz"},
-		{"Darwin", "x86_64", "kraftwerk_darwin_amd64.tar.gz"},
-		{"Darwin", "arm64", "kraftwerk_darwin_arm64.tar.gz"},
+		{"Linux", "x86_64", "fliesswerk_linux_amd64.tar.gz"},
+		{"Linux", "aarch64", "fliesswerk_linux_arm64.tar.gz"},
+		{"Darwin", "x86_64", "fliesswerk_darwin_amd64.tar.gz"},
+		{"Darwin", "arm64", "fliesswerk_darwin_arm64.tar.gz"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.kernel+"_"+tt.machine, func(t *testing.T) {
@@ -215,7 +215,7 @@ func TestInstallShPicksTheArchiveAndInstallsItsBinaryUnchanged(t *testing.T) {
 
 			s.mustInstall(t, release)
 
-			bin := filepath.Join(s.dir, "kraftwerk")
+			bin := filepath.Join(s.dir, "fliesswerk")
 			got, err := os.ReadFile(bin)
 			if err != nil {
 				t.Fatal(err)
@@ -236,7 +236,7 @@ func TestInstallShPicksTheArchiveAndInstallsItsBinaryUnchanged(t *testing.T) {
 
 func TestInstallShRefusesAnArchiveWhoseChecksumDiffers(t *testing.T) {
 	release := newFakeRelease(t)
-	release.files["kraftwerk_linux_amd64.tar.gz"] = tarGzWith(t, "kraftwerk", []byte("tampered"))
+	release.files["fliesswerk_linux_amd64.tar.gz"] = tarGzWith(t, "fliesswerk", []byte("tampered"))
 	s := newShInstall(t, "Linux", "x86_64")
 
 	code := s.run(t, release)
@@ -245,14 +245,14 @@ func TestInstallShRefusesAnArchiveWhoseChecksumDiffers(t *testing.T) {
 		t.Fatalf("a tampered archive installed\nstdout: %s", s.stdout)
 	}
 	mustContain(t, "stderr", s.stderr, "checksum")
-	if _, err := os.Stat(filepath.Join(s.dir, "kraftwerk")); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("kraftwerk was installed anyway: %v", err)
+	if _, err := os.Stat(filepath.Join(s.dir, "fliesswerk")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("fliesswerk was installed anyway: %v", err)
 	}
 }
 
 func TestInstallShRefusesAnArchiveMissingFromTheChecksums(t *testing.T) {
 	release := newFakeRelease(t)
-	release.files["checksums.txt"] = []byte("abc  kraftwerk_linux_arm64.tar.gz\n")
+	release.files["checksums.txt"] = []byte("abc  fliesswerk_linux_arm64.tar.gz\n")
 	s := newShInstall(t, "Linux", "x86_64")
 
 	if code := s.run(t, release); code == 0 {
@@ -274,7 +274,7 @@ func TestInstallShGetsThePinnedVersionOrElseTheLatest(t *testing.T) {
 			release := newFakeRelease(t)
 			s := newShInstall(t, "Linux", "x86_64")
 			if tt.version != "" {
-				s.extra = append(s.extra, "KRAFTWERK_VERSION="+tt.version)
+				s.extra = append(s.extra, "FLIESSWERK_VERSION="+tt.version)
 			}
 
 			s.mustInstall(t, release)
@@ -288,40 +288,40 @@ func TestInstallShGetsThePinnedVersionOrElseTheLatest(t *testing.T) {
 	}
 }
 
-func TestInstallShAddsKwkAsALinkToKraftwerk(t *testing.T) {
+func TestInstallShAddsFwkAsALinkToFliesswerk(t *testing.T) {
 	release := newFakeRelease(t)
 	s := newShInstall(t, "Linux", "x86_64")
 
 	s.mustInstall(t, release)
 
-	got, err := os.Readlink(filepath.Join(s.dir, "kwk"))
+	got, err := os.Readlink(filepath.Join(s.dir, "fwk"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "kraftwerk" {
-		t.Errorf("kwk links to %q, want kraftwerk", got)
+	if got != "fliesswerk" {
+		t.Errorf("fwk links to %q, want fliesswerk", got)
 	}
 }
 
-func TestInstallShLeavesAKwkAlreadyOnThePathAlone(t *testing.T) {
+func TestInstallShLeavesAFwkAlreadyOnThePathAlone(t *testing.T) {
 	release := newFakeRelease(t)
 	s := newShInstall(t, "Linux", "x86_64")
-	if err := os.WriteFile(filepath.Join(s.tools, "kwk"), []byte("#!/bin/sh\necho theirs\n"), 0o700); err != nil { //nolint:gosec // an executable the test runs
+	if err := os.WriteFile(filepath.Join(s.tools, "fwk"), []byte("#!/bin/sh\necho theirs\n"), 0o700); err != nil { //nolint:gosec // an executable the test runs
 		t.Fatal(err)
 	}
 
 	s.mustInstall(t, release)
 
-	if _, err := os.Lstat(filepath.Join(s.dir, "kwk")); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("a second kwk was added: %v", err)
+	if _, err := os.Lstat(filepath.Join(s.dir, "fwk")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a second fwk was added: %v", err)
 	}
-	mustContain(t, "stdout", s.stdout, "kwk", filepath.Join(s.tools, "kwk"))
+	mustContain(t, "stdout", s.stdout, "fwk", filepath.Join(s.tools, "fwk"))
 }
 
-func TestInstallShNeverOverwritesAFileNamedKwk(t *testing.T) {
+func TestInstallShNeverOverwritesAFileNamedFwk(t *testing.T) {
 	release := newFakeRelease(t)
 	s := newShInstall(t, "Linux", "x86_64")
-	theirs := filepath.Join(s.dir, "kwk")
+	theirs := filepath.Join(s.dir, "fwk")
 	writeFile(t, theirs, "theirs, and its directory isn't on the PATH yet\n")
 
 	s.mustInstall(t, release)
@@ -331,31 +331,31 @@ func TestInstallShNeverOverwritesAFileNamedKwk(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.HasPrefix(string(got), "theirs") {
-		t.Errorf("kwk was overwritten: %q", got)
+		t.Errorf("fwk was overwritten: %q", got)
 	}
 }
 
-func TestInstallShRunAgainUpgradesAndKeepsItsOwnKwk(t *testing.T) {
+func TestInstallShRunAgainUpgradesAndKeepsItsOwnFwk(t *testing.T) {
 	release := newFakeRelease(t)
 	s := newShInstall(t, "Linux", "x86_64")
 	s.mustInstall(t, release)
 
-	release.replace(t, "kraftwerk_linux_amd64.tar.gz", []byte("#!/bin/sh\necho newer\n"))
+	release.replace(t, "fliesswerk_linux_amd64.tar.gz", []byte("#!/bin/sh\necho newer\n"))
 	s.mustInstall(t, release)
 
-	got, err := os.ReadFile(filepath.Join(s.dir, "kwk"))
+	got, err := os.ReadFile(filepath.Join(s.dir, "fwk"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(got) != "#!/bin/sh\necho newer\n" {
-		t.Errorf("kwk reaches %q, want the upgraded binary", got)
+		t.Errorf("fwk reaches %q, want the upgraded binary", got)
 	}
 	entries, err := os.ReadDir(s.dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(entries) != 2 {
-		t.Errorf("the install directory holds %v, want only kraftwerk and kwk", entries)
+		t.Errorf("the install directory holds %v, want only fliesswerk and fwk", entries)
 	}
 }
 
@@ -364,7 +364,7 @@ func TestInstallShAddsItsDirectoryToTheShellProfileOnce(t *testing.T) {
 		{"/bin/zsh", "Darwin", ".zshrc", `export PATH="$HOME/.local/bin:$PATH"`},
 		{"/bin/bash", "Linux", ".bashrc", `export PATH="$HOME/.local/bin:$PATH"`},
 		{"/bin/bash", "Darwin", ".bash_profile", `export PATH="$HOME/.local/bin:$PATH"`},
-		{"/usr/bin/fish", "Linux", ".config/fish/conf.d/kraftwerk.fish", `fish_add_path "$HOME/.local/bin"`},
+		{"/usr/bin/fish", "Linux", ".config/fish/conf.d/fliesswerk.fish", `fish_add_path "$HOME/.local/bin"`},
 		{"/bin/sh", "Linux", ".profile", `export PATH="$HOME/.local/bin:$PATH"`},
 	}
 	for _, tt := range tests {
@@ -417,7 +417,7 @@ func TestInstallShLeavesTheProfileAloneWhenTheDirectoryIsOnThePath(t *testing.T)
 func TestInstallShLeavesTheProfileAloneWhenAskedTo(t *testing.T) {
 	release := newFakeRelease(t)
 	s := newShInstall(t, "Linux", "x86_64")
-	s.extra = append(s.extra, "KRAFTWERK_NO_MODIFY_PATH=1")
+	s.extra = append(s.extra, "FLIESSWERK_NO_MODIFY_PATH=1")
 
 	s.mustInstall(t, release)
 
@@ -428,7 +428,7 @@ func TestInstallShLeavesTheProfileAloneWhenAskedTo(t *testing.T) {
 }
 
 // psInstall is one machine running install.ps1: a fresh %LOCALAPPDATA% and a
-// PATH holding nothing of the developer's. KRAFTWERK_NO_MODIFY_PATH keeps it
+// PATH holding nothing of the developer's. FLIESSWERK_NO_MODIFY_PATH keeps it
 // from the real user PATH; the published-release smoke test covers that part.
 type psInstall struct {
 	shell     string
@@ -453,7 +453,7 @@ func newPsInstall(t *testing.T) *psInstall {
 	localData := t.TempDir()
 	return &psInstall{
 		shell: shell, localData: localData, tools: t.TempDir(),
-		dir:  filepath.Join(localData, "Programs", "kraftwerk"),
+		dir:  filepath.Join(localData, "Programs", "fliesswerk"),
 		arch: []string{"PROCESSOR_ARCHITECTURE=AMD64"},
 	}
 }
@@ -473,11 +473,11 @@ func (p *psInstall) run(t *testing.T, release *fakeRelease, extra ...string) int
 		upper := strings.ToUpper(name)
 		// PSMODULEPATH goes too: inherited from PowerShell 7, as on CI, it
 		// hides Windows PowerShell's own modules, and with them Get-FileHash.
-		if upper != "PATH" && upper != "PSMODULEPATH" && !strings.HasPrefix(upper, "PROCESSOR_ARCHITE") && !strings.HasPrefix(upper, "KRAFTWERK_") {
+		if upper != "PATH" && upper != "PSMODULEPATH" && !strings.HasPrefix(upper, "PROCESSOR_ARCHITE") && !strings.HasPrefix(upper, "FLIESSWERK_") {
 			cmd.Env = append(cmd.Env, kv)
 		}
 	}
-	cmd.Env = append(cmd.Env, "PATH="+p.tools, "LOCALAPPDATA="+p.localData, "KRAFTWERK_NO_MODIFY_PATH=1", "KRAFTWERK_DOWNLOAD_URL="+release.url)
+	cmd.Env = append(cmd.Env, "PATH="+p.tools, "LOCALAPPDATA="+p.localData, "FLIESSWERK_NO_MODIFY_PATH=1", "FLIESSWERK_DOWNLOAD_URL="+release.url)
 	cmd.Env = append(append(cmd.Env, p.arch...), extra...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -514,10 +514,10 @@ func TestInstallPs1PicksTheArchiveAndInstallsItsBinaryUnchanged(t *testing.T) {
 		arch    []string
 		archive string
 	}{
-		{"x64", []string{"PROCESSOR_ARCHITECTURE=AMD64"}, "kraftwerk_windows_amd64.zip"},
-		{"arm64", []string{"PROCESSOR_ARCHITECTURE=ARM64"}, "kraftwerk_windows_arm64.zip"},
-		{"32-bit shell on x64", []string{"PROCESSOR_ARCHITECTURE=x86", "PROCESSOR_ARCHITEW6432=AMD64"}, "kraftwerk_windows_amd64.zip"},
-		{"x64 shell on arm64", []string{"PROCESSOR_ARCHITECTURE=AMD64", "PROCESSOR_ARCHITEW6432=ARM64"}, "kraftwerk_windows_arm64.zip"},
+		{"x64", []string{"PROCESSOR_ARCHITECTURE=AMD64"}, "fliesswerk_windows_amd64.zip"},
+		{"arm64", []string{"PROCESSOR_ARCHITECTURE=ARM64"}, "fliesswerk_windows_arm64.zip"},
+		{"32-bit shell on x64", []string{"PROCESSOR_ARCHITECTURE=x86", "PROCESSOR_ARCHITEW6432=AMD64"}, "fliesswerk_windows_amd64.zip"},
+		{"x64 shell on arm64", []string{"PROCESSOR_ARCHITECTURE=AMD64", "PROCESSOR_ARCHITEW6432=ARM64"}, "fliesswerk_windows_arm64.zip"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -527,7 +527,7 @@ func TestInstallPs1PicksTheArchiveAndInstallsItsBinaryUnchanged(t *testing.T) {
 
 			p.mustInstall(t, release)
 
-			got := readFile(t, filepath.Join(p.dir, "kraftwerk.exe"))
+			got := readFile(t, filepath.Join(p.dir, "fliesswerk.exe"))
 			if got != string(release.binaries[tt.archive]) {
 				t.Errorf("installed binary = %q, want the one from %s", got, tt.archive)
 			}
@@ -537,15 +537,15 @@ func TestInstallPs1PicksTheArchiveAndInstallsItsBinaryUnchanged(t *testing.T) {
 
 func TestInstallPs1RefusesAnArchiveWhoseChecksumDiffers(t *testing.T) {
 	release := newFakeRelease(t)
-	release.files["kraftwerk_windows_amd64.zip"] = zipWith(t, "kraftwerk.exe", []byte("tampered"))
+	release.files["fliesswerk_windows_amd64.zip"] = zipWith(t, "fliesswerk.exe", []byte("tampered"))
 	p := newPsInstall(t)
 
 	if code := p.run(t, release); code == 0 {
 		t.Fatalf("a tampered archive installed\nstdout: %s", p.stdout)
 	}
 	mustContain(t, "stderr", unwrapped(p.stderr), "checksum")
-	if _, err := os.Stat(filepath.Join(p.dir, "kraftwerk.exe")); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("kraftwerk was installed anyway: %v", err)
+	if _, err := os.Stat(filepath.Join(p.dir, "fliesswerk.exe")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("fliesswerk was installed anyway: %v", err)
 	}
 }
 
@@ -553,7 +553,7 @@ func TestInstallPs1GetsThePinnedVersion(t *testing.T) {
 	release := newFakeRelease(t)
 	p := newPsInstall(t)
 
-	p.mustInstall(t, release, "KRAFTWERK_VERSION=1.2.3")
+	p.mustInstall(t, release, "FLIESSWERK_VERSION=1.2.3")
 
 	for _, path := range release.requests {
 		if !strings.HasPrefix(path, "/download/v1.2.3/") {
@@ -562,26 +562,26 @@ func TestInstallPs1GetsThePinnedVersion(t *testing.T) {
 	}
 }
 
-func TestInstallPs1AddsKwkAndRefreshesItOnUpgrade(t *testing.T) {
+func TestInstallPs1AddsFwkAndRefreshesItOnUpgrade(t *testing.T) {
 	release := newFakeRelease(t)
 	p := newPsInstall(t)
 	p.mustInstall(t, release)
-	if got := readFile(t, filepath.Join(p.dir, "kwk.exe")); got != string(release.binaries["kraftwerk_windows_amd64.zip"]) {
-		t.Errorf("kwk.exe = %q, want kraftwerk", got)
+	if got := readFile(t, filepath.Join(p.dir, "fwk.exe")); got != string(release.binaries["fliesswerk_windows_amd64.zip"]) {
+		t.Errorf("fwk.exe = %q, want fliesswerk", got)
 	}
 
-	release.replace(t, "kraftwerk_windows_amd64.zip", []byte("newer"))
+	release.replace(t, "fliesswerk_windows_amd64.zip", []byte("newer"))
 	p.mustInstall(t, release)
 
-	if got := readFile(t, filepath.Join(p.dir, "kwk.exe")); got != "newer" {
-		t.Errorf("kwk.exe = %q after the upgrade, want the new binary", got)
+	if got := readFile(t, filepath.Join(p.dir, "fwk.exe")); got != "newer" {
+		t.Errorf("fwk.exe = %q after the upgrade, want the new binary", got)
 	}
 }
 
-func TestInstallPs1LeavesAKwkAlreadyOnThePathAlone(t *testing.T) {
+func TestInstallPs1LeavesAFwkAlreadyOnThePathAlone(t *testing.T) {
 	release := newFakeRelease(t)
 	p := newPsInstall(t)
-	name := "kwk"
+	name := "fwk"
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
@@ -591,10 +591,10 @@ func TestInstallPs1LeavesAKwkAlreadyOnThePathAlone(t *testing.T) {
 
 	p.mustInstall(t, release)
 
-	if _, err := os.Stat(filepath.Join(p.dir, "kwk.exe")); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("a second kwk was added: %v", err)
+	if _, err := os.Stat(filepath.Join(p.dir, "fwk.exe")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a second fwk was added: %v", err)
 	}
-	mustContain(t, "stdout", unwrapped(p.stdout), "Notaddingkwk")
+	mustContain(t, "stdout", unwrapped(p.stdout), "Notaddingfwk")
 }
 
 func TestInstallPs1StopsWhereSmartAppControlWouldBlockTheBinary(t *testing.T) {
@@ -618,7 +618,7 @@ func TestInstallPs1WarnsWhileSmartAppControlIsEvaluating(t *testing.T) {
 
 	p.mustInstall(t, release)
 
-	if _, err := os.Stat(filepath.Join(p.dir, "kraftwerk.exe")); err != nil {
+	if _, err := os.Stat(filepath.Join(p.dir, "fliesswerk.exe")); err != nil {
 		t.Error(err)
 	}
 	mustContain(t, "output", unwrapped(p.stdout+p.stderr), "SmartAppControl", "signed")

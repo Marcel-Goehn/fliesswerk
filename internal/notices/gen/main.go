@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/notices"
+	"github.com/Marcel-Goehn/fliesswerk/internal/notices"
 )
 
 func main() {

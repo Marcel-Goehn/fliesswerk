@@ -1,4 +1,4 @@
-module github.com/Marcel-Goehn/kraftwerk
+module github.com/Marcel-Goehn/fliesswerk
 
 go 1.27
 

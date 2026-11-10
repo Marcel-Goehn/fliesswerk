@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
 )
 
 // Issue is one issue in the fake Tracker.
@@ -179,7 +179,7 @@ func (t *Tracker) Comment(_ context.Context, ticket tracker.ID, text string) err
 	if err != nil {
 		return err
 	}
-	i.Comments = append(i.Comments, tracker.Comment{Author: "kraftwerk", Body: text})
+	i.Comments = append(i.Comments, tracker.Comment{Author: "fliesswerk", Body: text})
 	t.writes = append(t.writes, Write{Op: "comment", Ticket: i.Number, Text: text})
 	return nil
 }
@@ -192,7 +192,7 @@ func (t *Tracker) Close(_ context.Context, ticket tracker.ID, text string) error
 	if err != nil {
 		return err
 	}
-	i.Comments = append(i.Comments, tracker.Comment{Author: "kraftwerk", Body: text})
+	i.Comments = append(i.Comments, tracker.Comment{Author: "fliesswerk", Body: text})
 	i.Closed = true
 	t.writes = append(t.writes, Write{Op: "close", Ticket: i.Number, Text: text})
 	return nil

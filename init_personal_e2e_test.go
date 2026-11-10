@@ -14,18 +14,18 @@ import (
 const teamConfig = "version = 1\n\n[tracker]\nkind = \"github\"\nrepo = \"acme/shop\"\n"
 
 // teamProject is a repo somebody already set up and committed, as a teammate
-// finds it after cloning. Each of files goes below .kraftwerk/.
+// finds it after cloning. Each of files goes below .fliesswerk/.
 func teamProject(t *testing.T, files map[string]string) *runProject {
 	t.Helper()
 	all := nodePostgres()
 	for name, content := range files {
-		all[".kraftwerk/"+name] = content
+		all[".fliesswerk/"+name] = content
 	}
 	return initProject(t, all)
 }
 
-func (p *runProject) hasKraftwerkFile(name string) bool {
-	_, err := os.Stat(filepath.Join(p.work, ".kraftwerk", filepath.FromSlash(name)))
+func (p *runProject) hasFliesswerkFile(name string) bool {
+	_, err := os.Stat(filepath.Join(p.work, ".fliesswerk", filepath.FromSlash(name)))
 	return err == nil
 }
 
@@ -34,16 +34,16 @@ func TestInitRerunCreatesOnlyWhatIsMissing(t *testing.T) {
 
 	p.init(t, p.initEnv(t))
 
-	if got := p.kraftwerkFile(t, "config.toml"); got != teamConfig {
+	if got := p.fliesswerkFile(t, "config.toml"); got != teamConfig {
 		t.Errorf("config.toml = %q", got)
 	}
-	if got := p.kraftwerkFile(t, "config.local.toml"); got != "# mine\n" {
+	if got := p.fliesswerkFile(t, "config.local.toml"); got != "# mine\n" {
 		t.Errorf("config.local.toml = %q", got)
 	}
-	mustContain(t, ".gitignore", p.kraftwerkFile(t, ".gitignore"), "config.local.toml", ".env")
-	mustContain(t, "Containerfile", p.kraftwerkFile(t, "Containerfile"), "node:22.11.0-bookworm-slim", "USER agent")
-	mustContain(t, "stdout", p.stdout, "+ .kraftwerk/.gitignore", "+ .kraftwerk/Containerfile")
-	if p.hasKraftwerkFile("prompts/implement.md") {
+	mustContain(t, ".gitignore", p.fliesswerkFile(t, ".gitignore"), "config.local.toml", ".env")
+	mustContain(t, "Containerfile", p.fliesswerkFile(t, "Containerfile"), "node:22.11.0-bookworm-slim", "USER agent")
+	mustContain(t, "stdout", p.stdout, "+ .fliesswerk/.gitignore", "+ .fliesswerk/Containerfile")
+	if p.hasFliesswerkFile("prompts/implement.md") {
 		t.Error("a deleted prompt came back")
 	}
 }
@@ -56,11 +56,11 @@ func TestInitRerunWithNothingMissingSaysAlreadySetUpAndChecks(t *testing.T) {
 
 	p.init(t, p.initEnv(t))
 
-	mustContain(t, "stdout", p.stdout, "Already set up", "kraftwerk check: the config is valid")
-	if got := p.kraftwerkFile(t, ".gitignore"); got != "mine\n.env\nconfig.local.toml\n" {
+	mustContain(t, "stdout", p.stdout, "Already set up", "fliesswerk check: the config is valid")
+	if got := p.fliesswerkFile(t, ".gitignore"); got != "mine\n.env\nconfig.local.toml\n" {
 		t.Errorf(".gitignore = %q", got)
 	}
-	if got := p.kraftwerkFile(t, "Containerfile"); got != "FROM scratch\n" {
+	if got := p.fliesswerkFile(t, "Containerfile"); got != "FROM scratch\n" {
 		t.Errorf("Containerfile = %q", got)
 	}
 }
@@ -72,7 +72,7 @@ func TestInitNativeRerunGetsNoContainerfile(t *testing.T) {
 
 	p.init(t, p.initEnv(t))
 
-	if p.hasKraftwerkFile("Containerfile") {
+	if p.hasFliesswerkFile("Containerfile") {
 		t.Error("a native project got a Containerfile")
 	}
 }
@@ -102,8 +102,8 @@ const (
 func (p *runProject) localConfig(t *testing.T) map[string]any {
 	t.Helper()
 	var values map[string]any
-	if err := toml.Unmarshal([]byte(p.kraftwerkFile(t, "config.local.toml")), &values); err != nil {
-		t.Fatalf("config.local.toml isn't TOML: %v\n%s", err, p.kraftwerkFile(t, "config.local.toml"))
+	if err := toml.Unmarshal([]byte(p.fliesswerkFile(t, "config.local.toml")), &values); err != nil {
+		t.Fatalf("config.local.toml isn't TOML: %v\n%s", err, p.fliesswerkFile(t, "config.local.toml"))
 	}
 	return values
 }
@@ -140,7 +140,7 @@ func TestInitTeammateIsAskedOnlyPersonalQuestions(t *testing.T) {
 		t.Errorf("a teammate got a project question:\n%s", p.stdout)
 	}
 	mustContain(t, "stdout", p.stdout, "How do you sign in to Claude?", "Where is", "personal-access-tokens/new", "acme/shop", "Read and write")
-	if got := p.kraftwerkFile(t, "config.toml"); got != teamConfig {
+	if got := p.fliesswerkFile(t, "config.toml"); got != teamConfig {
 		t.Errorf("config.toml changed: %q", got)
 	}
 	local := p.localConfig(t)
@@ -160,7 +160,7 @@ func TestInitTeammateIsAskedOnlyPersonalQuestions(t *testing.T) {
 	if stored["claude_gateway"] != gatewaySecret || stored["github.acme.shop"] != gitHubSecret {
 		t.Errorf("stored = %v", stored)
 	}
-	for what, text := range map[string]string{"stdout": p.stdout, "stderr": p.stderr, "config.local.toml": p.kraftwerkFile(t, "config.local.toml")} {
+	for what, text := range map[string]string{"stdout": p.stdout, "stderr": p.stderr, "config.local.toml": p.fliesswerkFile(t, "config.local.toml")} {
 		if strings.Contains(text, gatewaySecret) || strings.Contains(text, gitHubSecret) {
 			t.Errorf("%s holds a secret:\n%s", what, text)
 		}
@@ -298,7 +298,7 @@ func TestInitKeepsAKeyWhereThePersonSays(t *testing.T) {
 			p.init(t, p.initEnv(t), "gateway", srv.URL, tt.answer, tt.ref, "", gitHubSecret)
 
 			if got := valueAt(p.localConfig(t), "harnesses", "claude_code", "secret", tt.source); got != tt.ref {
-				t.Errorf("secret.%s = %v\n%s", tt.source, got, p.kraftwerkFile(t, "config.local.toml"))
+				t.Errorf("secret.%s = %v\n%s", tt.source, got, p.fliesswerkFile(t, "config.local.toml"))
 			}
 			if _, ok := p.stored(t)["claude_gateway"]; ok {
 				t.Error("stored a key kept elsewhere")
@@ -320,7 +320,7 @@ func TestInitKeepsASubscriptionTokenOutOfTheCredentialsFile(t *testing.T) {
 		}
 	}
 	if got := valueAt(p.localConfig(t), "harnesses", "claude_code", "secret", "env"); got != "CLAUDE_CODE_OAUTH_TOKEN" {
-		t.Errorf("secret.env = %v\n%s", got, p.kraftwerkFile(t, "config.local.toml"))
+		t.Errorf("secret.env = %v\n%s", got, p.fliesswerkFile(t, "config.local.toml"))
 	}
 	if _, ok := p.stored(t)["claude"]; ok {
 		t.Error("stored the subscription token")
@@ -352,7 +352,7 @@ func TestInitSavesNothingWhenPersonalAnswersRunOut(t *testing.T) {
 		t.Fatalf("exit code = %d, want %d", code, exitConfigError)
 	}
 	mustContain(t, "stderr", p.stderr, "nothing was written")
-	if p.hasKraftwerkFile("config.local.toml") || p.hasKraftwerkFile(".gitignore") {
+	if p.hasFliesswerkFile("config.local.toml") || p.hasFliesswerkFile(".gitignore") {
 		t.Error("files were written")
 	}
 	if err := filepath.WalkDir(p.home, func(path string, d os.DirEntry, err error) error {
@@ -370,7 +370,7 @@ func TestInitBringsBackTheGitignoreEvenWithABrokenConfig(t *testing.T) {
 
 	p.init(t, p.initEnv(t))
 
-	mustContain(t, ".gitignore", p.kraftwerkFile(t, ".gitignore"), "config.local.toml", ".env")
+	mustContain(t, ".gitignore", p.fliesswerkFile(t, ".gitignore"), "config.local.toml", ".env")
 }
 
 func TestInitImportsABedrockSetupWithoutARegion(t *testing.T) {

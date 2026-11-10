@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox/catest"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox/native"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox/catest"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox/native"
 )
 
 // behindTheInterceptor is a project with a native Sandbox and a gateway that
@@ -66,11 +66,11 @@ func behindTheInterceptor(t *testing.T, bin string, ca *catest.CA, extraConfig s
 }
 
 func TestNativeCheckNamesTheRootBehindAnInterceptingProxy(t *testing.T) {
-	ca, err := catest.NewCA("Kraftwerk Test Root")
+	ca, err := catest.NewCA("Fliesswerk Test Root")
 	if err != nil {
 		t.Fatal(err)
 	}
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root, env := behindTheInterceptor(t, bin, ca, "")
 
 	_, stderr, code := runEnv(t, bin, root, env, "check")
@@ -78,7 +78,7 @@ func TestNativeCheckNamesTheRootBehindAnInterceptingProxy(t *testing.T) {
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d; stderr: %s", code, exitConfigError, stderr)
 	}
-	for _, want := range []string{"intercepted.example", "Kraftwerk Test Root", "ca_certs"} {
+	for _, want := range []string{"intercepted.example", "Fliesswerk Test Root", "ca_certs"} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("stderr doesn't say %q: %s", want, stderr)
 		}
@@ -86,11 +86,11 @@ func TestNativeCheckNamesTheRootBehindAnInterceptingProxy(t *testing.T) {
 }
 
 func TestNativeCheckPassesBehindAnInterceptingProxyWithCACerts(t *testing.T) {
-	ca, err := catest.NewCA("Kraftwerk Test Root")
+	ca, err := catest.NewCA("Fliesswerk Test Root")
 	if err != nil {
 		t.Fatal(err)
 	}
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root, env := behindTheInterceptor(t, bin, ca, "[network]\nca_certs = [\"CA_FILE\"]\n")
 
 	stdout, stderr, code := runEnv(t, bin, root, env, "check")
@@ -98,7 +98,7 @@ func TestNativeCheckPassesBehindAnInterceptingProxyWithCACerts(t *testing.T) {
 	if code != exitOK || !strings.Contains(stdout, "a Sandbox trusts intercepted.example") {
 		t.Fatalf("exit code = %d, stdout: %s, stderr: %s", code, stdout, stderr)
 	}
-	if entries, err := os.ReadDir(filepath.Join(root, ".kraftwerk", "state", "probe")); err == nil {
+	if entries, err := os.ReadDir(filepath.Join(root, ".fliesswerk", "state", "probe")); err == nil {
 		t.Errorf("the probe's worktree is still there: %v", entries)
 	}
 }

@@ -1,8 +1,8 @@
 [
-  {"args": "api repos/Marcel-Goehn/kraftwerk --silent", "stdout": ""},
+  {"args": "api repos/Marcel-Goehn/fliesswerk --silent", "stdout": ""},
   {"args": "--version", "stdout": "gh version 2.103.0 (2026-10-21)\nhttps://github.com/cli/cli/releases/tag/v2.103.0\n"},
   {"args": "auth status", "stdout": "github.com\n  ✓ Logged in to github.com account someone (GH_TOKEN)\n"},
-  {"args": "issue list --repo Marcel-Goehn/kraftwerk --state open --label ready-for-agent --limit 1000 --json number,title,body,labels,state,url,parent,subIssues,blockedBy,assignees", "stdout_file": "issue-list.json"},
-  {"args": "issue view 31 --repo Marcel-Goehn/kraftwerk --json number,title,body,state,url,subIssues,labels,assignees", "stdout_file": "../../../internal/tracker/github/testdata/issue-view-31.json"},
+  {"args": "issue list --repo Marcel-Goehn/fliesswerk --state open --label ready-for-agent --limit 1000 --json number,title,body,labels,state,url,parent,subIssues,blockedBy,assignees", "stdout_file": "issue-list.json"},
+  {"args": "issue view 31 --repo Marcel-Goehn/fliesswerk --json number,title,body,state,url,subIssues,labels,assignees", "stdout_file": "../../../internal/tracker/github/testdata/issue-view-31.json"},
   {"args": "api user --jq .login", "stdout": "me\n"}
 ]

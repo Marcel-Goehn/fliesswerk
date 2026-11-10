@@ -9,12 +9,12 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/credentials"
+	"github.com/Marcel-Goehn/fliesswerk/internal/credentials"
 )
 
-const authUsage = "Usage: kraftwerk auth set <key>\n"
+const authUsage = "Usage: fliesswerk auth set <key>\n"
 
-// runAuth runs `kraftwerk auth set <key>`: it reads a secret from a
+// runAuth runs `fliesswerk auth set <key>`: it reads a secret from a
 // hidden prompt (or one line of stdin, when stdin isn't a terminal) and
 // stores it under key in the user-level credentials file.
 func runAuth(args []string, stdin *os.File, stdout, stderr io.Writer) int {
@@ -24,32 +24,32 @@ func runAuth(args []string, stdin *os.File, stdout, stderr io.Writer) int {
 	}
 	key := args[1]
 	if !credentials.ValidKey(key) {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk auth set: %q can't name a secret; use letters, digits, '.', '_' and '-'\n", key)
+		_, _ = fmt.Fprintf(stderr, "fliesswerk auth set: %q can't name a secret; use letters, digits, '.', '_' and '-'\n", key)
 		return exitConfigError
 	}
 	if f, refused := credentials.NotStoredKey(theHarness.Describe(), key); refused {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk auth set: nothing was stored: %s\n", credentials.NotStoredFix(f))
+		_, _ = fmt.Fprintf(stderr, "fliesswerk auth set: nothing was stored: %s\n", credentials.NotStoredFix(f))
 		return exitConfigError
 	}
 	path, err := credentials.StorePath()
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk auth set: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "fliesswerk auth set: %v\n", err)
 		return exitConfigError
 	}
 	secret, err := readSecret(stdin, stderr, key)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk auth set: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "fliesswerk auth set: %v\n", err)
 		return exitConfigError
 	}
 	if secret == "" {
-		_, _ = fmt.Fprintln(stderr, "kraftwerk auth set: the secret is empty; nothing was stored")
+		_, _ = fmt.Fprintln(stderr, "fliesswerk auth set: the secret is empty; nothing was stored")
 		return exitConfigError
 	}
 	if err := credentials.Store(path, key, secret); err != nil {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk auth set: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "fliesswerk auth set: %v\n", err)
 		return exitConfigError
 	}
-	_, _ = fmt.Fprintf(stdout, "Stored %q in %s.\nReference it in .kraftwerk/config.local.toml as `secret = { stored = %q }`.\n", key, path, key)
+	_, _ = fmt.Fprintf(stdout, "Stored %q in %s.\nReference it in .fliesswerk/config.local.toml as `secret = { stored = %q }`.\n", key, path, key)
 	return exitOK
 }
 

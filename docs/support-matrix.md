@@ -1,8 +1,8 @@
 # Support matrix
 
-Which operating systems, container engines and Sandbox kinds the Factory is tested on. **Tested in CI** means automated tests run the setup on real machines for every change, or every night where marked. **Untested** means it should work, but no test proves it: please [report an issue](https://github.com/Marcel-Goehn/kraftwerk/issues) if it doesn't.
+Which operating systems, container engines and Sandbox kinds the Factory is tested on. **Tested in CI** means automated tests run the setup on real machines for every change, or every night where marked. **Untested** means it should work, but no test proves it: please [report an issue](https://github.com/Marcel-Goehn/fliesswerk/issues) if it doesn't.
 
-Whatever your setup, `kraftwerk check` starts a real Sandbox of your kind and probes it: a Service is reachable, direct internet access is blocked, and an allowed host is reachable through the egress proxy. An untested setup that doesn't work fails there, before any Run.
+Whatever your setup, `fliesswerk check` starts a real Sandbox of your kind and probes it: a Service is reachable, direct internet access is blocked, and an allowed host is reachable through the egress proxy. An untested setup that doesn't work fails there, before any Run.
 
 ## Sandboxes and engines
 

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
 )
 
 // fakeEngine answers a compose tool's calls by what they ask for, and records
@@ -162,7 +162,7 @@ func TestDownLeftRemovesTheStacksACrashedRunRecorded(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		t.Fatal(err)
 	}
-	record := `{"Project":"kraftwerk-shop-abc-build-1","File":"/w/compose.yaml","Override":"/o.yaml"}`
+	record := `{"Project":"fliesswerk-shop-abc-build-1","File":"/w/compose.yaml","Override":"/o.yaml"}`
 	if err := os.WriteFile(filepath.Join(dir, stackFile), []byte(record), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestDownLeftRemovesTheStacksACrashedRunRecorded(t *testing.T) {
 	if err := publishedOn(f, stateDir, "db").DownLeft(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if !f.called("-p kraftwerk-shop-abc-build-1") || !f.called("down --volumes") {
+	if !f.called("-p fliesswerk-shop-abc-build-1") || !f.called("down --volumes") {
 		t.Errorf("calls: %q", f.calls)
 	}
 }
@@ -242,7 +242,7 @@ func TestSharedServicesRunInTheProjectNamedShared(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	running, stop, err := p.StartShared(context.Background(), state, sandbox.Request{Name: "shared", Worktree: "/work/shop/.kraftwerk/state/worktrees/shared-services"})
+	running, stop, err := p.StartShared(context.Background(), state, sandbox.Request{Name: "shared", Worktree: "/work/shop/.fliesswerk/state/worktrees/shared-services"})
 	if err != nil {
 		t.Fatal(err)
 	}

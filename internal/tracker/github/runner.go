@@ -9,7 +9,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/shell"
+	"github.com/Marcel-Goehn/fliesswerk/internal/shell"
 )
 
 // ExecRunner runs the real gh found on PATH.

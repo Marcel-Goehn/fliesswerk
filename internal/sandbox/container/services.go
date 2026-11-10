@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/proxyimage"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/proxyimage"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
 )
 
 // servicesTimeout bounds starting a Sandbox's Services, image pulls

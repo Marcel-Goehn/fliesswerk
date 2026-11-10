@@ -8,23 +8,23 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/config"
-	"github.com/Marcel-Goehn/kraftwerk/internal/credentials"
-	"github.com/Marcel-Goehn/kraftwerk/internal/git"
-	"github.com/Marcel-Goehn/kraftwerk/internal/setup"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/github"
+	"github.com/Marcel-Goehn/fliesswerk/internal/config"
+	"github.com/Marcel-Goehn/fliesswerk/internal/credentials"
+	"github.com/Marcel-Goehn/fliesswerk/internal/git"
+	"github.com/Marcel-Goehn/fliesswerk/internal/setup"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/github"
 )
 
 // runInit sets up the project around the current directory: it looks at the
-// repo, asks the team's questions, writes .kraftwerk/ and ends with a full
+// repo, asks the team's questions, writes .fliesswerk/ and ends with a full
 // `check`. Nothing is written until the last question has been answered.
 func runInit(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) > 0 {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk init: unexpected argument %q; init takes none, and only ever creates what's missing\n", args[0])
+		_, _ = fmt.Fprintf(stderr, "fliesswerk init: unexpected argument %q; init takes none, and only ever creates what's missing\n", args[0])
 		return exitConfigError
 	}
 	fail := func(err error) int {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk init: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "fliesswerk init: %v\n", err)
 		return exitConfigError
 	}
 	cwd, err := os.Getwd()
@@ -104,14 +104,14 @@ func runInit(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 	_, _ = fmt.Fprintln(stdout, "\nChecking the setup, including one try of your commands in a Sandbox (no agent, no tokens):")
 	if code := runCheck([]string{"--commands"}, stdout, stderr); code != exitOK {
-		_, _ = fmt.Fprintln(stderr, "Not ready yet: fix the lines above, then run `kraftwerk check --commands`.")
+		_, _ = fmt.Fprintln(stderr, "Not ready yet: fix the lines above, then run `fliesswerk check --commands`.")
 		return code
 	}
 	if hasConfig {
-		_, _ = fmt.Fprintln(stdout, "Ready: label a Ticket, run `kraftwerk run`")
+		_, _ = fmt.Fprintln(stdout, "Ready: label a Ticket, run `fliesswerk run`")
 		return exitOK
 	}
-	_, _ = fmt.Fprintln(stdout, "Ready: commit `.kraftwerk/`, label a Ticket, run `kraftwerk run`")
+	_, _ = fmt.Fprintln(stdout, "Ready: commit `.fliesswerk/`, label a Ticket, run `fliesswerk run`")
 	return exitOK
 }
 

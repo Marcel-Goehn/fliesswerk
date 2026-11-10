@@ -1,4 +1,4 @@
-//go:build kwkfake
+//go:build fwkfake
 
 package main
 
@@ -10,11 +10,11 @@ import (
 	"os"
 	"sync"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/fake"
 )
 
-// In a test build, $KWK_FAKE_TRACKER names a JSON file that holds a fake
+// In a test build, $FWK_FAKE_TRACKER names a JSON file that holds a fake
 // Tracker's issues, used instead of the configured Tracker:
 //
 //	{"ready_label": "ready-for-agent", "in_progress_label": "in-progress", "user": "me",
@@ -27,7 +27,7 @@ import (
 // every Snapshot.
 func init() {
 	testTracker = func() (tracker.Tracker, error) {
-		path := os.Getenv("KWK_FAKE_TRACKER")
+		path := os.Getenv("FWK_FAKE_TRACKER")
 		if path == "" {
 			return nil, nil
 		}
