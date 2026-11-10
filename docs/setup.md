@@ -16,15 +16,15 @@ Install Fliesswerk first: see the [install guide](install.md).
 
 ### What your Sandbox kind needs
 
-Pick one row: the one for the Sandbox kind you will use. If you're not sure, take `container`. See [Choosing a Sandbox kind](#choosing-a-sandbox-kind).
+Pick the row for your Sandbox kind. If you're not sure, take `container`. See [Choosing a Sandbox kind](#choosing-a-sandbox-kind) and the [support matrix](support-matrix.md).
 
 | Sandbox kind | You need |
 | --- | --- |
 | `container` (the default) | Docker or Podman |
 | `native` on Linux or WSL2 | bubblewrap (`bwrap`) |
-| `native` on macOS | Nothing: Seatbelt is part of macOS 14 and newer |
+| `native` on macOS | Nothing: Seatbelt is part of macOS 14 or newer |
 
-Services, such as a database, always run in Docker or Podman, whichever Sandbox kind you choose. With a `container` Sandbox you have one already. With Podman, Services also need `podman-compose`. The [Services guide](services.md#setting-them-up) has the compose versions.
+If your project has Services, such as a database, they always run in Docker or Podman, whichever Sandbox kind you choose. A container Sandbox has that engine already. Services also need its compose tool: Docker Compose or `podman-compose`. The [Services guide](services.md#setting-them-up) has their versions.
 
 You don't need to check these by hand. `fliesswerk check` tests what your setup uses and names the install command for your OS.
 
@@ -189,7 +189,7 @@ Every Step runs in a Sandbox. The network is denied by default for every kind ex
 | Kind | Runs the agent | Needs | Pick it when |
 | --- | --- | --- | --- |
 | `container` (default) | In a container built from `.fliesswerk/Containerfile` | Docker or Podman | You can use a container engine. It is the strongest isolation and the same on every OS |
-| `native` | On your machine, fenced in by bubblewrap (Linux, WSL2) or Seatbelt (macOS 14 or newer) | `bwrap` on Linux | You can't or don't want to run containers, and your toolchain is on your machine |
+| `native` | On your machine, fenced in by bubblewrap (Linux, WSL2) or Seatbelt (macOS 14 or newer) | `bwrap` on Linux and WSL2, nothing on macOS | You can't or don't want to run containers, and your toolchain is on your machine |
 | `none` | On your machine, not fenced in at all | Your acknowledgement | You accept that the agent can read and change anything your user can |
 
 A native Sandbox reads only the system roots, your `PATH` toolchains and the OS trust store, and writes only to its own worktree. Your home directory, `~/.ssh`, `~/.aws` and your other projects stay out of reach, and so do the Docker and Podman sockets, D-Bus and the Keychain. On Ubuntu 24.04 and later, AppArmor blocks bubblewrap by default, and `check` prints the profile that fixes it.
