@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -159,7 +158,7 @@ func (r Resolver) dotenv(ctx context.Context, key string) (string, error) {
 	if err := CheckDotenvIgnored(ctx, r.Root); err != nil {
 		return "", err
 	}
-	data, err := os.ReadFile(filepath.Join(r.Root, filepath.FromSlash(DotenvFile))) //nolint:gosec // the project's own secrets file
+	data, err := os.ReadFile(DotenvPath(r.Root)) //nolint:gosec // the project's own secrets file
 	if errors.Is(err, os.ErrNotExist) {
 		return "", fmt.Errorf("there is no %s", DotenvFile)
 	}

@@ -105,13 +105,26 @@ func (a Asker) required(question, suggestion string) (string, error) {
 // secret asks until it has a secret, hidden from a terminal.
 func (a Asker) secret(question string) (string, error) {
 	for {
-		_, _ = fmt.Fprint(a.out, question+" (input is hidden): ")
-		answer, err := a.hiddenLine()
+		answer, err := a.hidden(question)
 		if err != nil || answer != "" {
 			return answer, err
 		}
 		a.say("  This one needs an answer.")
 	}
+}
+
+// hidden asks for a secret once, hidden from a terminal; Enter leaves it
+// empty.
+func (a Asker) hidden(question string) (string, error) {
+	_, _ = fmt.Fprint(a.out, question+" (input is hidden): ")
+	return a.hiddenLine()
+}
+
+// wait asks for Enter and waits for it. Input that has ended counts as one.
+func (a Asker) wait(question string) {
+	_, _ = fmt.Fprint(a.out, question+": ")
+	_, _ = a.in.ReadString('\n')
+	a.say("")
 }
 
 // hiddenLine reads one line without echoing it, if there is an echo to stop.

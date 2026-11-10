@@ -71,7 +71,7 @@ func runInit(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	var personal setup.Personal
 	if !hasLocal {
 		home, _ := os.UserHomeDir() // without one, there's just nothing to import
-		personal, err = setup.AskPersonal(ctx, ask, setup.PersonalInput{Harness: desc, Tracker: trackerInfo.Access, Repo: repo, Store: store, Home: home,
+		personal, err = setup.AskPersonal(ctx, ask, setup.PersonalInput{Harness: desc, Tracker: trackerInfo.Access, Repo: repo, Store: store, Root: root, Home: home,
 			FindInterception: findInterception(values, root), TeamCACerts: stringsOf(valueAt(values, "network", "ca_certs"))})
 		if err != nil {
 			return fail(err)
@@ -95,6 +95,9 @@ func runInit(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		for _, f := range kept {
 			_, _ = fmt.Fprintf(stdout, "  = %s (already there, left as it is)\n", f)
 		}
+	}
+	if err := personal.FillDotenv(ctx, ask, root); err != nil {
+		return fail(err)
 	}
 	labels := createMissingLabels(ctx, root, stdout, stderr)
 	if hasConfig && hasLocal {

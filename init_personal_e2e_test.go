@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -286,16 +287,19 @@ func TestInitWithAGhLoginCanStillTakeAToken(t *testing.T) {
 }
 
 func TestInitKeepsAKeyWhereThePersonSays(t *testing.T) {
-	for _, tt := range []struct{ answer, ref, source string }{
-		{"2", "GW_TOKEN", "env"},
-		{"command", "pass show gw", "command"},
-		{"dotenv", "GW", "dotenv"},
+	for _, tt := range []struct {
+		answers     []string
+		ref, source string
+	}{
+		{[]string{"2", "GW_TOKEN"}, "GW_TOKEN", "env"},
+		{[]string{"command", "pass show gw"}, "pass show gw", "command"},
+		{[]string{"dotenv", "GW", gatewaySecret}, "GW", "dotenv"},
 	} {
 		t.Run(tt.source, func(t *testing.T) {
 			p := teamProject(t, map[string]string{"config.toml": teamConfig})
 			srv := fakeGateway(t)
 
-			p.init(t, p.initEnv(t), "gateway", srv.URL, tt.answer, tt.ref, "", gitHubSecret)
+			p.init(t, p.initEnv(t), slices.Concat([]string{"gateway", srv.URL}, tt.answers, []string{"", gitHubSecret})...)
 
 			if got := valueAt(p.localConfig(t), "harnesses", "claude_code", "secret", tt.source); got != tt.ref {
 				t.Errorf("secret.%s = %v\n%s", tt.source, got, p.fliesswerkFile(t, "config.local.toml"))

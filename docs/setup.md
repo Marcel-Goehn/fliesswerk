@@ -57,7 +57,7 @@ Then come your own questions, described under [Signing in to Claude](#signing-in
 | `.fliesswerk/.gitignore` | Yes | Keeps the files below out of git. Your root `.gitignore` is never touched |
 | `.fliesswerk/config.local.toml` | No | Your own settings: how you sign in, your tokens' sources, and any `kind = "none"` |
 
-Secrets you type go to your user-level credentials file, never into the project. It is `fliesswerk/credentials` in your user config directory (`~/.config` on Linux, `~/Library/Application Support` on macOS, `%AppData%` on Windows), readable only by you and shared by all your projects.
+Secrets you type go to your user-level credentials file, never into the project, unless you choose to keep one in `.fliesswerk/.env` (see [Signing in to Claude](#signing-in-to-claude)). It is `fliesswerk/credentials` in your user config directory (`~/.config` on Linux, `~/Library/Application Support` on macOS, `%AppData%` on Windows), readable only by you and shared by all your projects.
 
 The `sandbox_created` Hook installs your dependencies from the lockfile in every fresh Sandbox, and the registries those installs need are on the network allowlist. Every setting is explained in the [config reference](config.md).
 
@@ -139,6 +139,13 @@ A secret can be kept in one of four places:
 | `.fliesswerk/.env` | `{ dotenv = "KEY" }` | The Factory refuses to start if the file isn't git-ignored |
 
 A Claude subscription token is never kept in your credentials file: Anthropic's terms say developers ["may not collect, store, or intermediate Claude.ai credentials or session tokens"](https://code.claude.com/docs/en/legal-and-compliance). For a subscription, `init` offers only the other three, suggests `{ env = "CLAUDE_CODE_OAUTH_TOKEN" }` as Anthropic does, and never asks for the token itself. Set it where you'd set any environment variable, or have your password manager print it.
+
+When you choose `.fliesswerk/.env`, `init` suggests the same name as for an environment variable, such as `CLAUDE_CODE_OAUTH_TOKEN`, and fills the file in once it has written `.fliesswerk/.gitignore`:
+
+- **A subscription token**: `init` never asks for it. It adds the empty line `CLAUDE_CODE_OAUTH_TOKEN=` and names the file's full path. Paste the token from `claude setup-token` after the `=`, save the file and press Enter. `init` reads the token only at its check, as `check` and every Run start do.
+- **Any other secret** (an API key, a gateway token, the GitHub token): `init` asks for it with a hidden prompt and adds it under the name you chose.
+
+Either way, `init` never overwrites the file: it only appends a missing key, and a key that already has a value is used without asking. A new file is readable only by you. If `.fliesswerk/.env` isn't git-ignored, `init` writes no secret there and says why. Leave the secret empty, and `init` still finishes, but its check fails and names the file and the key until you add it.
 
 The resulting `config.local.toml` looks like this:
 
