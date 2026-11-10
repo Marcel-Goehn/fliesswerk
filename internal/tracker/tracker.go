@@ -142,7 +142,8 @@ type Comment struct {
 }
 
 // Tracker is the boundary every Tracker adapter implements. There are no
-// other writes than Comment, Close, SetLabels, Claim and Release.
+// other writes than Comment, Close, SetLabels, Claim and Release, and
+// CreateLabel, which only `init` uses.
 type Tracker interface {
 	// Snapshot reads every open Ticket with the ready label, and the Spec
 	// of each.
@@ -166,6 +167,13 @@ type Tracker interface {
 	// Release drops the Claim by on a Spec (or a standalone Ticket): the
 	// in-progress label and by as assignee.
 	Release(ctx context.Context, id ID, by string) error
+	// MissingLabels returns those of names the Tracker doesn't have, each
+	// exactly as given and in their order, compared the way the Tracker
+	// compares label names.
+	MissingLabels(ctx context.Context, names []string) ([]string, error)
+	// CreateLabel creates a label with a description. It never changes a
+	// label that already exists.
+	CreateLabel(ctx context.Context, name, description string) error
 	// Describe tells the rest of the Factory what this Tracker needs.
 	Describe() Description
 }
@@ -199,6 +207,8 @@ type Description struct {
 	TokenSource string
 	// LinkBlockerFix is how to turn a text-only Blocker into a native one.
 	LinkBlockerFix func(ticket, blocker ID) string
+	// CreateLabelFix is how a person creates a label the Tracker lacks.
+	CreateLabelFix func(name, description string) string
 }
 
 // Access is what `init` needs to settle how a person reaches the Tracker.

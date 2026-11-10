@@ -67,16 +67,21 @@ or the exact lines to fix. Fix them and run `fliesswerk check --commands` again.
 
 ### Labels
 
-The Factory adds the `in_progress_label` (default `in-progress`) to a Spec it claims, and swaps the ready label for the `cannot_do_label` (default `needs-investigation`) on a Ticket it hands back. GitHub can only add labels that exist, so create them once:
+A Run needs three labels in the repository: the ready label (default `ready-for-agent`), the `in_progress_label` (default `in-progress`) it adds to a Spec it claims, and the `cannot_do_label` (default `needs-investigation`) it swaps the ready label for on a Ticket it hands back. GitHub can only add labels that exist, so `init` creates those that are missing, by the names in `[tracker]`, and lists each one it created (`+ label in-progress`). It leaves a label that already exists exactly as it is, color and description included. GitHub compares label names without regard to case, so `Ready-For-Agent` counts as `ready-for-agent`.
+
+When `init` can't create a label (your login or token can't write to Issues, or GitHub can't be reached), it still writes its files and prints the lines to run instead. With the default names, they are:
 
 ```sh
-gh label create in-progress --description "Claimed by a Fliesswerk Run"
-gh label create needs-investigation --description "Fliesswerk handed it back to a person"
+gh label create ready-for-agent --repo owner/name --description "Fliesswerk may work on it"
+gh label create in-progress --repo owner/name --description "Claimed by a Fliesswerk Run"
+gh label create needs-investigation --repo owner/name --description "Fliesswerk handed it back to a person"
 ```
+
+Until the labels exist, `check` fails with exit code 3 and names each missing one, and a Run stops before it claims anything. Both say to run `fliesswerk init` again, or to create the label yourself with the `gh label create` line.
 
 ### Running `init` again
 
-`init` never overwrites a file. Run it again at any time: it creates only what's missing (`.fliesswerk/.gitignore`, the Containerfile for the container kind, and `config.local.toml`), says "Already set up" if nothing is missing, and runs `check`. To change a setting, edit the file.
+`init` never overwrites a file. Run it again at any time: it creates only what's missing (`.fliesswerk/.gitignore`, the Containerfile for the container kind, `config.local.toml`, and any of the Tracker's labels that went missing), says "Already set up" if nothing is missing, and runs `check`. To change a setting, edit the file.
 
 ## A teammate cloning a set-up repo
 

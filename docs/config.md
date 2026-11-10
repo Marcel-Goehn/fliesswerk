@@ -97,15 +97,15 @@ The repository, as `owner/name`.
 
 ### `tracker.ready_label`
 
-The label that marks a Ticket Ready for agent. Default `"ready-for-agent"`.
+The label that marks a Ticket Ready for agent. Default `"ready-for-agent"`. The label must exist in the repository; `init` creates it.
 
 ### `tracker.in_progress_label`
 
-The label that marks a claimed Spec or standalone Ticket. Default `"in-progress"`. The label must exist in the repository.
+The label that marks a claimed Spec or standalone Ticket. Default `"in-progress"`. The label must exist in the repository; `init` creates it.
 
 ### `tracker.cannot_do_label`
 
-The label that replaces the ready label on a Ticket the Factory hands back to a person. Default `"needs-investigation"`. The label must exist in the repository.
+The label that replaces the ready label on a Ticket the Factory hands back to a person. Default `"needs-investigation"`. The label must exist in the repository; `init` creates it.
 
 ### `tracker.token`
 

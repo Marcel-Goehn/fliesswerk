@@ -398,6 +398,7 @@ func (t *Tracker) Describe() tracker.Description {
 		},
 		TokenSource:    "`[tracker] token` in config.local.toml, handed to gh as GH_TOKEN; without it, gh's own login",
 		LinkBlockerFix: t.linkBlockerFix,
+		CreateLabelFix: t.createLabelFix,
 	}
 }
 

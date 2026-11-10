@@ -8,6 +8,7 @@ import (
 	"slices"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,7 +39,7 @@ type Issue struct {
 
 // Write is one recorded write.
 type Write struct {
-	Op     string // "comment", "close", "labels", "claim" or "release"
+	Op     string // "comment", "close", "labels", "claim", "release" or "create_label"
 	Ticket int
 	Text   string
 	Add    []string
@@ -56,6 +57,8 @@ type Tracker struct {
 	Me string
 	// Now stamps a Claim; New sets time.Now.
 	Now func() time.Time
+	// Labels are the labels the fake's repository has.
+	Labels []string
 
 	mu     sync.Mutex
 	issues map[int]*Issue
@@ -279,6 +282,33 @@ func (t *Tracker) Release(_ context.Context, id tracker.ID, by string) error {
 	return nil
 }
 
+// MissingLabels returns those of names not in Labels, compared without
+// regard to case, like GitHub.
+func (t *Tracker) MissingLabels(_ context.Context, names []string) ([]string, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var missing []string
+	for _, n := range names {
+		if !slices.ContainsFunc(t.Labels, func(l string) bool { return strings.EqualFold(l, n) }) {
+			missing = append(missing, n)
+		}
+	}
+	return missing, nil
+}
+
+// CreateLabel adds name to Labels, recording a create_label write with
+// the label in Add and its description in Text.
+func (t *Tracker) CreateLabel(_ context.Context, name, description string) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if slices.ContainsFunc(t.Labels, func(l string) bool { return strings.EqualFold(l, name) }) {
+		return fmt.Errorf("fake tracker: the label %s already exists", name)
+	}
+	t.Labels = append(t.Labels, name)
+	t.writes = append(t.writes, Write{Op: "create_label", Add: []string{name}, Text: description})
+	return nil
+}
+
 // Issues returns every issue as it is now, by number.
 func (t *Tracker) Issues() []Issue {
 	t.mu.Lock()
@@ -303,6 +333,9 @@ func (t *Tracker) Describe() tracker.Description {
 		Kind: "fake", ConfigSection: "tracker", TokenSource: "none",
 		LinkBlockerFix: func(ticket, blocker tracker.ID) string {
 			return fmt.Sprintf("link %s as a Blocker of %s", blocker, ticket)
+		},
+		CreateLabelFix: func(name, description string) string {
+			return fmt.Sprintf("create the label %s (%s)", name, description)
 		},
 	}
 }

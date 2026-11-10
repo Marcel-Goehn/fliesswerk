@@ -16,8 +16,9 @@ import (
 )
 
 // runInit sets up the project around the current directory: it looks at the
-// repo, asks the team's questions, writes .fliesswerk/ and ends with a full
-// `check`. Nothing is written until the last question has been answered.
+// repo, asks the team's questions, writes .fliesswerk/, creates the labels
+// the Tracker lacks and ends with a full `check`. Nothing is written until
+// the last question has been answered.
 func runInit(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) > 0 {
 		_, _ = fmt.Fprintf(stderr, "fliesswerk init: unexpected argument %q; init takes none, and only ever creates what's missing\n", args[0])
@@ -95,9 +96,10 @@ func runInit(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			_, _ = fmt.Fprintf(stdout, "  = %s (already there, left as it is)\n", f)
 		}
 	}
+	labels := createMissingLabels(ctx, root, stdout, stderr)
 	if hasConfig && hasLocal {
-		if len(written) == 0 {
-			_, _ = fmt.Fprintln(stdout, "Already set up: init never overwrites a file, and nothing is missing.")
+		if len(written) == 0 && labels == 0 {
+			_, _ = fmt.Fprintln(stdout, "Already set up: init never overwrites a file or a label, and nothing is missing.")
 		}
 		return runCheck(nil, stdout, stderr)
 	}

@@ -21,6 +21,8 @@ import (
 //	 "issues": [{"Number": 1, …}], "writes": []}
 //
 // in_progress_label and user may be left out for the fake's defaults.
+// "labels" lists the repository's labels; left out, it has every label it
+// is asked about.
 //
 // Every write is applied to the file, and recorded in "writes". The next
 // "fail_writes" writes fail instead, and with "fail_snapshot" so does
@@ -42,6 +44,9 @@ func init() {
 		tr := fake.New(st.ReadyLabel, st.Issues...)
 		tr.InProgressLabel = cmp.Or(st.InProgressLabel, tr.InProgressLabel)
 		tr.Me = cmp.Or(st.User, tr.Me)
+		if st.Labels != nil {
+			tr.Labels = *st.Labels
+		}
 		return &fileTracker{Tracker: tr, path: path, state: st}, nil
 	}
 }
@@ -50,6 +55,7 @@ type fakeState struct {
 	ReadyLabel      string       `json:"ready_label"`
 	InProgressLabel string       `json:"in_progress_label,omitempty"`
 	User            string       `json:"user,omitempty"`
+	Labels          *[]string    `json:"labels,omitempty"`
 	Issues          []fake.Issue `json:"issues"`
 	Writes          []fake.Write `json:"writes"`
 	FailWrites      int          `json:"fail_writes,omitempty"`
@@ -71,6 +77,9 @@ func (f *fileTracker) save(err error) error {
 	}
 	st := f.state
 	st.Issues, st.Writes = f.Issues(), f.Writes()
+	if st.Labels != nil {
+		st.Labels = &f.Labels
+	}
 	data, err := json.MarshalIndent(st, "", "  ")
 	if err != nil {
 		return err
@@ -114,4 +123,15 @@ func (f *fileTracker) Claim(ctx context.Context, id tracker.ID) error {
 
 func (f *fileTracker) Release(ctx context.Context, id tracker.ID, by string) error {
 	return f.write(func() error { return f.Tracker.Release(ctx, id, by) })
+}
+
+func (f *fileTracker) MissingLabels(ctx context.Context, names []string) ([]string, error) {
+	if f.state.Labels == nil {
+		return nil, nil
+	}
+	return f.Tracker.MissingLabels(ctx, names)
+}
+
+func (f *fileTracker) CreateLabel(ctx context.Context, name, description string) error {
+	return f.write(func() error { return f.Tracker.CreateLabel(ctx, name, description) })
 }

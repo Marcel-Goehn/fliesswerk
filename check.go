@@ -159,6 +159,10 @@ func checkTracker(ctx context.Context, values map[string]any, s *secrets, stdout
 		}
 		_, _ = fmt.Fprintf(stdout, "fliesswerk check: %s ok\n", c.Name)
 	}
+	if err := checkLabels(ctx, tr, values); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintln(stdout, "fliesswerk check: labels ok")
 	others, err := claimedByOthers(ctx, tr)
 	if err != nil {
 		return err

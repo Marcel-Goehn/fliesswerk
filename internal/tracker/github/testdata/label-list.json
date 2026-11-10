@@ -1,0 +1,35 @@
+[
+  {
+    "name": "bug"
+  },
+  {
+    "name": "documentation"
+  },
+  {
+    "name": "duplicate"
+  },
+  {
+    "name": "enhancement"
+  },
+  {
+    "name": "good first issue"
+  },
+  {
+    "name": "help wanted"
+  },
+  {
+    "name": "In-Progress"
+  },
+  {
+    "name": "invalid"
+  },
+  {
+    "name": "question"
+  },
+  {
+    "name": "ready-for-agent"
+  },
+  {
+    "name": "wontfix"
+  }
+]

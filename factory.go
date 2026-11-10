@@ -143,7 +143,7 @@ func runFactory(values map[string]any, root, only string, view runView, stdout, 
 			log.Write(runlog.Line{Kind: kind, Text: line})
 		})
 		opts.Preflight = func(ctx context.Context) error {
-			if err := preflight(ctx, tr, s); err != nil {
+			if err := preflight(ctx, tr, values, s); err != nil {
 				return err
 			}
 			// Before the Sandboxes: each of them mounts the directory.
@@ -350,10 +350,11 @@ func writeBanner(log *runlog.Log, values map[string]any, s *secrets) {
 	}
 }
 
-// preflight proves the Tracker, and the AWS credentials the host mints from,
-// work before any Iteration starts. It sends no credential the Harness sends
-// itself: Claude Code checks that one on the first Step.
-func preflight(ctx context.Context, tr tracker.Tracker, s *secrets) error {
+// preflight proves the Tracker, its labels, and the AWS credentials the host
+// mints from, work before any Iteration starts, so before anything is
+// claimed. It sends no credential the Harness sends itself: Claude Code
+// checks that one on the first Step.
+func preflight(ctx context.Context, tr tracker.Tracker, values map[string]any, s *secrets) error {
 	if err := s.testHarnessCredential(ctx); err != nil {
 		return err
 	}
@@ -363,7 +364,7 @@ func preflight(ctx context.Context, tr tracker.Tracker, s *secrets) error {
 			return fmt.Errorf("%s: %w", c.Name, err)
 		}
 	}
-	return nil
+	return checkLabels(ctx, tr, values)
 }
 
 // factoryOptions are the Options of a Run with this config.
