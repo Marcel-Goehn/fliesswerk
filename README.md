@@ -18,6 +18,28 @@ irm https://raw.githubusercontent.com/Marcel-Goehn/kraftwerk/main/install.ps1 | 
 
 No admin rights needed. The [install guide](docs/install.md) covers browser downloads, verifying a release, uninstalling and building from source.
 
+## Guides
+
+- [Setting up a project](docs/setup.md): `kraftwerk init`, signing in, the GitHub token and choosing a Sandbox kind
+- [Running the Factory](docs/usage.md): `kraftwerk run`, exit codes, logs, Claims and Blockers
+- [Config reference](docs/config.md): every key, and the risks that remain
+- [Services](docs/services.md): databases and other programs the agent needs
+- [Behind a corporate proxy](docs/corporate-proxy.md)
+- [Support matrix](docs/support-matrix.md): what is tested on which OS and engine
+
+## No telemetry
+
+Kraftwerk collects no telemetry, ever. It has no analytics, no crash reports and no usage statistics, and it sends nothing about you or your use of it anywhere.
+
+The Factory itself connects only to:
+
+- your Tracker, through `gh`, and your git remote, to do the work you asked for
+- your Harness's provider, for one free test call per credential at `check` and at the start of each Run, and one request to its endpoint to detect a TLS-inspecting proxy
+- AWS STS, with Bedrock, to turn your credentials into short-lived ones for the Sandbox
+- GitHub's release list, at most once a day, to tell you about a newer version. Set `update_notice = false` to turn that off. `kraftwerk update` and the install scripts download from GitHub Releases
+
+The agent reaches its model provider and the hosts on your allowlist, and nothing else.
+
 ## Contributing
 
 Kraftwerk is pre-v1 and isn't taking outside contributions yet. Issues from people outside the project aren't accepted before v1 and will be closed without review. Pull requests from outside the project are turned off.
