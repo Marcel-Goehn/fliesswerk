@@ -1,0 +1,173 @@
+# Nightly: what's too slow or too external for every push. Linux arm64 (the
+# tests, the container Sandbox on Docker and rootless Podman, the native
+# Sandbox on bwrap), govulncheck against the day's vulnerability database,
+# and the GitHub adapter and push against a real repository. A failure opens,
+# or comments on, a `needs-triage` issue here; it never makes one
+# `ready-for-agent`, so no Run picks it up before a human has looked.
+#
+# The real-GitHub job needs, set up once in the repository's settings:
+#   - the variable KRAFTWERK_LIVE_REPO: owner/name of a repository that
+#     exists only for this job. Everything in it is closed or deleted each
+#     night.
+#   - the secret KRAFTWERK_LIVE_TOKEN: a fine-grained token with access to
+#     only that repository, with Issues and Contents read/write (Metadata
+#     read comes with it).
+#
+# Every third-party Action is pinned by commit SHA, as in ci.yml; Dependabot
+# keeps the pins current.
+name: Nightly
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+jobs:
+  test-arm64:
+    name: test (linux/arm64)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: go generate (the proxy sidecar's root filesystems)
+        run: go generate ./internal/proxyimage
+      - name: go test
+        env:
+          KRAFTWERK_TEST_ANCHOR: "1"
+        run: go test ./...
+
+  # As ci.yml's container job, on arm64: the sidecar image is the arm64 one.
+  container-arm64:
+    name: container (${{ matrix.engine }}, linux/arm64)
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [docker, podman]
+    env:
+      KRAFTWERK_ENGINE: ${{ matrix.engine }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: go generate (the proxy sidecar's root filesystems)
+        run: go generate ./internal/proxyimage
+      - name: Install Podman and podman-compose
+        if: matrix.engine == 'podman'
+        run: |
+          if ! command -v podman >/dev/null; then
+            sudo apt-get update && sudo apt-get install -y podman
+          fi
+          # The oldest podman-compose the Factory accepts.
+          pipx install podman-compose==1.4.0
+      - name: go test (integration)
+        run: go test -tags integration -p 1 -timeout 20m ./internal/sandbox/container/ .
+
+  native-arm64:
+    name: native (bwrap, linux/arm64)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Install bubblewrap
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+      - name: go generate (the proxy sidecar's root filesystems)
+        run: go generate ./internal/proxyimage
+      - name: go test (integration)
+        run: |
+          go test -tags integration -v -timeout 10m ./internal/sandbox/native/
+          go test -tags integration -v -timeout 10m -run 'Native' .
+
+  # New entries reach the vulnerability database without a push here.
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+  # Snapshot, Comment, Close, SetLabels and push against the test
+  # repository, then a reset of it, whether the tests passed or not.
+  github:
+    name: real GitHub
+    runs-on: ubuntu-latest
+    env:
+      KRAFTWERK_LIVE_REPO: ${{ vars.KRAFTWERK_LIVE_REPO }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # The token reaches only the steps that use it.
+      - name: go test (live)
+        env:
+          KRAFTWERK_LIVE_TOKEN: ${{ secrets.KRAFTWERK_LIVE_TOKEN }}
+        run: go test -tags live -v -count=1 -timeout 10m ./internal/tracker/github/
+      - name: Reset the test repository
+        if: ${{ always() && env.KRAFTWERK_LIVE_REPO != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.KRAFTWERK_LIVE_TOKEN }}
+        run: |
+          repo=$KRAFTWERK_LIVE_REPO
+          for n in $(gh issue list --repo "$repo" --state open --limit 1000 --json number --jq '.[].number'); do
+            gh issue close "$n" --repo "$repo" --reason "not planned"
+          done
+          default=$(gh repo view "$repo" --json defaultBranchRef --jq '.defaultBranchRef.name // ""')
+          for b in $(gh api --paginate "repos/$repo/branches" --jq '.[].name'); do
+            if [ "$b" != "$default" ]; then
+              gh api --method DELETE "repos/$repo/git/refs/heads/$b"
+            fi
+          done
+
+  # Opens a `needs-triage` issue for a failed night, or comments on the one
+  # still open from an earlier night. Only that label is ever set.
+  report:
+    name: report a failure
+    needs: [test-arm64, container-arm64, native-arm64, govulncheck, github]
+    if: ${{ failure() }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update the needs-triage issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEEDS: ${{ toJSON(needs) }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Nightly jobs failed"
+          failed=$(printf '%s' "$NEEDS" | jq -r 'to_entries[] | select(.value.result != "success") | "- `\(.key)`: \(.value.result)"')
+          body=$(printf 'The nightly run %s did not pass:\n\n%s\n' "$RUN_URL" "$failed")
+          n=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label needs-triage --limit 1000 --json number,title \
+            --jq "map(select(.title == \"$title\")) | .[0].number // empty")
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --label needs-triage --body "$body"
+          fi

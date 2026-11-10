@@ -7,7 +7,8 @@
 # run it, and `main` takes no direct pushes. The `ci` job at the end is the
 # single check the "Require PR" ruleset on `main` requires (set up in the
 # GitHub UI); add new CI jobs to its `needs`. A tag runs all of it too, as the
-# first stage of .github/workflows/release.yml.
+# first stage of .github/workflows/release.yml. Linux arm64 and the
+# real-GitHub tests run nightly instead (.github/workflows/nightly.yml).
 #
 # Severity policy: findings of high severity or above fail the job, lower
 # ones only warn.

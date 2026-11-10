@@ -2,11 +2,13 @@
 version: "2"
 
 # Also lint the scripted fake Harness, which only builds with this test-only
-# tag (internal/harness/fakeclaude).
+# tag (internal/harness/fakeclaude), and the nightly live tests against real
+# GitHub (-tags live).
 run:
   build-tags:
     - kwkfake
     - integration
+    - live
 
 linters:
   default: standard
