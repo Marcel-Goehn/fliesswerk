@@ -140,15 +140,54 @@ Secrets stored with `fliesswerk auth set` stay behind in a `fliesswerk` director
 
 ## Building from source
 
-You need the Go version named in `go.mod`.
+Build from source to try a commit that isn't released yet, or to check that a release matches its code. You need git and the Go version named in `go.mod`. You don't need a C compiler.
+
+The steps below install to the same places as the install script, so [Uninstalling](#uninstalling) works for both.
+
+### Linux and macOS
 
 ```sh
-go install github.com/Marcel-Goehn/fliesswerk@latest
-```
-
-This build has no egress proxy for container Sandboxes, because those files are generated. To get a complete build, clone the repository and run:
-
-```sh
+git clone https://github.com/Marcel-Goehn/fliesswerk.git
+cd fliesswerk
 go generate ./internal/proxyimage
-CGO_ENABLED=0 go build -trimpath .
+mkdir -p ~/.local/bin
+CGO_ENABLED=0 go build -trimpath -o ~/.local/bin/fliesswerk .
+command -v fwk || ln -s fliesswerk ~/.local/bin/fwk
+fliesswerk --version
 ```
+
+- **`go generate`:** builds the egress proxy that container Sandboxes run next to them, and the build embeds it. Without this step, container Sandboxes have no egress proxy.
+- **`fwk`:** the last line but one adds `fwk` as a short name, unless a `fwk` is already on your `PATH`. If it prints a path, that program keeps the name. Use `fliesswerk` instead.
+- **`PATH`:** if `fliesswerk --version` says `command not found`, `~/.local/bin` isn't on your `PATH`. Add `export PATH="$HOME/.local/bin:$PATH"` to your shell's profile (for fish: `fish_add_path ~/.local/bin`), then open a new terminal.
+
+### Windows (PowerShell)
+
+```powershell
+git clone https://github.com/Marcel-Goehn/fliesswerk.git
+cd fliesswerk
+go generate ./internal/proxyimage
+$dir = Join-Path $env:LOCALAPPDATA 'Programs\fliesswerk'
+New-Item -ItemType Directory -Force -Path $dir | Out-Null
+$env:CGO_ENABLED = '0'
+go build -trimpath -o (Join-Path $dir 'fliesswerk.exe') .
+$fwk = Join-Path $dir 'fwk.exe'
+Remove-Item -LiteralPath $fwk -ErrorAction SilentlyContinue
+if (-not (Get-Command fwk -ErrorAction SilentlyContinue)) {
+    New-Item -ItemType HardLink -Path $fwk -Target (Join-Path $dir 'fliesswerk.exe') | Out-Null
+}
+# Read and written raw, so entries like %USERPROFILE%\bin stay as they are.
+$userPath = (Get-Item 'HKCU:\Environment').GetValue('Path', '', 'DoNotExpandEnvironmentNames')
+if (($userPath -split ';') -notcontains $dir) {
+    New-ItemProperty -Path 'HKCU:\Environment' -Name 'Path' -Value ((@($userPath -split ';' | Where-Object { $_ }) + $dir) -join ';') -PropertyType ExpandString -Force | Out-Null
+}
+```
+
+Open a new terminal and run `fliesswerk --version`. As on Linux and macOS, `fwk` is only added if no other `fwk` is on your `PATH`. A binary you built yourself was never downloaded, so SmartScreen doesn't warn about it.
+
+### How a source build differs from a release
+
+- **`--version`:** it prints `dev` and the commit it was built from, such as `dev (v0.0.0-20261110160318-91425d9937fa)`, not a release version.
+- **Updating:** `fliesswerk update` refuses, because no release replaces a development build. To update, run `git pull` in the clone and repeat the steps above. Close any running `fliesswerk` first; on Windows, a running `fliesswerk.exe` can't be overwritten.
+- **Container Sandboxes:** a dev build tags its proxy image by the proxy's contents, not by a version. A rebuild with an unchanged proxy reuses the image.
+
+`go install github.com/Marcel-Goehn/fliesswerk@latest` also builds Fliesswerk, but it can't run `go generate`, so container Sandboxes get no egress proxy. Use the steps above instead.
