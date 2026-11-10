@@ -42,7 +42,7 @@ The agent reaches its model provider and the hosts on your allowlist, and nothin
 
 ## License
 
-Kraftwerk is released under the [MIT License](LICENSE).
+Kraftwerk is released under the [MIT License](LICENSE). The release archives also include [`THIRD_PARTY_NOTICES`](THIRD_PARTY_NOTICES): the licenses and notices of the Go modules compiled into the executable.
 
 The files `kraftwerk init` writes into your project, in `.kraftwerk/`, are yours: use, change and share them without the license's conditions, including its notice.
 

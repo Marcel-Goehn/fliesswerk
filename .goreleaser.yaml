@@ -36,6 +36,7 @@ archives:
     name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
     files:
       - LICENSE
+      - THIRD_PARTY_NOTICES
 
 checksum:
   name_template: checksums.txt
