@@ -34,6 +34,10 @@ type Description struct {
 	// `init` offers them. `check` rejects any other.
 	AuthMethods []AuthMethod
 
+	// LoginFix is what to do when the Harness rejects its own login, with
+	// no `[harnesses.<name>]` table set.
+	LoginFix string
+
 	// ImportAuth finds an auth setup the Harness already has in the user's
 	// home, for `init` to offer. Nil, or nil from it, means there is none.
 	ImportAuth func(home string) *ImportedAuth
@@ -87,9 +91,10 @@ type AuthMethod struct {
 	// Endpoints are the hosts the egress allowlist gains for this method,
 	// given the method's resolved field values.
 	Endpoints func(fields map[string]string) []string
-	// TestCall is the free request that proves the credential works,
-	// given the resolved field values.
-	TestCall func(fields map[string]string) Request
+	// RejectedFix is what to do when the Harness rejects the credential
+	// at a Step. The Factory never tests a credential the Harness sends
+	// itself (docs/adr/0007-only-the-harness-sends-its-credential.md), so a Step is where a bad one shows.
+	RejectedFix string
 }
 
 // ImportedAuth is an auth setup found on the user's machine.
@@ -120,13 +125,6 @@ type AuthField struct {
 	// when set.
 	Flag     bool
 	Optional bool
-}
-
-// Request is an HTTP request described as data.
-type Request struct {
-	Method string
-	URL    string
-	Header map[string]string
 }
 
 // CredentialFile is how a Harness reads a credential from a file.

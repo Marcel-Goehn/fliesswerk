@@ -46,6 +46,9 @@ type Options struct {
 	// RunStep runs a Step in Step.Dir and says how it ended. Steps of
 	// different Tickets call it at the same time.
 	RunStep func(ctx context.Context, s Step) harness.Outcome
+	// AuthFix says what a person does when the Harness rejects its
+	// credential at a Step, which stops the Run. "" says nothing more.
+	AuthFix string
 	// Sandboxes creates a Sandbox for each Ticket's build, merge Step and
 	// verify of a merged result; nil means no Sandboxes (`kind = "none"`).
 	Sandboxes func(ctx context.Context, req sandbox.Request) (sandbox.Sandbox, error)
@@ -1046,7 +1049,13 @@ func (r *run) runStep(ctx context.Context, s Step) (out harness.Outcome, failed 
 		oom := false
 		switch {
 		case out.Kind == harness.Failed && out.Class == harness.Auth:
-			return out, nil, fmt.Errorf("%s %s: the Harness reported an auth error: %s", s.Ticket.ID, s.Name, out.Message)
+			// The credential is at fault, never the Ticket: no retry, nothing
+			// handed back.
+			err := fmt.Errorf("%s %s: the Harness reported an auth error: %s", s.Ticket.ID, s.Name, out.Message)
+			if r.opts.AuthFix != "" {
+				err = fmt.Errorf("%w; %s", err, r.opts.AuthFix)
+			}
+			return out, nil, err
 		case out.Kind == harness.Failed && out.Class == harness.Transient:
 			if transient == transientRetries {
 				return out, nil, fmt.Errorf("%s %s: the Harness reported a transient error, again after %d retries: %s",

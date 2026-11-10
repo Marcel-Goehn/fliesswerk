@@ -55,7 +55,7 @@ For a language without a recipe, the Containerfile has a block marked `TODO(kraf
 
 ### The end of `init`
 
-`init` ends by running `kraftwerk check --commands`. It builds the image, tests every credential with one free call, does a dry-run push, starts a Sandbox, and runs your `sandbox_created` Hook and every Feedback command once on the base branch, with no agent and no tokens spent. A command that already fails on the base branch shows up here, so the agent isn't blamed for it.
+`init` ends by running `kraftwerk check --commands`. It builds the image, resolves every credential, tests the ones the Factory uses itself (GitHub, and AWS for Bedrock), does a dry-run push, starts a Sandbox, and runs your `sandbox_created` Hook and every Feedback command once on the base branch, with no agent and no tokens spent. A command that already fails on the base branch shows up here, so the agent isn't blamed for it.
 
 It ends with either:
 
@@ -101,7 +101,9 @@ If the team pinned a version with `factory = "…"`, a Kraftwerk outside that ra
 | Amazon Bedrock | `bedrock` | A region, and a profile or access keys | `bedrock-runtime.<region>.amazonaws.com` |
 | A gateway that speaks Anthropic's API | `gateway` | Its URL and token | The gateway's host |
 
-The host is added to the network allowlist for you. Every credential gets one free test call, such as listing models, at `check` and at the start of every Run, so a bad one stops the Run before any work starts.
+The host is added to the network allowlist for you. Every secret is resolved at `check` and at the start of every Run, so a missing environment variable, a failing `command` or a missing `.env` key stops the Run before any work starts.
+
+The Factory never sends your Claude credential itself: only Claude Code does, from inside the Sandbox (see [ADR 0007](adr/0007-only-the-harness-sends-its-credential.md)). So `check` reports a subscription token, an API key or a gateway token as found but not tested ahead of time, and Claude Code checks it on the first Step. If Claude Code rejects it, the Run stops at once with exit code 2 and says how to fix it, such as `claude setup-token` for a subscription, and no Ticket is held against it. Bedrock is the exception: the Factory mints the Sandbox's short-lived AWS credentials from yours, so `check` and every Run start test those with AWS STS.
 
 A secret can be kept in one of four places. `init` offers all of them:
 

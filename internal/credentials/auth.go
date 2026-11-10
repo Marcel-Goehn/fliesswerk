@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"slices"
 	"strings"
@@ -27,9 +25,11 @@ type Auth struct {
 	// Bedrock signs in to AWS, nil for every other method.
 	Bedrock *bedrock.Client
 
-	test    harness.Request
-	sources []Source
-	profile string
+	// baseURL is a gateway's, "" for every other method.
+	baseURL     string
+	rejectedFix string
+	sources     []Source
+	profile     string
 }
 
 // methodOf finds the method the table names in desc, nil if the Harness
@@ -141,7 +141,7 @@ func ResolveAuth(ctx context.Context, r Resolver, desc harness.Description, tabl
 	}
 	name, _ := table["method"].(string)
 	m := methodOf(desc, name)
-	a := &Auth{Harness: desc.Name, Method: name, Env: map[string]string{}}
+	a := &Auth{Harness: desc.Name, Method: name, Env: map[string]string{}, rejectedFix: m.RejectedFix}
 	fields := map[string]string{}
 	for _, f := range m.Fields {
 		v, set := table[f.Key]
@@ -177,9 +177,7 @@ func ResolveAuth(ctx context.Context, r Resolver, desc harness.Description, tabl
 	if m.Endpoints != nil {
 		a.Endpoints = m.Endpoints(fields)
 	}
-	if m.TestCall != nil {
-		a.test = m.TestCall(fields)
-	}
+	a.baseURL = fields["base_url"]
 	if desc.CredentialFile != nil && slices.Contains(desc.CredentialFile.Methods, name) {
 		a.profile = fields["profile"]
 		var err error
@@ -196,9 +194,9 @@ func ResolveAuth(ctx context.Context, r Resolver, desc harness.Description, tabl
 }
 
 // TLSEndpoint is the host, with a port if it has its own, where the method's
-// Harness talks TLS, "" if it doesn't. A test call to that host says more than
-// Endpoints can: a gateway's scheme and port.
-func (a *Auth) TLSEndpoint() string { return tlsEndpoint(a.Endpoints, a.test) }
+// Harness talks TLS, "" if it doesn't. A gateway's `base_url` says more than
+// Endpoints can: its scheme and port.
+func (a *Auth) TLSEndpoint() string { return tlsEndpoint(a.Endpoints, a.baseURL) }
 
 // MethodTLSEndpoint is the TLSEndpoint of m once its fields are known. It
 // reads no secret, so fields needn't hold any.
@@ -207,18 +205,14 @@ func MethodTLSEndpoint(m harness.AuthMethod, fields map[string]string) string {
 	if m.Endpoints != nil {
 		endpoints = m.Endpoints(fields)
 	}
-	var test harness.Request
-	if m.TestCall != nil {
-		test = m.TestCall(fields)
-	}
-	return tlsEndpoint(endpoints, test)
+	return tlsEndpoint(endpoints, fields["base_url"])
 }
 
-func tlsEndpoint(endpoints []string, test harness.Request) string {
+func tlsEndpoint(endpoints []string, baseURL string) string {
 	if len(endpoints) == 0 {
 		return ""
 	}
-	u, err := url.Parse(test.URL)
+	u, err := url.Parse(baseURL)
 	if err != nil || u.Hostname() != endpoints[0] {
 		return endpoints[0]
 	}
@@ -228,50 +222,30 @@ func tlsEndpoint(endpoints []string, test harness.Request) string {
 	return u.Host
 }
 
-// Test makes the method's one free test call and says, in plain words,
-// what to fix if the credential doesn't work.
-func (a *Auth) Test(ctx context.Context, client *http.Client) error {
-	if a.Bedrock != nil {
-		if err := a.Bedrock.Test(ctx); err != nil {
-			return fmt.Errorf("%s (%s): the AWS credentials don't work: %w; %s", a.Harness, a.Method, err, a.fix())
-		}
+// Test proves the AWS credentials the host mints the Sandbox's from, and
+// says, in plain words, what to fix if they don't work. Every other method's
+// credential is sent only by the Harness, inside the Sandbox, so the Factory
+// never tests it (docs/adr/0007-only-the-harness-sends-its-credential.md).
+func (a *Auth) Test(ctx context.Context) error {
+	if !a.Tested() {
 		return nil
 	}
-	t := a.test
-	if t.URL == "" {
-		return nil
+	if err := a.Bedrock.Test(ctx); err != nil {
+		return fmt.Errorf("%s (%s): the AWS credentials don't work: %w; %s", a.Harness, a.Method, err, a.fix())
 	}
-	req, err := http.NewRequestWithContext(ctx, t.Method, t.URL, nil)
-	if err != nil {
-		return fmt.Errorf("%s (%s): the test call is not valid: %w", a.Harness, a.Method, err)
-	}
-	for k, v := range t.Header {
-		req.Header.Set(k, v)
-	}
-	host := req.URL.Host
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("%s (%s): can't reach %s to test the credential: %v; check your network or proxy", a.Harness, a.Method, host, unwrapURLError(err))
-	}
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
-	_ = resp.Body.Close()
-	switch {
-	case resp.StatusCode >= 200 && resp.StatusCode < 300:
-		return nil
-	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		return fmt.Errorf("%s (%s): %s refused the credential (HTTP %d); replace it: %s", a.Harness, a.Method, host, resp.StatusCode, a.fix())
-	default:
-		return fmt.Errorf("%s (%s): %s answered the test call with HTTP %d; check that it is the right endpoint, or try again later", a.Harness, a.Method, host, resp.StatusCode)
-	}
+	return nil
 }
 
-// unwrapURLError drops the method and URL a *url.Error repeats.
-func unwrapURLError(err error) error {
-	var ue *url.Error
-	if errors.As(err, &ue) {
-		return ue.Err
+// Tested reports whether Test proves the credential ahead of time.
+func (a *Auth) Tested() bool { return a.Bedrock != nil }
+
+// RejectedFix says what to do when the Harness rejects the credential at a
+// Step: the method's own fix, then where to replace it.
+func (a *Auth) RejectedFix() string {
+	if fix := a.fix(); fix != "" {
+		return a.rejectedFix + "; then replace it: " + fix
 	}
-	return err
+	return a.rejectedFix
 }
 
 // fix says how to replace the credential.
@@ -283,11 +257,7 @@ func (a *Auth) fix() string {
 	for i, s := range a.sources {
 		fixes[i] = s.String() + ": " + s.fix()
 	}
-	hint := ""
-	if a.Method == "oauth_token" {
-		hint = " (get a new token with `claude setup-token`)"
-	}
-	return strings.Join(fixes, "; ") + hint
+	return strings.Join(fixes, "; ")
 }
 
 func sortedKeys[V any](m map[string]V) []string {

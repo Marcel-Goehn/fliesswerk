@@ -30,7 +30,7 @@ kraftwerk run          # every eligible Spec and standalone Ticket
 kraftwerk run 31       # only Spec #31, or standalone Ticket #31
 ```
 
-A Run checks the config and refuses to start on an error. Then it takes the checkout's Run lock, prunes old logs, cleans up what a crashed Run left behind, replays any Tracker writes that failed last time, tests every credential, runs the `run_start` Hook and starts shared Services. Then it works Iteration after Iteration, and finally runs the `run_end` Hook.
+A Run checks the config and refuses to start on an error. Then it takes the checkout's Run lock, prunes old logs, cleans up what a crashed Run left behind, replays any Tracker writes that failed last time, resolves every credential and tests the ones the Factory uses itself (the Tracker's, and AWS for Bedrock), runs the `run_start` Hook and starts shared Services. Then it works Iteration after Iteration, and finally runs the `run_end` Hook.
 
 Only one Run at a time works in a checkout. A second one is refused with the PID of the first. A Run lock left by a Run that is no longer running is taken over.
 
@@ -81,7 +81,7 @@ run = 'gh pr create --fill --head "$KRAFTWERK_BRANCH"'
 | A Protected path was changed | Hands the Ticket back at once, with a comment naming the files |
 | The merge failed, or `verify` failed on the merged result | Discards the work and re-implements the Ticket fresh from the updated Spec branch in the next Iteration. A second failure hands it back |
 | A transient error, such as an outage | Retries the Step 3 times with backoff, then stops the Run and leaves the Ticket untouched |
-| An authentication error | Stops the Run at once and leaves the Ticket untouched |
+| An authentication error | Stops the Run at once, with no retry and once for the whole Run, says how to fix the credential, and leaves the Ticket untouched. Claude Code's credential is first checked here, at the first Step |
 
 A handed-back Ticket's comment ends with the last 30 lines of its log in a collapsed **details** block, or the failing command's last 30 lines after a failed `verify`, plus the Run id and the local log path. The Tickets it blocks stay blocked, and the rest of the Spec goes on. To try again, fix the cause, then swap `needs-investigation` back for `ready-for-agent`.
 

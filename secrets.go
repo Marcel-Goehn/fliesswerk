@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"net/http"
 	"os"
 	"slices"
 	"strings"
@@ -34,7 +33,8 @@ const defaultHarness = "claude_code"
 // is the only one, so every Step uses it.
 var theHarness = harnesses[defaultHarness]
 
-// testCallTimeout bounds a credential's free test call.
+// testCallTimeout bounds the free test call of the AWS credentials the host
+// mints the Sandbox's from.
 const testCallTimeout = 30 * time.Second
 
 // secrets are everything secret a Run (or `check`) uses, resolved on the
@@ -145,15 +145,26 @@ func trackerToken(ctx context.Context, r credentials.Resolver, values map[string
 	return token, nil
 }
 
-// testHarnessCredential makes the Harness credential's free test call.
-// With no credential configured there is nothing to test.
+// testHarnessCredential proves the credential the host uses itself: the AWS
+// credentials it mints the Sandbox's from. Any other credential only the
+// Harness sends, so a bad one shows at the first Step (see
+// authRejectedFix).
 func (s *secrets) testHarnessCredential(ctx context.Context) error {
 	if s.auth == nil {
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, testCallTimeout)
 	defer cancel()
-	return s.auth.Test(ctx, http.DefaultClient)
+	return s.auth.Test(ctx)
+}
+
+// authRejectedFix is what a person does when the Harness rejects its
+// credential at a Step.
+func (s *secrets) authRejectedFix() string {
+	if s.auth == nil {
+		return theHarness.Describe().LoginFix
+	}
+	return s.auth.RejectedFix()
 }
 
 // usesBedrock reports whether the Run signs in to AWS on the host, and so

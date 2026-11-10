@@ -350,8 +350,9 @@ func writeBanner(log *runlog.Log, values map[string]any, s *secrets) {
 	}
 }
 
-// preflight proves the Harness's credential and the Tracker work before
-// any Iteration starts.
+// preflight proves the Tracker, and the AWS credentials the host mints from,
+// work before any Iteration starts. It sends no credential the Harness sends
+// itself: Claude Code checks that one on the first Step.
 func preflight(ctx context.Context, tr tracker.Tracker, s *secrets) error {
 	if err := s.testHarnessCredential(ctx); err != nil {
 		return err
@@ -378,6 +379,7 @@ func factoryOptions(values map[string]any, root, only string, tr tracker.Tracker
 		MaxParallel:    maxParallel(values),
 		MaxIterations:  intAt(values, defaultMaxIterations, "max_iterations"),
 		RunStep:        stepRunner(values, s, log),
+		AuthFix:        s.authRejectedFix(),
 		Review:         boolAt(values, true, "steps", "review", "enabled"),
 		Verify:         verifyCommands(values),
 		VerifyEnv:      verifyEnv(values, s),

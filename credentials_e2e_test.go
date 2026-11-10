@@ -3,14 +3,19 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
+
+	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
 )
 
 // configHome is an environment whose user config directory (where `auth
@@ -110,63 +115,71 @@ func TestCheckRefusesADotenvThatIsNotGitIgnored(t *testing.T) {
 	}
 }
 
-// fakeGateway serves /v1/models to the bearer token want only, and counts
-// the calls.
-func fakeGateway(t *testing.T, want string) (*httptest.Server, *int) {
+// fakeAnthropic is a local HTTPS server standing in for Anthropic or a
+// gateway, and a proxy every other HTTPS request of the Factory goes
+// through. It counts the requests that reach either.
+func fakeAnthropic(t *testing.T) (endpoint, proxy string, requests *atomic.Int32) {
 	t.Helper()
-	calls := 0
+	requests = &atomic.Int32{}
+	count := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+	tls := httptest.NewTLSServer(count)
+	plain := httptest.NewServer(count)
+	t.Cleanup(tls.Close)
+	t.Cleanup(plain.Close)
+	return tls.URL, plain.URL, requests
+}
+
+// fakeGateway is a gateway that fails the test on any request: only Claude
+// Code sends one, and the fake Harness never does.
+func fakeGateway(t *testing.T) *httptest.Server {
+	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		calls++
-		if req.URL.Path != "/v1/models" || req.Header.Get("Authorization") != "Bearer "+want {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-		_, _ = w.Write([]byte(`{"data": []}`))
+		t.Errorf("the Factory sent %s %s to the gateway, want no request", req.Method, req.URL.Path)
+		w.WriteHeader(http.StatusUnauthorized)
 	}))
 	t.Cleanup(srv.Close)
-	return srv, &calls
+	return srv
 }
 
 func gatewayConfig(base string) string {
 	return "[harnesses.claude_code]\nmethod = \"gateway\"\nbase_url = \"" + base + "\"\nsecret = { stored = \"gw\" }\n"
 }
 
-func TestCheckTestsTheHarnessCredential(t *testing.T) {
+func TestCheckSendsNoClaudeCredentialAndSaysClaudeCodeChecksIt(t *testing.T) {
 	bin := buildKraftwerk(t, "")
-	srv, calls := fakeGateway(t, "good-token")
+	endpoint, proxy, requests := fakeAnthropic(t)
+	for _, tt := range []struct{ method, config string }{
+		{"oauth_token", "[harnesses.claude_code]\nmethod = \"oauth_token\"\nsecret = { stored = \"gw\" }\n"},
+		{"api_key", "[harnesses.claude_code]\nmethod = \"api_key\"\nsecret = { stored = \"gw\" }\n"},
+		{"gateway", gatewayConfig(endpoint)},
+	} {
+		t.Run(tt.method, func(t *testing.T) {
+			env := configHome(t)
+			authSet(t, bin, env, "gw", "a-claude-credential")
+			root := projectDir(t, map[string]string{"config.toml": "version = 1\n", "config.local.toml": tt.config})
+			env = append(append(ghEnv(t, "ok"), env...), "HTTPS_PROXY="+proxy, "HTTP_PROXY="+proxy, "NO_PROXY=", "https_proxy="+proxy, "http_proxy="+proxy, "no_proxy=")
+			requests.Store(0)
 
-	t.Run("a working credential passes", func(t *testing.T) {
-		env := configHome(t)
-		authSet(t, bin, env, "gw", "good-token")
-		root := projectDir(t, map[string]string{"config.toml": "version = 1\n", "config.local.toml": gatewayConfig(srv.URL)})
+			stdout, stderr, code := runEnv(t, bin, root, env, checkNoSandbox...)
 
-		stdout, stderr, code := runEnv(t, bin, root, append(ghEnv(t, "ok"), env...), checkNoSandbox...)
+			if code != 0 {
+				t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, stdout, stderr)
+			}
+			if n := requests.Load(); n != 0 {
+				t.Errorf("the Factory sent %d requests to the provider, want none", n)
+			}
+			mustContain(t, "stdout", stdout, "claude_code credential ("+tt.method+") found, not tested ahead of time", "Claude Code checks it on the first Step")
+			if strings.Contains(stdout, "credential ("+tt.method+") ok") {
+				t.Errorf("stdout claims the credential works:\n%s", stdout)
+			}
+		})
+	}
 
-		if code != 0 || !strings.Contains(stdout, "claude_code credential (gateway) ok") {
-			t.Fatalf("exit code = %d, stdout = %q, want 0 with the credential ok; stderr: %s", code, stdout, stderr)
-		}
-		if *calls == 0 {
-			t.Error("the test call never reached the gateway")
-		}
-	})
-
-	t.Run("a refused credential fails with the fix", func(t *testing.T) {
-		env := configHome(t)
-		authSet(t, bin, env, "gw", "bad-token")
-		root := projectDir(t, map[string]string{"config.toml": "version = 1\n", "config.local.toml": gatewayConfig(srv.URL)})
-
-		_, stderr, code := runEnv(t, bin, root, append(ghEnv(t, "ok"), env...), "check")
-
-		if code != 3 || !strings.Contains(stderr, "refused the credential (HTTP 401)") || !strings.Contains(stderr, "kraftwerk auth set gw") {
-			t.Fatalf("exit code = %d, want 3 naming the refusal and the fix; stderr: %s", code, stderr)
-		}
-		if strings.Contains(stderr, "bad-token") {
-			t.Errorf("stderr holds the secret: %s", stderr)
-		}
-	})
-
-	t.Run("a missing credential names how to store it", func(t *testing.T) {
-		root := projectDir(t, map[string]string{"config.toml": "version = 1\n", "config.local.toml": gatewayConfig(srv.URL)})
+	t.Run("a missing credential still stops check and names how to store it", func(t *testing.T) {
+		root := projectDir(t, map[string]string{"config.toml": "version = 1\n", "config.local.toml": gatewayConfig(endpoint)})
 		_, stderr, code := runEnv(t, bin, root, append(ghEnv(t, "ok"), configHome(t)...), "check")
 		if code != 3 || !strings.Contains(stderr, "kraftwerk auth set gw") {
 			t.Fatalf("exit code = %d, want 3 naming `kraftwerk auth set gw`; stderr: %s", code, stderr)
@@ -220,7 +233,7 @@ const noSandbox = "[sandbox]\nkind = \"none\"\ni_accept_unsandboxed_risk = true\
 
 func TestARunDeliversSecretsToTheStepAndRedactsThemEverywhere(t *testing.T) {
 	bin := buildTestKraftwerk(t)
-	srv, _ := fakeGateway(t, "gw-secret-token")
+	srv := fakeGateway(t)
 	// The agent leaks both secrets: into a tool call the terminal shows,
 	// and into its report, which becomes the close comment.
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, {"match": "Ticket #2", "expand": true, "actions": [
@@ -294,26 +307,84 @@ func TestWithScrubbingOnTheAgentGetsNoProjectSecretOrTrackerToken(t *testing.T) 
 	}
 }
 
-func TestARunWithARefusedCredentialStopsBeforeAnyStep(t *testing.T) {
+// rejectedRun is a Run whose credential is the subscription token stored as
+// `claude`, and that Claude Code rejects at every Step script matches.
+func rejectedRun(t *testing.T, issues []fake.Issue, script string) (*runProject, string) {
+	t.Helper()
 	bin := buildTestKraftwerk(t)
-	srv, _ := fakeGateway(t, "good-token")
-	p := newRunProject(t, bin, cartIssues(), `{"sessions": [{"report": {"outcome": "done", "summary": "ok"}}]}`)
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), noSandbox+gatewayConfig(srv.URL))
+	p := newRunProject(t, bin, issues, script)
+	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), noSandbox+
+		"[harnesses.claude_code]\nmethod = \"oauth_token\"\nsecret = { stored = \"claude\" }\n")
 	logPath := filepath.Join(t.TempDir(), "harness.jsonl")
 	p.extraEnv = append(configHome(t), "KWK_FAKE_HARNESS_LOG="+logPath)
-	authSet(t, bin, p.extraEnv, "gw", "expired-token")
+	authSet(t, bin, p.extraEnv, "claude", "an-expired-token")
+	return p, logPath
+}
+
+// stoppedForTheCredential checks that the Run stopped once, naming the fix,
+// and held nothing against a Ticket. Callers count the Steps, to see none
+// was retried.
+func (p *runProject) stoppedForTheCredential(t *testing.T, code int) {
+	t.Helper()
+	if code != exitStopped {
+		t.Fatalf("exit code = %d, want %d\nstdout: %s\nstderr: %s", code, exitStopped, p.stdout, p.stderr)
+	}
+	mustContain(t, "stderr", p.stderr, "reported an auth error", "claude setup-token", "kraftwerk auth set claude")
+	if n := strings.Count(p.stderr, "kraftwerk run: stopped:"); n != 1 {
+		t.Errorf("the Run says it stopped %d times, want once:\n%s", n, p.stderr)
+	}
+	for n, i := range p.issues(t) {
+		if slices.Contains(i.Labels, "needs-investigation") {
+			t.Errorf("#%d got needs-investigation: the Ticket isn't at fault", n)
+		}
+	}
+	p.untouched(t)
+}
+
+func TestAStepWhoseCredentialClaudeCodeRejectsStopsTheRunWithTheFix(t *testing.T) {
+	p, logPath := rejectedRun(t, cartIssues(), `{"sessions": [{"match": "Ticket #2", "error": "auth"}]}`)
 
 	code := p.run(t)
 
-	if code != 2 || !strings.Contains(p.stderr, "refused the credential") || !strings.Contains(p.stderr, "kraftwerk auth set gw") {
-		t.Fatalf("exit code = %d, want 2 naming the refusal and the fix\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+	p.stoppedForTheCredential(t, code)
+	if n := len(harnessCalls(t, logPath)); n != 1 {
+		t.Errorf("the Harness ran %d times, want once: no retry", n)
+	}
+}
+
+func TestParallelStepsWhoseCredentialClaudeCodeRejectsStopTheRunOnce(t *testing.T) {
+	dir := t.TempDir()
+	two, three := filepath.Join(dir, "2"), filepath.Join(dir, "3")
+	rejected := func(match, mine, theirs string) string {
+		return fmt.Sprintf(`{"match": %q, "actions": [{"touch": %q}, {"await": %q}], "error": "auth"}`, match, mine, theirs)
+	}
+	p, logPath := rejectedRun(t, twoTicketsOfASpec(), `{"sessions": [`+
+		rejected("Implement Ticket #2", two, three)+`, `+rejected("Implement Ticket #3", three, two)+`]}`)
+
+	code := p.run(t, "--max-parallel", "2")
+
+	p.stoppedForTheCredential(t, code)
+	if n := len(harnessCalls(t, logPath)); n != 2 {
+		t.Errorf("the Harness ran %d times, want once per Sandbox: no retry", n)
+	}
+}
+
+func TestARunWithAMissingCredentialStopsBeforeAnyStep(t *testing.T) {
+	bin := buildTestKraftwerk(t)
+	p := newRunProject(t, bin, cartIssues(), `{"sessions": [{"report": {"outcome": "done", "summary": "ok"}}]}`)
+	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), noSandbox+gatewayConfig(fakeGateway(t).URL))
+	logPath := filepath.Join(t.TempDir(), "harness.jsonl")
+	p.extraEnv = append(configHome(t), "KWK_FAKE_HARNESS_LOG="+logPath)
+
+	code := p.run(t)
+
+	if code != exitConfigError || !strings.Contains(p.stderr, "kraftwerk auth set gw") {
+		t.Fatalf("exit code = %d, want %d naming the fix\nstdout: %s\nstderr: %s", code, exitConfigError, p.stdout, p.stderr)
 	}
 	if calls := harnessCalls(t, logPath); len(calls) != 0 {
 		t.Errorf("the Harness ran %d times, want never", len(calls))
 	}
-	if issues := p.issues(t); issues[2].Closed || len(issues[2].Comments) != 0 {
-		t.Errorf("#2 = %+v, want it untouched", issues[2])
-	}
+	p.untouched(t)
 }
 
 func TestARunRefusesADotenvThatIsNotGitIgnored(t *testing.T) {
@@ -326,20 +397,5 @@ func TestARunRefusesADotenvThatIsNotGitIgnored(t *testing.T) {
 
 	if code != 3 || !strings.Contains(p.stderr, ".kraftwerk/.env is not git-ignored") {
 		t.Fatalf("exit code = %d, want 3 refusing the .env\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
-	}
-}
-
-func TestAnAuthErrorDuringARunStopsItWithExit2(t *testing.T) {
-	bin := buildTestKraftwerk(t)
-	p := newRunProject(t, bin, cartIssues(), `{"sessions": [{"match": "Ticket #2", "error": "auth"}]}`)
-	p.extraEnv = configHome(t)
-
-	code := p.run(t)
-
-	if code != 2 || !strings.Contains(p.stderr, "auth") {
-		t.Fatalf("exit code = %d, want 2 for the auth error\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
-	}
-	if issues := p.issues(t); issues[2].Closed || len(issues[2].Comments) != 0 || len(issues[2].Labels) != 1 {
-		t.Errorf("#2 = %+v, want it untouched", issues[2])
 	}
 }

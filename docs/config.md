@@ -267,7 +267,7 @@ run = 'gh pr create --fill --head "$KRAFTWERK_BRANCH"'
 
 ### `hooks.run_start`
 
-Runs on your machine when a Run starts, after the credentials are tested. A failure stops the Run with exit code 2.
+Runs on your machine when a Run starts, after the credentials are resolved. A failure stops the Run with exit code 2.
 
 ### `hooks.sandbox_created`
 

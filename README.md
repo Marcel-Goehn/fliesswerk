@@ -34,7 +34,7 @@ Kraftwerk collects no telemetry, ever. It has no analytics, no crash reports and
 The Factory itself connects only to:
 
 - your Tracker, through `gh`, and your git remote, to do the work you asked for
-- your Harness's provider, for one free test call per credential at `check` and at the start of each Run, and one request to its endpoint to detect a TLS-inspecting proxy
+- your Harness's endpoint, for one request that carries no credential, to detect a TLS-inspecting proxy. The Factory never sends your Claude credential anywhere: only Claude Code does, from inside the Sandbox
 - AWS STS, with Bedrock, to turn your credentials into short-lived ones for the Sandbox
 - GitHub's release list, at most once a day, to tell you about a newer version. Set `update_notice = false` to turn that off. `kraftwerk update` and the install scripts download from GitHub Releases
 

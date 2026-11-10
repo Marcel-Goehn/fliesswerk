@@ -103,8 +103,11 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	if err := s.testHarnessCredential(ctx); err != nil {
 		return fail(err)
 	}
-	if s.auth != nil {
+	switch {
+	case s.auth != nil && s.auth.Tested():
 		_, _ = fmt.Fprintf(stdout, "kraftwerk check: %s credential (%s) ok\n", s.auth.Harness, s.auth.Method)
+	case s.auth != nil:
+		_, _ = fmt.Fprintf(stdout, "kraftwerk check: %s credential (%s) found, not tested ahead of time: Claude Code checks it on the first Step\n", s.auth.Harness, s.auth.Method)
 	}
 	for _, w := range s.authWarnings(ctx) {
 		_, _ = fmt.Fprintf(stderr, "warning: %s\n", w)

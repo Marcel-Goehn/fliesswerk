@@ -88,7 +88,7 @@ func (p *runProject) initWith(t *testing.T, env, args []string, answers ...strin
 // that accepts the token, and a token for GitHub.
 func (p *runProject) thenSignIn(t *testing.T, project []string) []string {
 	t.Helper()
-	srv, _ := fakeGateway(t, gatewaySecret)
+	srv := fakeGateway(t)
 	return append(slices.Clone(project), viaGateway(srv)...)
 }
 

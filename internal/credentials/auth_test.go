@@ -99,106 +99,18 @@ func TestResolveAuthNamesTheFix(t *testing.T) {
 	}
 }
 
-// gateway serves /v1/models, accepting only the bearer token want.
-func gateway(t *testing.T, want string) *httptest.Server {
-	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if req.URL.Path != "/v1/models" || req.Header.Get("Authorization") != "Bearer "+want {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-		_, _ = w.Write([]byte(`{"data": []}`))
-	}))
-	t.Cleanup(srv.Close)
-	return srv
-}
-
-func gatewayAuth(t *testing.T, base, token string) *credentials.Auth {
-	t.Helper()
+func TestAGatewaysStepEnvHoldsItsBaseURLAndToken(t *testing.T) {
 	r := project(t, ".env\n")
-	r.Getenv = func(string) string { return token }
+	r.Getenv = func(string) string { return "good-token" }
 	a, err := credentials.ResolveAuth(context.Background(), r, claude,
-		map[string]any{"method": "gateway", "base_url": base, "secret": map[string]any{"env": "GATEWAY_TOKEN"}})
+		map[string]any{"method": "gateway", "base_url": "https://llm.corp.example", "secret": map[string]any{"env": "GATEWAY_TOKEN"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return a
-}
 
-func TestTheTestCallAcceptsAWorkingCredential(t *testing.T) {
-	srv := gateway(t, "good-token")
-	a := gatewayAuth(t, srv.URL, "good-token")
-
-	if a.Env["ANTHROPIC_BASE_URL"] != srv.URL || a.Env["ANTHROPIC_AUTH_TOKEN"] != "good-token" {
+	if a.Env["ANTHROPIC_BASE_URL"] != "https://llm.corp.example" || a.Env["ANTHROPIC_AUTH_TOKEN"] != "good-token" {
 		t.Errorf("env = %v, want the base URL and the token", a.Env)
 	}
-	if err := a.Test(context.Background(), srv.Client()); err != nil {
-		t.Errorf("Test = %v, want nil", err)
-	}
-}
-
-func TestTheTestCallRefusesABadCredentialWithAFix(t *testing.T) {
-	srv := gateway(t, "good-token")
-	a := gatewayAuth(t, srv.URL, "bad-token")
-
-	err := a.Test(context.Background(), srv.Client())
-
-	if err == nil {
-		t.Fatal("Test = nil, want an error")
-	}
-	for _, want := range []string{"refused", "401", "GATEWAY_TOKEN"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("err = %q, want it to contain %q", err, want)
-		}
-	}
-	if strings.Contains(err.Error(), "bad-token") {
-		t.Errorf("err = %q holds the secret", err)
-	}
-}
-
-func TestTheTestCallSaysWhenItCantReachTheProvider(t *testing.T) {
-	srv := gateway(t, "t")
-	base := srv.URL
-	srv.Close()
-	a := gatewayAuth(t, base, "t")
-
-	err := a.Test(context.Background(), http.DefaultClient)
-	if err == nil || !strings.Contains(err.Error(), "can't reach") {
-		t.Errorf("Test = %v, want it to say the provider can't be reached", err)
-	}
-}
-
-func TestTheOAuthTestCallListsModelsAtAnthropic(t *testing.T) {
-	var got *http.Request
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		got = req
-		_, _ = w.Write([]byte(`{"data": []}`))
-	}))
-	defer srv.Close()
-	r := project(t, ".env\n")
-	r.Getenv = func(string) string { return "oauth-secret" }
-	a, err := credentials.ResolveAuth(context.Background(), r, claude,
-		map[string]any{"method": "oauth_token", "secret": map[string]any{"env": "T"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := a.Test(context.Background(), &http.Client{Transport: redirect(srv.URL)}); err != nil {
-		t.Fatalf("Test = %v", err)
-	}
-	if got.Host != "api.anthropic.com" || got.URL.Path != "/v1/models" || got.Header.Get("Authorization") != "Bearer oauth-secret" {
-		t.Errorf("request = %s %s%s %v, want GET api.anthropic.com/v1/models with the bearer token", got.Method, got.Host, got.URL.Path, got.Header)
-	}
-}
-
-// redirect sends every request to base, keeping its Host.
-type redirect string
-
-func (base redirect) RoundTrip(req *http.Request) (*http.Response, error) {
-	u, _ := url.Parse(string(base))
-	out := req.Clone(req.Context())
-	out.URL.Scheme, out.URL.Host, out.Host = u.Scheme, u.Host, req.URL.Host
-	return http.DefaultTransport.RoundTrip(out)
 }
 
 func TestTLSEndpointKeepsAGatewaysPortAndSkipsPlainHTTP(t *testing.T) {
@@ -209,7 +121,9 @@ func TestTLSEndpointKeepsAGatewaysPortAndSkipsPlainHTTP(t *testing.T) {
 	}{
 		{"the Harness's own host", map[string]any{"method": "api_key", "secret": map[string]any{"stored": "k"}}, "api.anthropic.com"},
 		{"a gateway on its own port", map[string]any{"method": "gateway", "base_url": "https://llm.corp.example:8443/v1", "secret": map[string]any{"stored": "k"}}, "llm.corp.example:8443"},
+		{"a gateway on the default port", map[string]any{"method": "gateway", "base_url": "https://llm.corp.example/anthropic", "secret": map[string]any{"stored": "k"}}, "llm.corp.example"},
 		{"a gateway without TLS", map[string]any{"method": "gateway", "base_url": "http://llm.corp.example", "secret": map[string]any{"stored": "k"}}, ""},
+		{"a gateway without TLS on its own port", map[string]any{"method": "gateway", "base_url": "http://llm.corp.example:8080", "secret": map[string]any{"stored": "k"}}, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -271,7 +185,7 @@ func TestBedrockIsTestedWithASignedGetCallerIdentity(t *testing.T) {
 	form, auth := fakeSTSEndpoint(t, http.StatusOK, callerIdentity)
 	a := bedrockAuth(t, nil)
 
-	if err := a.Test(context.Background(), http.DefaultClient); err != nil {
+	if err := a.Test(context.Background()); err != nil {
 		t.Fatalf("Test = %v", err)
 	}
 	if got := form.Get("Action"); got != "GetCallerIdentity" {
@@ -286,7 +200,7 @@ func TestABedrockCredentialAWSRefusesNamesTheFix(t *testing.T) {
 	fakeSTSEndpoint(t, http.StatusForbidden, `<ErrorResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/"><Error><Type>Sender</Type><Code>InvalidClientTokenId</Code><Message>bad</Message></Error></ErrorResponse>`)
 	a := bedrockAuth(t, nil)
 
-	err := a.Test(context.Background(), http.DefaultClient)
+	err := a.Test(context.Background())
 
 	if err == nil {
 		t.Fatal("Test = nil, want an error")
@@ -313,7 +227,7 @@ func TestABedrockProfileThatFailsPointsAtTheProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = a.Test(context.Background(), http.DefaultClient)
+	err = a.Test(context.Background())
 
 	if err == nil || !strings.Contains(err.Error(), "aws sso login --profile dev") {
 		t.Errorf("err = %v, want it to name the profile's fix", err)

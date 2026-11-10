@@ -132,7 +132,7 @@ func TestInitTeammateIsAskedOnlyPersonalQuestions(t *testing.T) {
 	p := teamProject(t, map[string]string{
 		"config.toml": teamConfig, ".gitignore": "config.local.toml\n.env\n", "Containerfile": "FROM scratch\n",
 	})
-	srv, _ := fakeGateway(t, gatewaySecret)
+	srv := fakeGateway(t)
 
 	p.init(t, p.initEnv(t), viaGateway(srv)...)
 
@@ -165,7 +165,7 @@ func TestInitTeammateIsAskedOnlyPersonalQuestions(t *testing.T) {
 			t.Errorf("%s holds a secret:\n%s", what, text)
 		}
 	}
-	mustContain(t, "stdout", p.stdout, "the config is valid", "credential (gateway) ok")
+	mustContain(t, "stdout", p.stdout, "the config is valid", "credential (gateway) found, not tested ahead of time")
 }
 
 // behindNothing keeps a test off the network: whatever init would ask of an
@@ -222,7 +222,7 @@ func TestInitDecliningTheBedrockImportAsksAsUsual(t *testing.T) {
 	p := teamProject(t, map[string]string{"config.toml": teamConfig})
 	env := p.initEnv(t)
 	p.claudeSettings(t, bedrockSettings)
-	srv, _ := fakeGateway(t, gatewaySecret)
+	srv := fakeGateway(t)
 
 	p.init(t, env, append([]string{"n"}, viaGateway(srv)...)...)
 
@@ -241,7 +241,7 @@ func TestInitOffersNoImportWithoutABedrockSetup(t *testing.T) {
 			p := teamProject(t, map[string]string{"config.toml": teamConfig})
 			env := p.initEnv(t)
 			p.claudeSettings(t, settings)
-			srv, _ := fakeGateway(t, gatewaySecret)
+			srv := fakeGateway(t)
 
 			p.init(t, env, viaGateway(srv)...)
 
@@ -257,7 +257,7 @@ func TestInitWithAGhLoginOffersItAndWritesNoToken(t *testing.T) {
 		t.Skip("the fake gh is a shell script")
 	}
 	p := teamProject(t, map[string]string{"config.toml": teamConfig})
-	srv, _ := fakeGateway(t, gatewaySecret)
+	srv := fakeGateway(t)
 
 	p.init(t, p.initEnv(t, "gh"), "gateway", srv.URL, "", gatewaySecret, "")
 
@@ -275,7 +275,7 @@ func TestInitWithAGhLoginCanStillTakeAToken(t *testing.T) {
 		t.Skip("the fake gh is a shell script")
 	}
 	p := teamProject(t, map[string]string{"config.toml": teamConfig})
-	srv, _ := fakeGateway(t, gatewaySecret)
+	srv := fakeGateway(t)
 
 	p.init(t, p.initEnv(t, "gh"), "gateway", srv.URL, "", gatewaySecret, "token", "", gitHubSecret)
 
@@ -293,7 +293,7 @@ func TestInitKeepsAKeyWhereThePersonSays(t *testing.T) {
 	} {
 		t.Run(tt.source, func(t *testing.T) {
 			p := teamProject(t, map[string]string{"config.toml": teamConfig})
-			srv, _ := fakeGateway(t, gatewaySecret)
+			srv := fakeGateway(t)
 
 			p.init(t, p.initEnv(t), "gateway", srv.URL, tt.answer, tt.ref, "", gitHubSecret)
 
@@ -313,7 +313,7 @@ func TestInitCanUseAKeyAlreadyStored(t *testing.T) {
 	if _, stderr, code := authSet(t, p.bin, env, "claude_gateway", "from-another-project"); code != 0 {
 		t.Fatalf("auth set: %s", stderr)
 	}
-	srv, _ := fakeGateway(t, "from-another-project")
+	srv := fakeGateway(t)
 
 	p.init(t, env, "gateway", srv.URL, "", "", "", gitHubSecret) // the "" after the URL: stored, then keep it
 
@@ -324,7 +324,7 @@ func TestInitCanUseAKeyAlreadyStored(t *testing.T) {
 
 func TestInitSavesNothingWhenPersonalAnswersRunOut(t *testing.T) {
 	p := teamProject(t, map[string]string{"config.toml": teamConfig})
-	srv, _ := fakeGateway(t, gatewaySecret)
+	srv := fakeGateway(t)
 
 	code := p.init(t, p.initEnv(t), "gateway", srv.URL, "", gatewaySecret)
 
