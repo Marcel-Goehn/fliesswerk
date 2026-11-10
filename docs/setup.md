@@ -6,15 +6,27 @@ Install Fliesswerk first: see the [install guide](install.md).
 
 ## What you need
 
+### What everyone needs
+
 | Tool | Version | Used for |
 | --- | --- | --- |
 | git | 2.38.0 or newer | Branches, worktrees and pushes, with your own git credentials |
 | `gh` | 2.94.0 or newer, logged in or with a token | Reading and writing your GitHub Issues |
 | Claude Code (`claude`) | 2.1.319 or newer | The Harness. With a container Sandbox it is installed in the image, and you need it on your machine only for `claude setup-token` |
-| Docker or Podman | | The container Sandbox, and Services with either kind. See the [support matrix](support-matrix.md) |
-| bubblewrap (`bwrap`) | | The native Sandbox on Linux and WSL2 |
 
-You don't need to check these by hand. `fliesswerk check` tests each one and names the install command for your OS.
+### What your Sandbox kind needs
+
+Pick one row: the one for the Sandbox kind you will use. If you're not sure, take `container`. See [Choosing a Sandbox kind](#choosing-a-sandbox-kind).
+
+| Sandbox kind | You need |
+| --- | --- |
+| `container` (the default) | Docker or Podman |
+| `native` on Linux or WSL2 | bubblewrap (`bwrap`) |
+| `native` on macOS | Nothing: Seatbelt is part of macOS 14 and newer |
+
+Services, such as a database, always run in Docker or Podman, whichever Sandbox kind you choose. With a `container` Sandbox you have one already. With Podman, Services also need `podman-compose`. The [Services guide](services.md#setting-them-up) has the compose versions.
+
+You don't need to check these by hand. `fliesswerk check` tests what your setup uses and names the install command for your OS.
 
 ## Running `init`
 
