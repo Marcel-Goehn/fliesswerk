@@ -103,6 +103,13 @@ If the team pinned a version with `factory = "…"`, a Kraftwerk outside that ra
 
 The host is added to the network allowlist for you. Every secret is resolved at `check` and at the start of every Run, so a missing environment variable, a failing `command` or a missing `.env` key stops the Run before any work starts.
 
+Which method to use:
+
+- **A subscription** is for one person's own Runs. The token is yours, made by you with `claude setup-token`; never share it or use someone else's. Anthropic's advertised usage limits assume ordinary, individual use, so long or parallel Runs may reach them.
+- **An API key, Bedrock or a gateway** is for a team, a shared machine, CI or heavy use. Usage is billed to the owner of the key or account.
+
+You are responsible for following Anthropic's terms for your own account. They are on Anthropic's [legal and compliance page](https://code.claude.com/docs/en/legal-and-compliance).
+
 The Factory never sends your Claude credential itself: only Claude Code does, from inside the Sandbox (see [ADR 0007](adr/0007-only-the-harness-sends-its-credential.md)). So `check` reports a subscription token, an API key or a gateway token as found but not tested ahead of time, and Claude Code checks it on the first Step. If Claude Code rejects it, the Run stops at once with exit code 2 and says how to fix it, such as `claude setup-token` for a subscription, and no Ticket is held against it. Bedrock is the exception: the Factory mints the Sandbox's short-lived AWS credentials from yours, so `check` and every Run start test those with AWS STS.
 
 A secret can be kept in one of four places:
