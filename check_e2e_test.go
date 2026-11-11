@@ -295,6 +295,7 @@ func TestCheckRefusesWhileATodoLineIsLeft(t *testing.T) {
 }
 
 func TestCheckFailsWhenTheHarnessCannotStartWithAStepsScrubbing(t *testing.T) {
+	startsOnTheHost(t)
 	p := checkProject(t, "")
 	p.extraEnv = []string{"FWK_FAKE_START=needs_bwrap"}
 
@@ -310,6 +311,7 @@ func TestCheckFailsWhenTheHarnessCannotStartWithAStepsScrubbing(t *testing.T) {
 }
 
 func TestCheckSaysTheHarnessStartsWhenItOnlyLacksALogin(t *testing.T) {
+	startsOnTheHost(t)
 	p := checkProject(t, "")
 
 	if code := p.fwk(t, "check"); code != exitOK {
@@ -319,6 +321,7 @@ func TestCheckSaysTheHarnessStartsWhenItOnlyLacksALogin(t *testing.T) {
 }
 
 func TestCheckOnlyWarnsWhenItCannotTellWhetherTheHarnessStarts(t *testing.T) {
+	startsOnTheHost(t)
 	for _, start := range []string{"unclear", "hang"} {
 		t.Run(start, func(t *testing.T) {
 			p := checkProject(t, "")
@@ -340,6 +343,7 @@ func TestCheckOnlyWarnsWhenItCannotTellWhetherTheHarnessStarts(t *testing.T) {
 }
 
 func TestCheckStartsTheHarnessWithAStepsScrubbingAndNoCredential(t *testing.T) {
+	startsOnTheHost(t)
 	for _, scrub := range []bool{true, false} {
 		t.Run(fmt.Sprintf("scrub_credentials = %t", scrub), func(t *testing.T) {
 			p := checkProject(t, fmt.Sprintf(`scrub_credentials = %t
@@ -384,5 +388,31 @@ secret = { env = "CLAUDE_CODE_OAUTH_TOKEN" }
 				t.Errorf("HOME = %q, want a fresh one, not the user's own", home)
 			}
 		})
+	}
+}
+
+// startsOnTheHost skips a test of starting the Harness on the host where
+// `check` doesn't start it there.
+func startsOnTheHost(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "darwin" {
+		t.Skip("on macOS the Harness's own login is in the Keychain, so check doesn't start it on the host")
+	}
+}
+
+func TestCheckDoesNotStartTheHarnessOnAMacHost(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("only macOS keeps the Harness's own login where a fresh home doesn't hide it")
+	}
+	p := checkProject(t, "")
+	logPath := filepath.Join(t.TempDir(), "harness.jsonl")
+	p.extraEnv = []string{"FWK_FAKE_HARNESS_LOG=" + logPath, "FWK_FAKE_START=needs_bwrap"}
+
+	if code := p.fwk(t, "check"); code != exitOK {
+		t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+	}
+	mustContain(t, "stdout", p.stdout, "claude isn't started on the host", "Keychain")
+	if n := len(harnessCalls(t, logPath)); n != 0 {
+		t.Errorf("the Harness was started %d times, want never", n)
 	}
 }
