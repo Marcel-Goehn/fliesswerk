@@ -68,6 +68,10 @@ _Avoid_: Style guide, conventions (when the file is meant)
 A shell command the Factory runs at a named moment of a Run (e.g. when a Sandbox is created), either on the host or inside the Sandbox.
 _Avoid_: Callback, lifecycle script
 
+**Project secret**:
+A secret value the project's own commands need (e.g. a payment provider's test key), resolved by the Factory on the user's machine. Hooks get it. The agent and the Factory's own Feedback-command runs get it only if the user explicitly chooses so.
+_Avoid_: Credential (that is the Harness's own sign-in), env var (when the secret is meant)
+
 **Service**:
 A supporting program the Factory starts from the project's compose file (e.g. a database). Each Sandbox gets its own copy with its own data, unless the project marks the Service as shared, in which case one copy serves the whole Run. A Sandbox can reach its Services, while all other network access stays denied.
 _Avoid_: Container (when the concept is meant), dependency, backing service
