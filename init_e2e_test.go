@@ -41,12 +41,17 @@ func initProject(t *testing.T, files map[string]string) *runProject {
 
 // initEnv is what `init` runs with: the fake Tracker, the fake Harness and
 // git, with no container engine and none of the user's tools. Each of bins
-// is added as a tool that succeeds silently.
+// is added as a tool that succeeds silently: a batch file on Windows, where
+// PATH lookups find only names with an extension from PATHEXT.
 func (p *runProject) initEnv(t *testing.T, bins ...string) []string {
 	t.Helper()
 	tools := t.TempDir()
 	for _, name := range bins {
-		if err := os.WriteFile(filepath.Join(tools, name), []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil { //nolint:gosec // an executable the test runs
+		file, script := name, "#!/bin/sh\nexit 0\n"
+		if runtime.GOOS == "windows" {
+			file, script = name+".bat", "@exit /b 0\r\n"
+		}
+		if err := os.WriteFile(filepath.Join(tools, file), []byte(script), 0o700); err != nil { //nolint:gosec // an executable the test runs
 			t.Fatal(err)
 		}
 	}
