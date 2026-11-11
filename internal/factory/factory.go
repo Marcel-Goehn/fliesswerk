@@ -1039,8 +1039,10 @@ const freshRetries = 1
 func (r *run) runStep(ctx context.Context, s Step) (out harness.Outcome, failed *failure, stop error) {
 	fresh, transient := 0, 0
 	for {
-		r.memory.noteWork(s.Sandbox)
 		out = r.opts.RunStep(ctx, s)
+		if !out.NoSession {
+			r.memory.noteWork(s.Sandbox)
+		}
 		r.countUsage(s.Ticket, out)
 		if ctx.Err() != nil {
 			return out, nil, errKilled

@@ -471,3 +471,69 @@ func TestAHarnessTheFactoryKillsHasNotRunOutOfMemory(t *testing.T) {
 		t.Errorf("outcome = %+v, want a failure of class %q", out, harness.Other)
 	}
 }
+
+func TestAHarnessThatCantStartItsSessionSaysSo(t *testing.T) {
+	withFakeHarness(t, `{"sessions": []}`)
+	t.Setenv("FWK_FAKE_START", "needs_bwrap")
+	s := (claudecode.ClaudeCode{}).Describe().StartCheck.Step
+	s.ScrubCredentials = true
+
+	out := step.Runner{Harness: claudecode.ClaudeCode{}}.Run(context.Background(), s, t.TempDir())
+
+	if out.Kind != harness.Failed || !out.NoSession {
+		t.Errorf("outcome = %+v, want a failure without a session", out)
+	}
+}
+
+func TestAMissingHarnessHasNoSession(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+
+	out := step.Runner{Harness: claudecode.ClaudeCode{}}.Run(context.Background(), newStep("go"), t.TempDir())
+
+	if !out.NoSession {
+		t.Errorf("outcome = %+v, want no session", out)
+	}
+}
+
+func TestAHarnessThatFailsInItsSessionHadOne(t *testing.T) {
+	withFakeHarness(t, `{"sessions": [{"actions": [{"text": "working"}], "error": "boom"}]}`)
+
+	out := step.Runner{Harness: claudecode.ClaudeCode{}}.Run(context.Background(), newStep("go"), t.TempDir())
+
+	if out.Kind != harness.Failed || out.NoSession {
+		t.Errorf("outcome = %+v, want a failure in a session", out)
+	}
+}
+
+func TestAStepTimedOutInItsSessionHadOne(t *testing.T) {
+	withFakeHarness(t, `{"sessions": [{"actions": [{"text": "working"}, {"sleep": "30s"}]}]}`)
+
+	out := step.Runner{Harness: claudecode.ClaudeCode{}, IdleTimeout: 200 * time.Millisecond}.Run(context.Background(), newStep("go"), t.TempDir())
+
+	if out.Kind != harness.Failed || out.NoSession {
+		t.Errorf("outcome = %+v, want a failure in a session", out)
+	}
+}
+
+func TestASilentHarnessKilledAtTheIdleTimeoutRanMeanwhile(t *testing.T) {
+	withFakeHarness(t, `{"sessions": [{"actions": [{"sleep": "30s"}]}]}`)
+
+	out := step.Runner{Harness: claudecode.ClaudeCode{}, IdleTimeout: 200 * time.Millisecond}.Run(context.Background(), newStep("go"), t.TempDir())
+
+	if out.Kind != harness.Failed || out.NoSession {
+		t.Errorf("outcome = %+v, want a failure that counts as having run", out)
+	}
+}
+
+func TestAHarnessKilledForLackOfMemoryBeforeAnyEventRan(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no SIGKILL")
+	}
+	withFakeHarness(t, `{"sessions": [{"kill": true}]}`)
+
+	out := step.Runner{Harness: claudecode.ClaudeCode{}}.Run(context.Background(), newStep("go"), t.TempDir())
+
+	if out.Class != harness.OutOfMemory || out.NoSession {
+		t.Errorf("outcome = %+v, want an out-of-memory failure that counts as having run", out)
+	}
+}

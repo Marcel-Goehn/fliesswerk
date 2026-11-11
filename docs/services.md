@@ -71,7 +71,7 @@ An own and a shared Service can't depend on each other, because they are in diff
 
 `max_parallel` is an upper limit. Sandboxes in an Iteration start one after another, and each starts only when one Sandbox's estimated peak plus a 512 MB margin is free. There is nothing to configure.
 
-- The estimate is 2 GB until a Sandbox has been measured. After that it is the highest peak measured for one Sandbox with its own Services, kept per checkout and machine in `.fliesswerk/state/memory.json`.
+- The estimate is 2 GB until a Sandbox has been measured. After that it is the highest peak measured for one Sandbox with its own Services, kept per checkout and machine in `.fliesswerk/state/memory.json`. A Sandbox is measured only if real work ran in it: `verify`, or a Step whose Harness got its session going. A Harness that fails before giving any output, for example because it can't start, leaves the estimate as it was.
 - Memory the running Sandboxes may still grow into up to the estimate doesn't count as free, because a Sandbox is at its smallest when it starts.
 - A shared Service counts once: it is already running, so it is part of what's no longer free, and never part of a Sandbox's peak.
 - Free means what the engine has left, or for a native Sandbox what the machine has available. On Linux the engine is also limited to what the machine has available.

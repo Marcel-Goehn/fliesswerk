@@ -2,6 +2,7 @@ package factory_test
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -10,9 +11,11 @@ import (
 
 	"github.com/Marcel-Goehn/fliesswerk/internal/factory"
 	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/memory"
 	"github.com/Marcel-Goehn/fliesswerk/internal/runlog"
 	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
 	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/fake"
+	"github.com/Marcel-Goehn/fliesswerk/internal/verify"
 )
 
 const gib = int64(1) << 30
@@ -326,5 +329,98 @@ func TestCtrlCLeavesATicketThatHasNotGotItsSandboxYet(t *testing.T) {
 	}
 	if len(res.Closed) != 1 || len(res.Failed) != 0 {
 		t.Errorf("result = %+v, want one Ticket closed and the other left", res)
+	}
+}
+
+// tinyPeak is what a Sandbox whose Harness never started peaks at.
+const tinyPeak = int64(4) << 20
+
+func noSession() harness.Outcome {
+	return harness.Outcome{Kind: harness.Failed, Class: harness.Other, Message: "exited with code 1 before the end of the session", NoSession: true}
+}
+
+func TestStepsThatNeverStartTheirSessionLeaveTheEstimate(t *testing.T) {
+	f := newFixture(t)
+	m := newMemoryRun(f, 16*gib, []string{"Cart"}, func(context.Context, factory.Step) harness.Outcome { return noSession() })
+	m.sandboxes.use = func(string) int64 { return tinyPeak }
+
+	res := factory.Run(context.Background(), m.opts)
+
+	if len(res.Failed) != 1 {
+		t.Fatalf("result = %+v, want the Ticket failed", res)
+	}
+	if res.Memory == nil || res.Memory.PeakEstimate != memory.DefaultEstimate {
+		t.Errorf("memory = %+v, want the default estimate", res.Memory)
+	}
+	if m.log.has("Sandbox peak") {
+		t.Errorf("a peak was logged for a Sandbox nothing ran in: %q", m.log.lines)
+	}
+	if stored, err := memory.Load(filepath.Join(m.opts.Root, factory.MemoryFile)); err != nil || stored.Measured() {
+		t.Errorf("the stored estimate is measured (err %v), want it left at the default", err)
+	}
+}
+
+func TestAStepThatFailsInItsSessionCountsItsPeak(t *testing.T) {
+	f := newFixture(t)
+	m := newMemoryRun(f, 16*gib, []string{"Cart"}, func(context.Context, factory.Step) harness.Outcome {
+		return harness.Outcome{Kind: harness.Failed, Class: harness.Other, Message: "boom"}
+	})
+	m.sandboxes.use = func(string) int64 { return gib }
+
+	res := factory.Run(context.Background(), m.opts)
+
+	if len(res.Failed) != 1 {
+		t.Fatalf("result = %+v, want the Ticket failed", res)
+	}
+	if res.Memory == nil || res.Memory.PeakEstimate != gib {
+		t.Errorf("memory = %+v, want the measured 1 GiB", res.Memory)
+	}
+	if !m.log.has("Sandbox peak 1024 MB") {
+		t.Errorf("no peak in the log: %q", m.log.lines)
+	}
+}
+
+func TestAFreshRetryThatStartsItsSessionCountsItsPeak(t *testing.T) {
+	f := newFixture(t)
+	var attempts atomic.Int32
+	commit := commitFile("cart.go", "package cart\n")
+	m := newMemoryRun(f, 16*gib, []string{"Cart"}, func(ctx context.Context, s factory.Step) harness.Outcome {
+		if attempts.Add(1) == 1 {
+			return noSession()
+		}
+		return commit(ctx, s)
+	})
+	m.sandboxes.use = func(string) int64 { return gib }
+
+	res := factory.Run(context.Background(), m.opts)
+
+	if len(res.Closed) != 1 {
+		t.Fatalf("result = %+v, want the Ticket closed after its retry", res)
+	}
+	if res.Memory == nil || res.Memory.PeakEstimate != gib {
+		t.Errorf("memory = %+v, want the measured 1 GiB", res.Memory)
+	}
+}
+
+func TestVerifyCountsItsSandboxsPeak(t *testing.T) {
+	f := newFixture(t)
+	commit := commitFile("cart.go", "package cart\n")
+	// The Step's work is done but counts for nothing, so that only verify
+	// does.
+	m := newMemoryRun(f, 16*gib, []string{"Cart"}, func(ctx context.Context, s factory.Step) harness.Outcome {
+		out := commit(ctx, s)
+		out.NoSession = true
+		return out
+	})
+	m.opts.Verify = []verify.Command{{Name: "test", Line: "exit 0"}}
+	m.sandboxes.use = func(string) int64 { return gib }
+
+	res := factory.Run(context.Background(), m.opts)
+
+	if len(res.Closed) != 1 {
+		t.Fatalf("result = %+v, want the Ticket closed", res)
+	}
+	if res.Memory == nil || res.Memory.PeakEstimate != gib {
+		t.Errorf("memory = %+v, want the measured 1 GiB", res.Memory)
 	}
 }

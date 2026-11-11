@@ -103,13 +103,13 @@ func (r Runner) Run(ctx context.Context, s harness.Step, dir string) harness.Out
 	}
 	argv, err := Resolve(argv)
 	if err != nil {
-		return failed(fmt.Sprintf("can't start %s: %v", inv.Argv[0], err))
+		return cantStart(fmt.Sprintf("can't start %s: %v", inv.Argv[0], err))
 	}
 	p, t, err := start(func(attr *syscall.SysProcAttr) (*process, error) {
 		return spawn(argv, dir, env, attr)
 	})
 	if err != nil {
-		return failed(fmt.Sprintf("can't start %s: %v", inv.Argv[0], err))
+		return cantStart(fmt.Sprintf("can't start %s: %v", inv.Argv[0], err))
 	}
 	defer t.close()
 
@@ -154,7 +154,8 @@ func (r Runner) Run(ctx context.Context, s harness.Step, dir string) harness.Out
 	}
 	out := harness.Resolve(events, exit)
 	if reason != "" && !terminal {
-		out = harness.Outcome{Kind: harness.Failed, Class: harness.Other, Message: reason, Usage: out.Usage, ContextWindow: out.ContextWindow}
+		// A Harness that had to be killed ran until then, session or not.
+		out.Kind, out.Class, out.Message, out.NoSession = harness.Failed, harness.Other, reason, false
 	}
 	if out.Kind == harness.Failed && out.Message != "" && stderr != "" {
 		out.Message += ": " + lastLine(stderr)
@@ -362,8 +363,9 @@ func read(r io.Reader, fn func([]byte)) {
 	}
 }
 
-func failed(msg string) harness.Outcome {
-	return harness.Outcome{Kind: harness.Failed, Class: harness.Other, Message: msg}
+// cantStart is the Outcome of a Harness that never got to run.
+func cantStart(msg string) harness.Outcome {
+	return harness.Outcome{Kind: harness.Failed, Class: harness.Other, Message: msg, NoSession: true}
 }
 
 // lastLine is the last non-empty line of s.
