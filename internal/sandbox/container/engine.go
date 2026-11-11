@@ -14,10 +14,6 @@ import (
 	"github.com/Marcel-Goehn/fliesswerk/internal/proxyimage"
 )
 
-// EngineEnv names the engine to use, docker or podman, on a machine that
-// has both. Without it Docker is used if it responds, else Podman.
-const EngineEnv = "FLIESSWERK_ENGINE"
-
 // Engine is one connection to a container engine, resolved once per Run.
 // Every call goes through it, so that all of a Run's containers and
 // networks are on the same engine.
@@ -139,60 +135,57 @@ func proxyArch(ctx context.Context, e Engine) (string, error) {
 	return "", fmt.Errorf("the container engine runs on %q, and the proxy sidecar exists only for amd64 and arm64; pick another Sandbox kind with `sandbox.kind`", arch)
 }
 
-// CheckEngine reports a missing engine, one that can't run the proxy sidecar,
-// and a Factory that has no sidecar to give it.
-func CheckEngine(ctx context.Context) error {
-	e, err := Resolve(ctx)
+// CheckEngine resolves the configured engine and reports one that can't run
+// the proxy sidecar, and a Factory that has no sidecar to give it.
+func CheckEngine(ctx context.Context, binary string) (Engine, error) {
+	e, err := Resolve(ctx, binary)
 	if err != nil {
-		return err
+		return Engine{}, err
 	}
 	arch, err := proxyArch(ctx, e)
 	if err != nil {
-		return err
+		return Engine{}, err
 	}
-	_, err = proxyimage.Rootfs(arch)
-	return err
+	if _, err := proxyimage.Rootfs(arch); err != nil {
+		return Engine{}, err
+	}
+	return e, nil
 }
 
-// Resolve finds the engine a Run uses. There is no fallback from an engine
-// the user chose.
-func Resolve(ctx context.Context) (Engine, error) {
-	return resolve(ctx, os.Getenv, runCLI)
+// Resolve connects to the engine `sandbox.engine` names, docker or podman.
+// There is no fallback to the other one.
+func Resolve(ctx context.Context, binary string) (Engine, error) {
+	return resolve(ctx, binary, os.Getenv, runCLI, exec.LookPath)
 }
 
-func resolve(ctx context.Context, getenv func(string) string, run cli) (Engine, error) {
-	switch chosen := getenv(EngineEnv); chosen {
-	case docker:
-		e, err := resolveDocker(ctx, run)
-		return e, chosenEngineError(chosen, err)
-	case podman:
-		e, err := resolvePodman(ctx, getenv, run)
-		return e, chosenEngineError(chosen, err)
+func resolve(ctx context.Context, binary string, getenv func(string) string, run cli, lookPath func(string) (string, error)) (Engine, error) {
+	var e Engine
+	var err error
+	switch binary {
+	case docker, podman:
 	case "":
+		return Engine{}, errors.New("sandbox.engine isn't set, and the container Sandbox and the Services need a container engine; set `engine = \"docker\"` or `engine = \"podman\"` under [sandbox] in .fliesswerk/config.local.toml")
 	default:
-		return Engine{}, fmt.Errorf("%s is %q; it must be %s or %s", EngineEnv, chosen, docker, podman)
+		return Engine{}, fmt.Errorf("sandbox.engine is %q; it must be %s or %s", binary, docker, podman)
 	}
-	e, dockerErr := resolveDocker(ctx, run)
-	if dockerErr == nil {
-		return e, nil
+	if _, err := lookPath(binary); err != nil {
+		return Engine{}, fmt.Errorf("sandbox.engine is %s, and `%s` isn't on PATH; install it (%s), or set the other engine in `sandbox.engine`", binary, binary, installCommands[binary])
 	}
-	e, podmanErr := resolvePodman(ctx, getenv, run)
-	if podmanErr == nil {
-		return e, nil
+	if binary == docker {
+		e, err = resolveDocker(ctx, run)
+	} else {
+		e, err = resolvePodman(ctx, getenv, run)
 	}
-	return Engine{}, errors.New("the container Sandbox needs a running Docker or Podman, and neither responded; start one (to install one, see " + installDocs + "), or pick another Sandbox kind with `sandbox.kind`\n  " +
-		dockerErr.Error() + "\n  " + podmanErr.Error())
+	if err != nil {
+		return Engine{}, fmt.Errorf("sandbox.engine is %s, and it didn't respond; start it, or set the other engine in `sandbox.engine`\n  %w", binary, err)
+	}
+	return e, nil
 }
 
-// installDocs is where to find out how to install an engine.
-const installDocs = "https://docs.docker.com/engine/install/ or https://podman.io/docs/installation"
-
-// chosenEngineError says how to get the engine the user chose going.
-func chosenEngineError(chosen string, err error) error {
-	if err == nil {
-		return nil
-	}
-	return fmt.Errorf("%s is %s, and it didn't respond; start it (to install it, see %s), or pick another Sandbox kind with `sandbox.kind`\n  %w", EngineEnv, chosen, installDocs, err)
+// installCommands say how to install each engine.
+var installCommands = map[string]string{
+	docker: "Debian/Ubuntu: `sudo apt install docker.io docker-buildx`, Fedora: `sudo dnf install moby-engine docker-buildx`, Arch: `sudo pacman -S docker docker-buildx`, macOS: `brew install --cask docker`; see https://docs.docker.com/engine/install/",
+	podman: "Debian/Ubuntu: `sudo apt install podman`, Fedora: `sudo dnf install podman`, Arch: `sudo pacman -S podman`, macOS: `brew install podman`; see https://podman.io/docs/installation",
 }
 
 // resolveDocker pins Docker's current context, which also honours

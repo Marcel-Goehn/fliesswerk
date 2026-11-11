@@ -37,9 +37,6 @@ func Files(f Facts, a Answers, h Harness) []File {
 		gitignoreFile(),
 		{in("config.toml"), configTOML(f, a, h)},
 	}
-	if a.Kind == kindContainer {
-		files = append(files, File{in("Containerfile"), containerfile(f, a, h)})
-	}
 	for _, step := range prompt.Steps {
 		files = append(files, File{path.Join(prompt.Dir, step+".md"), prompt.Marker(step) + "\n\n" + prompt.Builtin(step, prompt.Latest(step))})
 	}
@@ -52,15 +49,20 @@ func gitignoreFile() File {
 }
 
 // Recreated are the team's files a re-run may bring back, all but the
-// config itself and the prompts: a deleted prompt stays deleted. kind is the
-// Sandbox kind this person runs. The Containerfile is read from the repo as
-// it is now, every language the repo shows being taken as chosen.
-func Recreated(f Facts, kind string, h Harness) []File {
-	files := []File{gitignoreFile()}
-	if kind == kindContainer {
-		files = append(files, File{path.Join(config.Dir, "Containerfile"), containerfile(f, Answers{Languages: f.Languages()}, h)})
+// config itself, the Containerfile and the prompts: a deleted prompt stays
+// deleted.
+func Recreated() []File {
+	return []File{gitignoreFile()}
+}
+
+// Containerfile is the image of the container Sandbox, which only a person
+// who runs that kind needs. Without answers, it is read from the repo as it
+// is now, every language the repo shows being taken as chosen.
+func Containerfile(f Facts, a *Answers, h Harness) File {
+	if a == nil {
+		a = &Answers{Languages: f.Languages()}
 	}
-	return files
+	return File{path.Join(config.Dir, "Containerfile"), containerfile(f, *a, h)}
 }
 
 // Write creates the files below root. What already exists stays as it is.
@@ -198,7 +200,7 @@ func configTOML(f Facts, a Answers, h Harness) string {
 		"# The remote branch Spec branches are cut from.", "base_branch = "+quote(a.Values["branches.base_branch"]),
 		"# The prefix of every branch the Factory creates.", `prefix = "fliesswerk"`, "",
 		"[sandbox]",
-		"# container or native. \"none\" is only accepted from config.local.toml.", "kind = "+quote(a.Kind),
+		"# The Sandbox kind and the container engine are each person's own: config.local.toml only.", `# kind = "container"`, `# engine = "docker"`,
 		"# Extra container engine flags.", "run_args = []",
 		"# Extra paths a native Sandbox may read.", "read_only_paths = []",
 		"# Extra paths a native Sandbox may write.", "writable_paths = []",

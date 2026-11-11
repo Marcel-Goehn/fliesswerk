@@ -36,7 +36,7 @@ esac
 			path = dir + string(os.PathListSeparator) + p
 		}
 	}
-	return append(env, "PATH="+path, "FLIESSWERK_ENGINE=docker")
+	return append(env, "PATH="+path)
 }
 
 // holdRunLock has a Run in progress in the project, as far as `check` can
@@ -77,8 +77,40 @@ func TestCheckAcceptsAnEngineThatRunsLinuxContainers(t *testing.T) {
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
 	holdRunLock(t, root)
 
-	if _, stderr, code := runEnv(t, bin, root, withFakeDocker(t, ghEnv(t, "ok"), "linux x86_64"), "check"); code != exitOK {
+	stdout, stderr, code := runEnv(t, bin, root, withFakeDocker(t, ghEnv(t, "ok"), "linux x86_64"), "check")
+
+	if code != exitOK {
 		t.Fatalf("exit code = %d, want 0; stderr: %s", code, stderr)
+	}
+	mustContain(t, "stdout", stdout, "fliesswerk check: container engine docker (default) ok")
+}
+
+func TestCheckAndRunStopWithoutAConfigLocalAndNameInit(t *testing.T) {
+	bin := buildFliesswerk(t, "")
+	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
+	if err := os.Remove(filepath.Join(root, ".fliesswerk", "config.local.toml")); err != nil {
+		t.Fatal(err)
+	}
+	for _, cmd := range []string{"check", "run"} {
+		_, stderr, code := runEnv(t, bin, root, ghEnv(t, "ok"), cmd)
+
+		if code != exitConfigError {
+			t.Fatalf("%s: exit code = %d, want %d; stderr: %s", cmd, code, exitConfigError, stderr)
+		}
+		mustContain(t, cmd+" stderr", stderr, ".fliesswerk/config.local.toml isn't there", "run `fliesswerk init`")
+	}
+}
+
+func TestCheckAndRunStopWithoutTheEngineAndNameTheKey(t *testing.T) {
+	bin := buildFliesswerk(t, "")
+	root := projectDir(t, map[string]string{"config.toml": "version = 1\n", "config.local.toml": "[sandbox]\nkind = \"container\"\n"})
+	for _, cmd := range []string{"check", "run"} {
+		_, stderr, code := runEnv(t, bin, root, withFakeDocker(t, ghEnv(t, "ok"), "linux x86_64"), cmd)
+
+		if code != exitConfigError {
+			t.Fatalf("%s: exit code = %d, want %d; stderr: %s", cmd, code, exitConfigError, stderr)
+		}
+		mustContain(t, cmd+" stderr", stderr, "sandbox.engine: isn't set", `engine = "docker"`, "config.local.toml")
 	}
 }
 
@@ -112,7 +144,7 @@ esac
 			path = dir + string(os.PathListSeparator) + p
 		}
 	}
-	return append(env, "PATH="+path, "FLIESSWERK_ENGINE=docker")
+	return append(env, "PATH="+path)
 }
 
 func TestCheckEnforcesTheComposeRules(t *testing.T) {
@@ -156,12 +188,15 @@ func TestCheckRefusesAServiceANativeSandboxCouldNotReach(t *testing.T) {
 		t.Skip("the fake docker is a shell script")
 	}
 	bin := buildFliesswerk(t, "")
-	root := projectDir(t, map[string]string{"config.toml": "version = 1\n[sandbox]\nkind = \"native\"\n[services.db]\nshared = false\n"})
+	root := projectDir(t, map[string]string{"config.toml": "version = 1\n[services.db]\nshared = false\n", "config.local.toml": "[sandbox]\nkind = \"native\"\nengine = \"docker\"\n"})
 
-	_, stderr, code := runEnv(t, bin, root, withFakeCompose(t, ghEnv(t, "ok"), "2.40.0", `{"services": {"db": {"image": "postgres", "expose": ["5432"]}}}`), "check")
+	stdout, stderr, code := runEnv(t, bin, root, withFakeCompose(t, ghEnv(t, "ok"), "2.40.0", `{"services": {"db": {"image": "postgres", "expose": ["5432"]}}}`), "check")
 
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d; stderr: %s", code, exitConfigError, stderr)
+	}
+	if !strings.Contains(stdout, "container engine docker (default) (for the Services) ok") {
+		t.Errorf("stdout doesn't name the engine: %s", stdout)
 	}
 	if !strings.Contains(stderr, "db") || !strings.Contains(stderr, `ports: ["127.0.0.1:<H>:<C>"]`) {
 		t.Errorf("stderr doesn't name the fix: %s", stderr)

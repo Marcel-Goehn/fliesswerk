@@ -45,6 +45,8 @@ type Options struct {
 	// Root is the project root, and StateDir the runtime state in it.
 	Root, StateDir string
 	RunID          string
+	// Engine is `sandbox.engine`: docker or podman.
+	Engine string
 	// RunArgs are the checked `sandbox.run_args`.
 	RunArgs []string
 	// Env is `[sandbox.env]`.
@@ -105,7 +107,7 @@ func projectHash(root string) string {
 // Connect resolves the engine and its compose tool, and clears what a
 // crashed Run of this checkout left on it.
 func (p *Provider) Connect(ctx context.Context) error {
-	engine, err := Resolve(ctx)
+	engine, err := Resolve(ctx, p.opts.Engine)
 	if err != nil {
 		return err
 	}

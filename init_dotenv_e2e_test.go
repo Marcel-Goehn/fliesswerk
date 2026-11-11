@@ -32,7 +32,7 @@ func (p *runProject) noSecretIn(t *testing.T, secrets ...string) {
 func TestInitWritesAnAPIKeyKeptInDotenv(t *testing.T) {
 	p := teamProject(t, map[string]string{"config.toml": teamConfig})
 
-	p.init(t, p.initEnv(t), "api_key", "dotenv", "ANTHROPIC_API_KEY", apiKeySecret, "", gitHubSecret)
+	p.init(t, p.initEnv(t), mine("api_key", "dotenv", "ANTHROPIC_API_KEY", apiKeySecret, "", gitHubSecret)...)
 
 	mustContain(t, "stdout", p.stdout, "Paste the API key, Enter to put it in yourself later (input is hidden)")
 	if got := p.fliesswerkFile(t, ".env"); got != "ANTHROPIC_API_KEY="+apiKeySecret+"\n" {
@@ -95,7 +95,7 @@ func TestInitWaitsForASubscriptionTokenPastedIntoDotenv(t *testing.T) {
 	p.initWaiting(t, p.initEnv(t), func() {
 		whileWaiting = p.fliesswerkFile(t, ".env")
 		writeFile(t, p.dotenvPath(), "CLAUDE_CODE_OAUTH_TOKEN="+subscriptionSecret+"\n")
-	}, subscriptionInDotenv...)
+	}, mine(subscriptionInDotenv...)...)
 
 	mustContain(t, "stdout", p.stdout, "Under which name is it in .fliesswerk/.env? [CLAUDE_CODE_OAUTH_TOKEN]", p.dotenvPath(), "claude setup-token")
 	signIn, _, _ := strings.Cut(p.stdout, "personal-access-tokens/new") // the Tracker's questions follow
@@ -112,7 +112,7 @@ func TestInitWaitsForASubscriptionTokenPastedIntoDotenv(t *testing.T) {
 func TestInitFinishesWhenASubscriptionTokenIsLeftOut(t *testing.T) {
 	p := teamProject(t, map[string]string{"config.toml": teamConfig})
 
-	code := p.initWaiting(t, p.initEnv(t), func() {}, subscriptionInDotenv...)
+	code := p.initWaiting(t, p.initEnv(t), func() {}, mine(subscriptionInDotenv...)...)
 
 	if code == exitOK {
 		t.Fatalf("init passed with no token:\n%s", p.stdout)
@@ -128,7 +128,7 @@ func TestInitAppendsToAnExistingDotenvAndKeepsEveryLine(t *testing.T) {
 	existing := "# mine\nDB_PASSWORD='hunter 2'\nexport OTHER=x" // no newline at the end
 	writeFile(t, p.dotenvPath(), existing)
 
-	p.init(t, p.initEnv(t), "api_key", "dotenv", "ANTHROPIC_API_KEY", apiKeySecret, "", gitHubSecret)
+	p.init(t, p.initEnv(t), mine("api_key", "dotenv", "ANTHROPIC_API_KEY", apiKeySecret, "", gitHubSecret)...)
 
 	if got := p.fliesswerkFile(t, ".env"); got != existing+"\nANTHROPIC_API_KEY="+apiKeySecret+"\n" {
 		t.Errorf(".env = %q", got)
@@ -145,7 +145,7 @@ func TestInitUsesAKeyThatIsInDotenvAlready(t *testing.T) {
 			existing := "A=1\n" + tt.key + "=already-there\n"
 			writeFile(t, p.dotenvPath(), existing)
 
-			p.init(t, p.initEnv(t), tt.method, "dotenv", tt.key, "", gitHubSecret)
+			p.init(t, p.initEnv(t), mine(tt.method, "dotenv", tt.key, "", gitHubSecret)...)
 
 			signIn, _, _ := strings.Cut(p.stdout, "personal-access-tokens/new")
 			mustContain(t, "stdout", signIn, "init uses the value there")
@@ -167,7 +167,7 @@ func TestInitMakesANewDotenvReadableOnlyByTheUser(t *testing.T) {
 	}
 	p := teamProject(t, map[string]string{"config.toml": teamConfig})
 
-	p.init(t, p.initEnv(t), "api_key", "dotenv", "ANTHROPIC_API_KEY", apiKeySecret, "", gitHubSecret)
+	p.init(t, p.initEnv(t), mine("api_key", "dotenv", "ANTHROPIC_API_KEY", apiKeySecret, "", gitHubSecret)...)
 
 	info, err := os.Stat(p.dotenvPath())
 	if err != nil {
@@ -181,7 +181,7 @@ func TestInitMakesANewDotenvReadableOnlyByTheUser(t *testing.T) {
 func TestInitWritesNoSecretIntoADotenvGitDoesNotIgnore(t *testing.T) {
 	p := teamProject(t, map[string]string{"config.toml": teamConfig, ".gitignore": "config.local.toml\n"})
 
-	p.init(t, p.initEnv(t), "api_key", "dotenv", "ANTHROPIC_API_KEY", apiKeySecret, "", gitHubSecret)
+	p.init(t, p.initEnv(t), mine("api_key", "dotenv", "ANTHROPIC_API_KEY", apiKeySecret, "", gitHubSecret)...)
 
 	if p.hasFliesswerkFile(".env") {
 		t.Errorf("wrote a .env git doesn't ignore: %q", p.fliesswerkFile(t, ".env"))
@@ -193,7 +193,7 @@ func TestInitWritesNoSecretIntoADotenvGitDoesNotIgnore(t *testing.T) {
 func TestInitFinishesWhenAnAPIKeyIsLeftOut(t *testing.T) {
 	p := teamProject(t, map[string]string{"config.toml": teamConfig})
 
-	code := p.init(t, p.initEnv(t), "api_key", "dotenv", "ANTHROPIC_API_KEY", "", "", gitHubSecret)
+	code := p.init(t, p.initEnv(t), mine("api_key", "dotenv", "ANTHROPIC_API_KEY", "", "", gitHubSecret)...)
 
 	if code == exitOK {
 		t.Fatalf("init passed with no key:\n%s", p.stdout)

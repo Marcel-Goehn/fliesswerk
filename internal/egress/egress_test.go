@@ -488,6 +488,10 @@ func TestOptionsComeFromTheConfigAndTheAuthEndpoints(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, config.Dir, "config.toml"), []byte(toml), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// A person's own file, with the engine the default container Sandbox needs.
+	if err := os.WriteFile(filepath.Join(root, config.Dir, "config.local.toml"), []byte("[sandbox]\nengine = \"docker\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	r := config.Load(root, nil)
 	if !r.OK() {
 		t.Fatalf("config: %v", r.Diagnostics)

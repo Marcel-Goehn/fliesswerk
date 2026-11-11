@@ -38,14 +38,9 @@ type runningService struct {
 }
 
 // CheckServices enforces the compose tool's version and the rules on the
-// compose file, for `check`. Having no engine at all is left to the Run,
-// which stops with the fix.
-func CheckServices(ctx context.Context, root, composeFile string, own, shared []string) error {
-	e, err := Resolve(ctx)
-	if err != nil {
-		return nil
-	}
-	tool, err := resolveCompose(ctx, e, runCLI, exec.LookPath)
+// compose file, for `check`, on the engine CheckEngine has already checked.
+func CheckServices(ctx context.Context, engine Engine, root, composeFile string, own, shared []string) error {
+	tool, err := resolveCompose(ctx, engine, runCLI, exec.LookPath)
 	if err != nil {
 		return err
 	}

@@ -228,7 +228,7 @@ func newSandboxes(values map[string]any, root, kind string, s *secrets, runID st
 	switch kind {
 	case "container":
 		return container.New(container.Options{
-			Root: root, StateDir: state, RunID: runID, RunArgs: runArgs(values), Env: env,
+			Root: root, StateDir: state, RunID: runID, Engine: engineOf(values), RunArgs: runArgs(values), Env: env,
 			Egress: egressOptions, CACerts: caCerts(values), CredentialDir: credentialsMount, Version: versionString(), Log: logLine,
 			ComposeFile: composeFile(values), Services: ownServices(values), Shared: sharedServices(values), EnvTemplates: serviceEnvTemplates(values),
 		})
@@ -241,7 +241,7 @@ func newSandboxes(values map[string]any, root, kind string, s *secrets, runID st
 		if names := serviceNames(values); len(names) > 0 {
 			opts.EnvTemplates = serviceEnvTemplates(values)
 			opts.Services = container.NewPublished(container.PublishedOptions{
-				Root: root, StateDir: state, ComposeFile: composeFile(values),
+				Root: root, StateDir: state, Engine: engineOf(values), ComposeFile: composeFile(values),
 				Services: ownServices(values), Shared: sharedServices(values),
 			})
 		}
@@ -505,6 +505,11 @@ func protectedPaths(values map[string]any) []string {
 // composeFile is the compose file Services come from.
 func composeFile(values map[string]any) string {
 	return stringAt(values, defaultComposeFile, "services", "compose_file")
+}
+
+// engineOf is `sandbox.engine`, "" for none.
+func engineOf(values map[string]any) string {
+	return stringAt(values, "", "sandbox", "engine")
 }
 
 // serviceNames are the Services the config names, sorted.

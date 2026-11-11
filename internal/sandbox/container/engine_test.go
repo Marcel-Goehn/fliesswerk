@@ -24,11 +24,14 @@ func (f fakeCLI) run(_ context.Context, argv ...string) (string, error) {
 
 func noEnv(string) string { return "" }
 
+// onPath finds every engine, as on a machine that has both installed.
+func onPath(name string) (string, error) { return "/usr/bin/" + name, nil }
+
 func TestDockerIsPinnedToItsCurrentContext(t *testing.T) {
-	e, err := resolve(context.Background(), noEnv, fakeCLI{
+	e, err := resolve(context.Background(), "docker", noEnv, fakeCLI{
 		"docker context show":          "colima\n",
 		"docker --context colima info": "[name=seccomp]\n",
-	}.run)
+	}.run, onPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,10 +44,10 @@ func TestDockerIsPinnedToItsCurrentContext(t *testing.T) {
 }
 
 func TestRootlessDockerIsNoticed(t *testing.T) {
-	e, err := resolve(context.Background(), noEnv, fakeCLI{
+	e, err := resolve(context.Background(), "docker", noEnv, fakeCLI{
 		"docker context show":           "default\n",
 		"docker --context default info": "[name=seccomp name=rootless]\n",
-	}.run)
+	}.run, onPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,11 +56,11 @@ func TestRootlessDockerIsNoticed(t *testing.T) {
 	}
 }
 
-func TestPodmanIsTheFallbackAndUsesItsDefaultConnection(t *testing.T) {
-	e, err := resolve(context.Background(), noEnv, fakeCLI{
+func TestPodmanUsesItsDefaultConnection(t *testing.T) {
+	e, err := resolve(context.Background(), "podman", noEnv, fakeCLI{
 		"podman system connection list":         `[{"Name":"machine","Default":false},{"Name":"machine-root","Default":true}]`,
 		"podman --connection machine-root info": "false\n",
-	}.run)
+	}.run, onPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,10 +73,10 @@ func TestPodmanIsTheFallbackAndUsesItsDefaultConnection(t *testing.T) {
 }
 
 func TestLocalRootlessPodmanNeedsNoConnection(t *testing.T) {
-	e, err := resolve(context.Background(), noEnv, fakeCLI{
+	e, err := resolve(context.Background(), "podman", noEnv, fakeCLI{
 		"podman system connection list": `[]`,
 		"podman info":                   "true\n",
-	}.run)
+	}.run, onPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +95,7 @@ func TestPodmansEnvConnectionWins(t *testing.T) {
 		}
 		return ""
 	}
-	e, err := resolve(context.Background(), env, fakeCLI{"podman --connection work info": "true\n"}.run)
+	e, err := resolve(context.Background(), "podman", env, fakeCLI{"podman --connection work info": "true\n"}.run, onPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,59 +104,50 @@ func TestPodmansEnvConnectionWins(t *testing.T) {
 	}
 }
 
-func TestTheEngineCanBeChosen(t *testing.T) {
-	env := func(k string) string {
-		if k == EngineEnv {
-			return "podman"
+// bothRespond is a machine where Docker and Podman both answer.
+var bothRespond = fakeCLI{
+	"docker context show":           "default\n",
+	"docker --context default info": "[]\n",
+	"podman system connection list": `[]`,
+	"podman info":                   "true\n",
+}
+
+func TestTheConfiguredEngineIsUsedWhereBothRespond(t *testing.T) {
+	for _, want := range []string{"docker", "podman"} {
+		e, err := resolve(context.Background(), want, noEnv, bothRespond.run, onPath)
+		if err != nil {
+			t.Fatal(err)
 		}
-		return ""
+		if e.Binary != want {
+			t.Errorf("configured %s, got %q", want, e.Binary)
+		}
 	}
-	e, err := resolve(context.Background(), env, fakeCLI{
+}
+
+func TestTheConfiguredEngineThatIsDownNeverFallsBack(t *testing.T) {
+	_, err := resolve(context.Background(), "podman", noEnv, fakeCLI{
 		"docker context show":           "default\n",
 		"docker --context default info": "[]\n",
-		"podman system connection list": `[]`,
-		"podman info":                   "true\n",
-	}.run)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if e.Binary != "podman" {
-		t.Errorf("Binary = %q, want podman", e.Binary)
+	}.run, onPath)
+	if err == nil || !strings.Contains(err.Error(), "podman") || !strings.Contains(err.Error(), "sandbox.engine") {
+		t.Errorf("err = %v, want one naming podman and sandbox.engine", err)
 	}
 }
 
-func TestAChosenEngineThatIsDownNeverFallsBack(t *testing.T) {
-	env := func(k string) string {
-		if k == EngineEnv {
-			return "podman"
+func TestNoConfiguredEngineNamesTheKey(t *testing.T) {
+	_, err := resolve(context.Background(), "", noEnv, bothRespond.run, onPath)
+	if err == nil || !strings.Contains(err.Error(), "sandbox.engine") || !strings.Contains(err.Error(), "config.local.toml") {
+		t.Errorf("err = %v, want one naming sandbox.engine in config.local.toml", err)
+	}
+}
+
+func TestAnEngineThatIsNotInstalledNamesTheInstallCommand(t *testing.T) {
+	missing := func(string) (string, error) { return "", errors.New("not found") }
+	for engine, want := range map[string]string{"docker": "apt install docker.io", "podman": "apt install podman"} {
+		_, err := resolve(context.Background(), engine, noEnv, bothRespond.run, missing)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: err = %v, want one with %q", engine, err, want)
 		}
-		return ""
-	}
-	_, err := resolve(context.Background(), env, fakeCLI{
-		"docker context show":           "default\n",
-		"docker --context default info": "[]\n",
-	}.run)
-	if err == nil || !strings.Contains(err.Error(), "podman") {
-		t.Errorf("err = %v, want one naming podman", err)
-	}
-}
-
-func TestAnUnknownEngineIsAnError(t *testing.T) {
-	env := func(k string) string {
-		if k == EngineEnv {
-			return "nerdctl"
-		}
-		return ""
-	}
-	if _, err := resolve(context.Background(), env, fakeCLI{}.run); err == nil || !strings.Contains(err.Error(), "nerdctl") {
-		t.Errorf("err = %v, want one naming nerdctl", err)
-	}
-}
-
-func TestNoEngineNamesTheFix(t *testing.T) {
-	_, err := resolve(context.Background(), noEnv, fakeCLI{}.run)
-	if err == nil || !strings.Contains(err.Error(), "Docker") || !strings.Contains(err.Error(), "Podman") {
-		t.Errorf("err = %v, want one naming both engines", err)
 	}
 }
 

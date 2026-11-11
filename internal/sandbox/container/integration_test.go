@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox/enginetest"
 )
 
 // baseImage has git, a shell and wget, and an entrypoint of its own that
@@ -70,7 +71,7 @@ func (pr *project) provider(t *testing.T, runArgs ...string) *Provider {
 	t.Helper()
 	p := New(Options{
 		Root: pr.root, StateDir: filepath.Join(pr.root, ".fliesswerk", "state"),
-		RunID: "test-" + strconv.FormatInt(time.Now().UnixNano(), 36), RunArgs: runArgs,
+		RunID: "test-" + strconv.FormatInt(time.Now().UnixNano(), 36), RunArgs: runArgs, Engine: enginetest.Engine(t),
 		Log: func(line string) { pr.logged = append(pr.logged, line) },
 	})
 	t.Cleanup(p.Close)

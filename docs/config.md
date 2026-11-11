@@ -14,7 +14,7 @@ A list replaces the list of the layer below; it is not appended to. No layer may
 
 Every command checks the config before it does anything else, so a typo never costs a token. An unknown key or a wrong type is an error, with a did-you-mean suggestion. `fliesswerk check` exits with 3 on any error.
 
-**Local-only settings** can disarm the Sandbox or hold a credential, so they are refused in `config.toml` and accepted only from `config.local.toml` or a flag: credentials, `sandbox.kind = "none"` and its acknowledgement, `allow = ["*"]`, and the acknowledgement for passing AWS keys through. A committed change can never turn them on for the whole team.
+**Local-only settings** can disarm the Sandbox or hold a credential, so they are refused in `config.toml` and accepted only from `config.local.toml` or a flag: credentials, `sandbox.kind` and `sandbox.engine`, which depend on each person's machine, the acknowledgement for `kind = "none"`, `allow = ["*"]`, and the acknowledgement for passing AWS keys through. A committed change can never turn them on for the whole team.
 
 **Upgrades.** Within a major version, an unchanged config never changes behaviour, except for security fixes, which are announced loudly. A renamed key keeps working with a deprecation warning until the next major version, and `fliesswerk migrate` rewrites it. See the [install guide](install.md#renamed-and-removed-config-keys).
 
@@ -129,7 +129,11 @@ The Sandbox each Step runs in. See [Choosing a Sandbox kind](setup.md#choosing-a
 
 ### `sandbox.kind`
 
-`"container"` (default), `"native"` or `"none"`. `"none"` is local only and also needs `i_accept_unsandboxed_risk = true`. `--sandbox` overrides it for one Run.
+`"container"` (default), `"native"` or `"none"`. Local only: `fliesswerk init` asks for it and writes it to `config.local.toml`, because one teammate may only be able to use native, another only Podman. `"none"` also needs `i_accept_unsandboxed_risk = true`. `--sandbox` overrides it for one command.
+
+### `sandbox.engine`
+
+The container engine: `"docker"` or `"podman"`. Local only, and asked for by `fliesswerk init`. It is needed with `kind = "container"`, and with any kind once [`services.compose_file`](#servicescompose_file) is set, since Services always run in a container engine; without it, every command stops and names the key. It is used as it is, with no fallback to the other engine, and `check` reports it, or fails if it doesn't respond. Docker uses its current context (`DOCKER_CONTEXT`, `DOCKER_HOST`); Podman uses `CONTAINER_CONNECTION`, `CONTAINER_HOST` or its default connection, rootful or rootless.
 
 ### `sandbox.i_accept_unsandboxed_risk`
 

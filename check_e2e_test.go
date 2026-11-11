@@ -237,14 +237,16 @@ func TestCheckNamesTheFixWhenThereIsNoEngine(t *testing.T) {
 			env = append(env, "PATH="+failing+string(os.PathListSeparator)+p)
 		}
 	}
-	env = append(env, "FLIESSWERK_ENGINE=") // CI picks one, and this is about having neither
 
 	_, stderr, code := runEnv(t, bin, root, env, "check")
 
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d\nstderr: %s", code, exitConfigError, stderr)
 	}
-	mustContain(t, "stderr", stderr, "needs a running Docker or Podman", "sandbox.kind", "docs.docker.com")
+	mustContain(t, "stderr", stderr, "sandbox.engine is docker, and it didn't respond", "start it")
+	if strings.Contains(stderr, "podman") {
+		t.Errorf("fell back to Podman, which is on PATH as well:\n%s", stderr)
+	}
 }
 
 func TestCheckCatchesACorporateProxyOnTheHostsOwnLocalhost(t *testing.T) {

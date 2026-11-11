@@ -19,6 +19,8 @@ import (
 type PublishedOptions struct {
 	// Root is the project root, and StateDir the runtime state in it.
 	Root, StateDir string
+	// Engine is `sandbox.engine`: docker or podman.
+	Engine string
 	// ComposeFile is the compose file relative to the project root, Services
 	// the own Services and Shared the shared ones the Sandboxes reach.
 	ComposeFile      string
@@ -43,8 +45,8 @@ func NewPublished(opts PublishedOptions) *Published {
 }
 
 // resolvePublishedTool finds the engine and compose tool the Services need.
-func resolvePublishedTool(ctx context.Context) (composeTool, error) {
-	engine, err := Resolve(ctx)
+func resolvePublishedTool(ctx context.Context, binary string) (composeTool, error) {
+	engine, err := Resolve(ctx, binary)
 	if err != nil {
 		return composeTool{}, fmt.Errorf("the project's Services run in a container engine, even with a native Sandbox: %w", err)
 	}
@@ -53,7 +55,7 @@ func resolvePublishedTool(ctx context.Context) (composeTool, error) {
 
 // Connect resolves the engine and its compose tool.
 func (p *Published) Connect(ctx context.Context) error {
-	tool, err := resolvePublishedTool(ctx)
+	tool, err := resolvePublishedTool(ctx, p.opts.Engine)
 	if err != nil {
 		return err
 	}
@@ -74,8 +76,8 @@ func (p *Published) Validate(ctx context.Context) error {
 
 // CheckPublishedServices is Validate for `check`, where no engine at all is
 // as much of a problem as a bad compose file.
-func CheckPublishedServices(ctx context.Context, root, composeFile string, own, shared []string) error {
-	tool, err := resolvePublishedTool(ctx)
+func CheckPublishedServices(ctx context.Context, engine, root, composeFile string, own, shared []string) error {
+	tool, err := resolvePublishedTool(ctx, engine)
 	if err != nil {
 		return err
 	}

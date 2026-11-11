@@ -438,6 +438,14 @@
       "additionalProperties": false,
       "description": "The Sandbox each Step runs in.",
       "properties": {
+        "engine": {
+          "description": "The container engine, for the container Sandbox and for Services. Setting the container engine, which depends on each person's machine, is allowed only in config.local.toml or as a CLI flag, never in config.toml.",
+          "enum": [
+            "docker",
+            "podman"
+          ],
+          "type": "string"
+        },
         "env": {
           "additionalProperties": {
             "type": "string"
@@ -450,7 +458,7 @@
           "type": "boolean"
         },
         "kind": {
-          "description": "The Sandbox kind. \"none\" also needs i_accept_unsandboxed_risk = true. Setting kind = \"none\" (no Sandbox) is allowed only in config.local.toml or as a CLI flag, never in config.toml.",
+          "description": "The Sandbox kind. \"none\" also needs i_accept_unsandboxed_risk = true. Setting the Sandbox kind, which depends on each person's machine, is allowed only in config.local.toml or as a CLI flag, never in config.toml.",
           "enum": [
             "container",
             "native",

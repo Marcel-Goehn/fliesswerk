@@ -12,6 +12,7 @@ import (
 
 	"github.com/Marcel-Goehn/fliesswerk/internal/runlog"
 	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox/container"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox/enginetest"
 )
 
 // probeScript has the fake Harness write what the Sandbox can reach to a
@@ -42,6 +43,7 @@ inside = '`+inAContainer+`'
 
 [sandbox]
 kind = "container"
+engine = "`+enginetest.Engine(t)+`"
 run_args = ["--mount", "type=bind,source=`+filepath.Join(fakeClaudeBinDir(t), "claude")+`,target=/usr/local/bin/claude,readonly", "--mount", "type=bind,source=`+filepath.Dir(p.scriptPath)+`,target=/fake"]
 
 [sandbox.env]
@@ -82,7 +84,7 @@ func assertNothingLeft(t *testing.T, root string) {
 	if !ok {
 		t.Fatal("the Run left no logs")
 	}
-	engine, err := container.Resolve(ctx)
+	engine, err := container.Resolve(ctx, enginetest.Engine(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,6 +122,7 @@ func checkContainerConfig(t *testing.T, extra string) string {
 	t.Helper()
 	return `[sandbox]
 kind = "container"
+engine = "` + enginetest.Engine(t) + `"
 run_args = ["--mount", "type=bind,source=` + filepath.Join(fakeClaudeBinDir(t), "claude") + `,target=/usr/local/bin/claude,readonly"]
 
 [sandbox.network]
@@ -183,7 +186,7 @@ func TestCheckProvesAContainerSandboxAndRunsItsCommands(t *testing.T) {
 func assertNoCheckLeftBehind(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
-	engine, err := container.Resolve(ctx)
+	engine, err := container.Resolve(ctx, enginetest.Engine(t))
 	if err != nil {
 		t.Fatal(err)
 	}

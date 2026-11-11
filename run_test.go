@@ -170,7 +170,7 @@ func TestRunDryRun(t *testing.T) {
 	})
 
 	t.Run("an open network warns on the Run, and only a local layer may open it", func(t *testing.T) {
-		const open = "[sandbox.network]\nallow = [\"*\"]\n"
+		const open = engineOnly + "[sandbox.network]\nallow = [\"*\"]\n"
 		for name, tt := range map[string]struct {
 			files map[string]string
 			args  []string
@@ -226,7 +226,7 @@ func TestARunThatCannotBuildANativeSandboxStopsWithTheFix(t *testing.T) {
 
 func TestANativeSandboxRefusesAPathItMustNeverExpose(t *testing.T) {
 	bin := buildFliesswerk(t, "")
-	root := projectDir(t, map[string]string{"config.toml": dryRunProject + "\n[sandbox]\nkind = \"native\"\nread_only_paths = [\"/var/run/docker.sock\"]\n"})
+	root := projectDir(t, map[string]string{"config.toml": dryRunProject + "\n[sandbox]\nread_only_paths = [\"/var/run/docker.sock\"]\n", "config.local.toml": "[sandbox]\nkind = \"native\"\n"})
 	log := filepath.Join(t.TempDir(), "gh.log")
 
 	_, stderr, code := runEnv(t, bin, root, ghEnv(t, "dryrun", "FAKEGH_LOG="+log), "run")
@@ -241,7 +241,7 @@ func TestANativeSandboxRefusesAPathItMustNeverExpose(t *testing.T) {
 
 func TestCheckWarnsAboutANativeSandboxFootgun(t *testing.T) {
 	bin := buildFliesswerk(t, "")
-	root := projectDir(t, map[string]string{"config.toml": "version = 1\n[sandbox]\nkind = \"native\"\nwritable_paths = [\"~/.bashrc\"]\n"})
+	root := projectDir(t, map[string]string{"config.toml": "version = 1\n[sandbox]\nwritable_paths = [\"~/.bashrc\"]\n", "config.local.toml": "[sandbox]\nkind = \"native\"\n"})
 
 	_, stderr, _ := runEnv(t, bin, root, ghEnv(t, "ok"), "check")
 
@@ -254,11 +254,10 @@ func TestARunWithoutAContainerEngineStopsWithTheFix(t *testing.T) {
 	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": dryRunProject})
 
-	// Whichever engine CI picks for its own job, this Run must choose itself.
-	_, stderr, code := runEnv(t, bin, root, ghEnv(t, "dryrun", "FLIESSWERK_ENGINE="), "run")
+	_, stderr, code := runEnv(t, bin, root, ghEnv(t, "dryrun"), "run")
 
-	if code != 3 || !strings.Contains(stderr, "Docker or Podman") {
-		t.Fatalf("exit code = %d, want 3 naming the engines; stderr: %s", code, stderr)
+	if code != 3 || !strings.Contains(stderr, "`docker` isn't on PATH") || !strings.Contains(stderr, "apt install docker.io") {
+		t.Fatalf("exit code = %d, want 3 naming the install command; stderr: %s", code, stderr)
 	}
 }
 

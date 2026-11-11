@@ -101,7 +101,7 @@ env = { DATABASE_URL = "postgres://app@{host}:{port}/app" }
 
 ## Native Sandboxes
 
-A native Sandbox still runs its Services in Docker or Podman, so it needs one of the compose tools above. It reaches a Service through a port published on your machine, and only the Services named in `.fliesswerk/config.toml`. A Service they `depends_on` runs, but the Sandbox can't reach it.
+A native Sandbox still runs its Services in Docker or Podman, the engine `sandbox.engine` in your `config.local.toml` names, so it needs that engine's compose tool above. It reaches a Service through a port published on your machine, and only the Services named in `.fliesswerk/config.toml`. A Service they `depends_on` runs, but the Sandbox can't reach it.
 
 Every Service you name needs a TCP port under `ports:`. `expose:` or the image's `EXPOSE` isn't enough:
 

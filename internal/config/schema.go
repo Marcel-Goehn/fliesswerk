@@ -161,7 +161,9 @@ var schema = table("Fliesswerk configuration.", map[string]*node{
 
 	"sandbox": table("The Sandbox each Step runs in.", map[string]*node{
 		"kind": local(enum("The Sandbox kind. \"none\" also needs i_accept_unsandboxed_risk = true.", "container", "native", "none"),
-			"kind = \"none\" (no Sandbox)", func(v any) bool { return v == "none" }),
+			"the Sandbox kind, which depends on each person's machine,", always),
+		"engine": local(enum("The container engine, for the container Sandbox and for Services.", "docker", "podman"),
+			"the container engine, which depends on each person's machine,", always),
 		"i_accept_unsandboxed_risk": local(boolean("Required with kind = \"none\": you accept that the agent runs with no Sandbox."),
 			"the acknowledgement for running without a Sandbox", always),
 		"run_args":          strList("Extra container engine flags."),

@@ -90,7 +90,7 @@ func TestInitCreatesEveryMissingLabelAndSaysSo(t *testing.T) {
 
 func TestInitRerunCreatesOnlyTheMissingLabelsByTheirConfiguredNames(t *testing.T) {
 	config := teamConfig + "ready_label = \"agent-ready\"\nin_progress_label = \"wip\"\ncannot_do_label = \"stuck\"\n"
-	p := teamProject(t, map[string]string{"config.toml": config, "config.local.toml": "# mine\n"})
+	p := teamProject(t, map[string]string{"config.toml": config, "config.local.toml": myDocker})
 	p.withLabels(t, "AGENT-READY", "Stuck")
 
 	p.init(t, p.initEnv(t))
@@ -109,7 +109,7 @@ func TestInitFinishesAndNamesTheGhLinesWhenALabelCantBeCreated(t *testing.T) {
 	p.withLabels(t, "ready-for-agent")
 	p.patchTracker(t, map[string]any{"fail_writes": 2})
 
-	code := p.init(t, p.initEnv(t), viaGateway(fakeGateway(t))...)
+	code := p.init(t, p.initEnv(t), mine(viaGateway(fakeGateway(t))...)...)
 
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d\nstdout: %s\nstderr: %s", code, exitConfigError, p.stdout, p.stderr)

@@ -39,6 +39,11 @@ type PersonalInput struct {
 	// TeamCACerts are the team's `ca_certs`. They stay on the list this
 	// person's own replaces.
 	TeamCACerts []string
+	// HasServices reports that the project has Services, which run in a
+	// container engine whatever the Sandbox kind.
+	HasServices bool
+	// Installed reports whether a container engine is on this machine.
+	Installed func(engine string) bool
 }
 
 // Interception is a TLS endpoint a Sandbox wouldn't trust while this machine
@@ -51,7 +56,11 @@ type Interception struct {
 
 // Personal are one person's answers. Nothing is saved until Save.
 type Personal struct {
-	harness string
+	// kind is the Sandbox kind, engine the container engine ("" for none),
+	// and unsandboxed the acknowledgement of kind none.
+	kind, engine string
+	unsandboxed  bool
+	harness      string
 	// auth are the lines of the Harness's table, tracker its token's source
 	// ("" for the Tracker's own login), both rendered as TOML.
 	auth    []string
@@ -69,11 +78,14 @@ type Personal struct {
 	caFile string
 }
 
-// AskPersonal puts the personal questions: how this person signs in to the
-// Harness and reaches the Tracker.
+// AskPersonal puts the personal questions: where the agent runs on this
+// machine, how this person signs in to the Harness and reaches the Tracker.
 func AskPersonal(ctx context.Context, a Asker, in PersonalInput) (Personal, error) {
 	a.say("\nNow your own settings. They stay on this machine.\n")
 	p := Personal{harness: in.Harness.Name, store: in.Store, secrets: map[string]string{}}
+	if err := a.sandbox(in, &p); err != nil {
+		return p, err
+	}
 	if err := a.signIn(ctx, in, &p); err != nil {
 		return p, err
 	}
@@ -86,6 +98,9 @@ func AskPersonal(ctx context.Context, a Asker, in PersonalInput) (Personal, erro
 	a.say("")
 	return p, nil
 }
+
+// Kind is the Sandbox kind this person chose.
+func (p Personal) Kind() string { return p.kind }
 
 // Save puts the typed secrets in the user-level credentials file and exports
 // the root next to it.
@@ -158,9 +173,16 @@ func (p Personal) FillDotenv(ctx context.Context, a Asker, root string) error {
 }
 
 // LocalFile is this person's config.local.toml.
-func LocalFile(p Personal, unsandboxed bool) File {
+func LocalFile(p Personal) File {
 	var b strings.Builder
 	b.WriteString("# Your own settings for this project. Never committed.\n")
+	b.WriteString("\n[sandbox]\n# Where the agent runs on this machine: container, native or none.\nkind = " + quote(p.kind) + "\n")
+	if p.engine != "" {
+		b.WriteString("# The container engine: docker or podman.\nengine = " + quote(p.engine) + "\n")
+	}
+	if p.unsandboxed {
+		b.WriteString("i_accept_unsandboxed_risk = true\n")
+	}
 	if len(p.auth) > 0 {
 		fmt.Fprintf(&b, "\n[harnesses.%s]\n%s\n", tomlKey(p.harness), strings.Join(p.auth, "\n"))
 	}
@@ -169,9 +191,6 @@ func LocalFile(p Personal, unsandboxed bool) File {
 	}
 	if len(p.caCerts) > 0 {
 		fmt.Fprintf(&b, "\n[network]\nca_certs = %s\n", quoteList(p.caCerts))
-	}
-	if unsandboxed {
-		b.WriteString("\n[sandbox]\nkind = \"none\"\ni_accept_unsandboxed_risk = true\n")
 	}
 	return File{config.LocalFile, b.String()}
 }

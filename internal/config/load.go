@@ -145,6 +145,17 @@ func Load(root string, overrides []Override) Result {
 	return r
 }
 
+// LoadLocal is config.local.toml of the project rooted at root on its own,
+// unvalidated; nil if it's missing or can't be read.
+func LoadLocal(root string) map[string]any {
+	var r Result
+	values, ok := readLayer(&r, filepath.Join(root, filepath.FromSlash(LocalFile)), LocalFile, true)
+	if !ok {
+		return nil
+	}
+	return values
+}
+
 // add records a diagnostic about a whole layer or key.
 func (r *Result) add(sev Severity, layer, key, msg string) {
 	r.Diagnostics = append(r.Diagnostics, Diagnostic{Severity: sev, Layer: layer, Key: key, Message: msg})

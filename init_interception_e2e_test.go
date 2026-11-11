@@ -46,7 +46,7 @@ func TestInitOffersToExportAnInterceptingRoot(t *testing.T) {
 	p := teamProject(t, map[string]string{"config.toml": teamConfig})
 	ca := testCA(t, "Fliesswerk Test Root")
 
-	p.init(t, p.interceptedEnv(t, ca), "gateway", interceptedGateway, "", gatewaySecret, "", gitHubSecret, "")
+	p.init(t, p.interceptedEnv(t, ca), mine("gateway", interceptedGateway, "", gatewaySecret, "", gitHubSecret, "")...)
 
 	mustContain(t, "stdout", p.stdout, "intercepted.example", "Fliesswerk Test Root")
 	certs := stringsOf(valueAt(p.localConfig(t), "network", "ca_certs"))
@@ -70,7 +70,7 @@ func TestInitOffersToExportAnInterceptingRoot(t *testing.T) {
 func TestInitDecliningTheRootExportsNothing(t *testing.T) {
 	p := teamProject(t, map[string]string{"config.toml": teamConfig})
 
-	p.init(t, p.interceptedEnv(t, testCA(t, "Fliesswerk Test Root")), "gateway", interceptedGateway, "", gatewaySecret, "", gitHubSecret, "n")
+	p.init(t, p.interceptedEnv(t, testCA(t, "Fliesswerk Test Root")), mine("gateway", interceptedGateway, "", gatewaySecret, "", gitHubSecret, "n")...)
 
 	if got := valueAt(p.localConfig(t), "network", "ca_certs"); got != nil {
 		t.Errorf("ca_certs = %v", got)
@@ -89,7 +89,7 @@ func TestInitExportedRootJoinsTheTeamsCACerts(t *testing.T) {
 	})
 	writeFile(t, filepath.Join(p.work, "team.pem"), string(other.CertPEM))
 
-	p.init(t, p.interceptedEnv(t, testCA(t, "Fliesswerk Test Root")), "gateway", interceptedGateway, "", gatewaySecret, "", gitHubSecret, "")
+	p.init(t, p.interceptedEnv(t, testCA(t, "Fliesswerk Test Root")), mine("gateway", interceptedGateway, "", gatewaySecret, "", gitHubSecret, "")...)
 
 	certs := stringsOf(valueAt(p.localConfig(t), "network", "ca_certs"))
 	if len(certs) != 2 || !slices.Contains(certs, "team.pem") {
@@ -104,7 +104,7 @@ func TestInitOffersNothingWhenTheTeamAlreadyTrustsTheRoot(t *testing.T) {
 	})
 	writeFile(t, filepath.Join(p.work, "team.pem"), string(ca.CertPEM))
 
-	p.init(t, p.interceptedEnv(t, ca), "gateway", interceptedGateway, "", gatewaySecret, "", gitHubSecret)
+	p.init(t, p.interceptedEnv(t, ca), mine("gateway", interceptedGateway, "", gatewaySecret, "", gitHubSecret)...)
 
 	if strings.Contains(p.stdout, "Fliesswerk Test Root") {
 		t.Errorf("offered a root the team trusts:\n%s", p.stdout)

@@ -41,21 +41,24 @@ The project questions come first, in this order:
 5. **Languages.** Node, Go, Python and Rust have recipes. `init` suggests the ones it finds and names any language it found without a recipe.
 6. **Feedback commands**: `test`, `typecheck`, `lint` and `format`, suggested from your project files. The ones you set become `verify`, which the Factory runs itself to check every change.
 7. **The compose file** for the Services the agent needs, such as a database. See the [Services guide](services.md).
-8. **Where the agent runs**: the Sandbox kind. See [Choosing a Sandbox kind](#choosing-a-sandbox-kind).
-9. **The Coding standards file**, which only the review Step reads.
-10. **Protecting `.claude/`**, if your project has one. Say yes: a hook planted there would run in a later Step.
+8. **The Coding standards file**, which only the review Step reads.
+9. **Protecting `.claude/`**, if your project has one. Say yes: a hook planted there would run in a later Step.
 
-Then come your own questions, described under [Signing in to Claude](#signing-in-to-claude) and [Reaching GitHub](#reaching-github). If something on the way inspects TLS, such as a corporate proxy, `init` also offers to export its root certificate for your Sandboxes. See [Behind a corporate proxy](corporate-proxy.md).
+Then come your own questions. They depend on your machine, so `init` asks them of everyone, a teammate who clones a project that is already set up included:
+
+1. **Where the agent runs**: the Sandbox kind. See [Choosing a Sandbox kind](#choosing-a-sandbox-kind).
+2. **The container engine**, Docker or Podman, where something runs in one. See [Choosing the container engine](#choosing-the-container-engine).
+3. **Signing in**, described under [Signing in to Claude](#signing-in-to-claude) and [Reaching GitHub](#reaching-github). If something on the way inspects TLS, such as a corporate proxy, `init` also offers to export its root certificate for your Sandboxes. See [Behind a corporate proxy](corporate-proxy.md).
 
 ### What `init` writes
 
 | File | Committed | Holds |
 | --- | --- | --- |
 | `.fliesswerk/config.toml` | Yes | The team's settings, with every default written out and commented |
-| `.fliesswerk/Containerfile` | Yes | The image every container Sandbox starts from (container kind only) |
+| `.fliesswerk/Containerfile` | Yes | The image every container Sandbox starts from. Written only if you chose `container` and there is none yet |
 | `.fliesswerk/prompts/implement.md`, `review.md`, `merge.md` | Yes | The part of each prompt your team may edit |
 | `.fliesswerk/.gitignore` | Yes | Keeps the files below out of git. Your root `.gitignore` is never touched |
-| `.fliesswerk/config.local.toml` | No | Your own settings: how you sign in, your tokens' sources, and any `kind = "none"` |
+| `.fliesswerk/config.local.toml` | No | Your own settings: the Sandbox kind and the container engine, how you sign in, and your tokens' sources. Every command but `init` stops without it |
 
 Secrets you type go to your user-level credentials file, never into the project, unless you choose to keep one in `.fliesswerk/.env` (see [Signing in to Claude](#signing-in-to-claude)). It is `fliesswerk/credentials` in your user config directory (`~/.config` on Linux, `~/Library/Application Support` on macOS, `%AppData%` on Windows), readable only by you and shared by all your projects.
 
@@ -207,6 +210,22 @@ On macOS, the container Sandbox is the better choice when you have Services: a S
 
 A missing prerequisite stops with the exact fix. The Factory never falls back to another kind.
 
+The kind is your own, not the team's: one teammate may only be able to use native, another only Podman. `init` writes it to your `config.local.toml` as `[sandbox] kind`, and a committed `config.toml` can't set it. `--sandbox` overrides it for one command.
+
+### Choosing the container engine
+
+`init` asks "Which container engine?", Docker (recommended) or Podman, whenever something of yours runs in one: always after `container`, and after `native` or `none` only if the project has a compose file, since its Services run in containers whatever the kind. It marks which engines are installed. It asks even if only one is, or neither; `check` then names the command that installs the one you chose.
+
+The answer goes to your `config.local.toml`:
+
+```toml
+[sandbox]
+kind = "container"
+engine = "podman"
+```
+
+The Factory uses that engine and no other: it never picks one by itself, and if yours doesn't respond, `check` and `run` say so rather than fall back to the other. Without `engine` where it is needed, every command stops and names the key. Docker runs in its current context; Podman uses its default connection, rootful or rootless. See [`sandbox.engine`](config.md#sandboxengine).
+
 ### Running with no Sandbox
 
 `kind = "none"` keeps the worktree isolation, the timeouts, the Protected path check and the non-interactive environment, but nothing else. A committed `config.toml` can't set it, so a change in the repo can never disarm the team's Sandbox. Set it for yourself in `config.local.toml`:
@@ -217,7 +236,7 @@ kind = "none"
 i_accept_unsandboxed_risk = true
 ```
 
-or for one Run with `--sandbox none --i-accept-unsandboxed-risk`. Every Run warns while it is on. Choosing "not fenced in at all" in `init` writes the same lines to your `config.local.toml` and leaves the team on `container`.
+or for one Run with `--sandbox none --i-accept-unsandboxed-risk`. Every Run warns while it is on. Choosing "not fenced in at all" in `init`, and confirming it, writes the same lines to your `config.local.toml`.
 
 ## Teaching the agent your conventions
 

@@ -109,7 +109,8 @@ jobs:
         run: go test ./...
 
   # The container Sandbox on real engines: both are on the runner, and
-  # FLIESSWERK_ENGINE picks one. -p 1 keeps the packages' engine use apart.
+  # sandbox.engine in the repo's .fliesswerk/config.local.toml picks one, as
+  # in a project. -p 1 keeps the packages' engine use apart.
   container:
     name: container (${{ matrix.engine }})
     runs-on: ubuntu-latest
@@ -117,8 +118,6 @@ jobs:
       fail-fast: false
       matrix:
         engine: [docker, podman]
-    env:
-      FLIESSWERK_ENGINE: ${{ matrix.engine }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -128,6 +127,10 @@ jobs:
           go-version-file: go.mod
       - name: go generate (the proxy sidecar's root filesystems)
         run: go generate ./internal/proxyimage
+      - name: Choose the engine (sandbox.engine, as a project's config.local.toml does)
+        run: |
+          mkdir -p .fliesswerk
+          printf '[sandbox]\nengine = "%s"\n' "${{ matrix.engine }}" > .fliesswerk/config.local.toml
       # The oldest podman-compose the Factory accepts.
       - name: Install podman-compose
         if: matrix.engine == 'podman'
@@ -150,6 +153,10 @@ jobs:
           go-version-file: go.mod
       - name: Install bubblewrap
         run: sudo apt-get update && sudo apt-get install -y bubblewrap
+      - name: Choose Docker for the Services test (sandbox.engine, as a project's config.local.toml does)
+        run: |
+          mkdir -p .fliesswerk
+          printf '[sandbox]\nengine = "docker"\n' > .fliesswerk/config.local.toml
       - name: go generate (the proxy sidecar's root filesystems)
         run: go generate ./internal/proxyimage
       - name: go test (integration)

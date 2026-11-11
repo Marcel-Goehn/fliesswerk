@@ -14,6 +14,10 @@ import (
 
 const teamConfig = "version = 1\n\n[tracker]\nkind = \"github\"\nrepo = \"acme/shop\"\n"
 
+// myDocker is the config.local.toml of someone who runs the container
+// Sandbox on Docker.
+const myDocker = "[sandbox]\nkind = \"container\"\nengine = \"docker\"\n"
+
 // teamProject is a repo somebody already set up and committed, as a teammate
 // finds it after cloning. Each of files goes below .fliesswerk/.
 func teamProject(t *testing.T, files map[string]string) *runProject {
@@ -31,14 +35,14 @@ func (p *runProject) hasFliesswerkFile(name string) bool {
 }
 
 func TestInitRerunCreatesOnlyWhatIsMissing(t *testing.T) {
-	p := teamProject(t, map[string]string{"config.toml": teamConfig, "config.local.toml": "# mine\n"})
+	p := teamProject(t, map[string]string{"config.toml": teamConfig, "config.local.toml": myDocker})
 
 	p.init(t, p.initEnv(t))
 
 	if got := p.fliesswerkFile(t, "config.toml"); got != teamConfig {
 		t.Errorf("config.toml = %q", got)
 	}
-	if got := p.fliesswerkFile(t, "config.local.toml"); got != "# mine\n" {
+	if got := p.fliesswerkFile(t, "config.local.toml"); got != myDocker {
 		t.Errorf("config.local.toml = %q", got)
 	}
 	mustContain(t, ".gitignore", p.fliesswerkFile(t, ".gitignore"), "config.local.toml", ".env")
@@ -51,7 +55,7 @@ func TestInitRerunCreatesOnlyWhatIsMissing(t *testing.T) {
 
 func TestInitRerunWithNothingMissingSaysAlreadySetUpAndChecks(t *testing.T) {
 	p := teamProject(t, map[string]string{
-		"config.toml": teamConfig, "config.local.toml": "# mine\n",
+		"config.toml": teamConfig, "config.local.toml": myDocker,
 		".gitignore": "mine\n.env\nconfig.local.toml\n", "Containerfile": "FROM scratch\n",
 	})
 
@@ -68,7 +72,7 @@ func TestInitRerunWithNothingMissingSaysAlreadySetUpAndChecks(t *testing.T) {
 
 func TestInitNativeRerunGetsNoContainerfile(t *testing.T) {
 	p := teamProject(t, map[string]string{
-		"config.toml": "version = 1\n\n[sandbox]\nkind = \"native\"\n", "config.local.toml": "# mine\n",
+		"config.toml": teamConfig, "config.local.toml": "[sandbox]\nkind = \"native\"\n",
 	})
 
 	p.init(t, p.initEnv(t))
@@ -79,7 +83,7 @@ func TestInitNativeRerunGetsNoContainerfile(t *testing.T) {
 }
 
 func TestInitHasNoForce(t *testing.T) {
-	p := teamProject(t, map[string]string{"config.toml": teamConfig, "config.local.toml": "# mine\n"})
+	p := teamProject(t, map[string]string{"config.toml": teamConfig, "config.local.toml": myDocker})
 
 	code := p.initWith(t, p.initEnv(t), []string{"--force"})
 
@@ -135,11 +139,13 @@ func TestInitTeammateIsAskedOnlyPersonalQuestions(t *testing.T) {
 	})
 	srv := fakeGateway(t)
 
-	p.init(t, p.initEnv(t), viaGateway(srv)...)
+	p.init(t, p.initEnv(t), mine(viaGateway(srv)...)...)
 
 	if strings.Contains(p.stdout, "Which branch should") || strings.Contains(p.stdout, "Where do your Tickets live?") {
 		t.Errorf("a teammate got a project question:\n%s", p.stdout)
 	}
+	mustContain(t, "stdout", p.stdout, "Where should the agent run?", "Which container engine?")
+	mustContain(t, "config.local.toml", p.fliesswerkFile(t, "config.local.toml"), `kind = "container"`, `engine = "docker"`)
 	mustContain(t, "stdout", p.stdout, "How do you sign in to Claude?", "Where is", "personal-access-tokens/new", "acme/shop", "Read and write")
 	if got := p.fliesswerkFile(t, "config.toml"); got != teamConfig {
 		t.Errorf("config.toml changed: %q", got)
@@ -187,7 +193,7 @@ func TestInitImportsAClaudeCodeBedrockSetup(t *testing.T) {
 	env := behindNothing(p.initEnv(t))
 	p.claudeSettings(t, bedrockSettings)
 
-	p.init(t, env, "", "", gitHubSecret) // take the import, then the GitHub token
+	p.init(t, env, mine("", "", gitHubSecret)...) // take the import, then the GitHub token
 
 	mustContain(t, "stdout", p.stdout, "eu-central-1", "work")
 	if strings.Contains(p.stdout, "How do you sign in") || strings.Contains(p.stdout, "Which AWS region") {
@@ -204,7 +210,7 @@ func TestInitAsksWhatABedrockImportLacks(t *testing.T) {
 	env := behindNothing(p.initEnv(t))
 	p.claudeSettings(t, `{"env": {"CLAUDE_CODE_USE_BEDROCK": "true", "AWS_REGION": "us-east-1"}}`)
 
-	p.init(t, env, "y", "sso", "", gitHubSecret)
+	p.init(t, env, mine("y", "sso", "", gitHubSecret)...)
 
 	mustContain(t, "stdout", p.stdout, "Which AWS profile")
 	if strings.Contains(p.stdout, "Which AWS region") {
@@ -225,7 +231,7 @@ func TestInitDecliningTheBedrockImportAsksAsUsual(t *testing.T) {
 	p.claudeSettings(t, bedrockSettings)
 	srv := fakeGateway(t)
 
-	p.init(t, env, append([]string{"n"}, viaGateway(srv)...)...)
+	p.init(t, env, mine(append([]string{"n"}, viaGateway(srv)...)...)...)
 
 	if got := valueAt(p.localConfig(t), "harnesses", "claude_code", "method"); got != "gateway" {
 		t.Errorf("method = %v", got)
@@ -244,7 +250,7 @@ func TestInitOffersNoImportWithoutABedrockSetup(t *testing.T) {
 			p.claudeSettings(t, settings)
 			srv := fakeGateway(t)
 
-			p.init(t, env, viaGateway(srv)...)
+			p.init(t, env, mine(viaGateway(srv)...)...)
 
 			if got := valueAt(p.localConfig(t), "harnesses", "claude_code", "method"); got != "gateway" {
 				t.Errorf("method = %v\n%s", got, p.stdout)
@@ -260,7 +266,7 @@ func TestInitWithAGhLoginOffersItAndWritesNoToken(t *testing.T) {
 	p := teamProject(t, map[string]string{"config.toml": teamConfig})
 	srv := fakeGateway(t)
 
-	p.init(t, p.initEnv(t, "gh"), "gateway", srv.URL, "", gatewaySecret, "")
+	p.init(t, p.initEnv(t, "gh"), mine("gateway", srv.URL, "", gatewaySecret, "")...)
 
 	mustContain(t, "stdout", p.stdout, "`gh` login", "fine-grained")
 	if strings.Contains(p.stdout, "personal-access-tokens/new") {
@@ -278,7 +284,7 @@ func TestInitWithAGhLoginCanStillTakeAToken(t *testing.T) {
 	p := teamProject(t, map[string]string{"config.toml": teamConfig})
 	srv := fakeGateway(t)
 
-	p.init(t, p.initEnv(t, "gh"), "gateway", srv.URL, "", gatewaySecret, "token", "", gitHubSecret)
+	p.init(t, p.initEnv(t, "gh"), mine("gateway", srv.URL, "", gatewaySecret, "token", "", gitHubSecret)...)
 
 	mustContain(t, "stdout", p.stdout, "personal-access-tokens/new")
 	if got := valueAt(p.localConfig(t), "tracker", "token", "stored"); got != "github.acme.shop" {
@@ -299,7 +305,7 @@ func TestInitKeepsAKeyWhereThePersonSays(t *testing.T) {
 			p := teamProject(t, map[string]string{"config.toml": teamConfig})
 			srv := fakeGateway(t)
 
-			p.init(t, p.initEnv(t), slices.Concat([]string{"gateway", srv.URL}, tt.answers, []string{"", gitHubSecret})...)
+			p.init(t, p.initEnv(t), mine(slices.Concat([]string{"gateway", srv.URL}, tt.answers, []string{"", gitHubSecret})...)...)
 
 			if got := valueAt(p.localConfig(t), "harnesses", "claude_code", "secret", tt.source); got != tt.ref {
 				t.Errorf("secret.%s = %v\n%s", tt.source, got, p.fliesswerkFile(t, "config.local.toml"))
@@ -314,7 +320,7 @@ func TestInitKeepsAKeyWhereThePersonSays(t *testing.T) {
 func TestInitKeepsASubscriptionTokenOutOfTheCredentialsFile(t *testing.T) {
 	p := teamProject(t, map[string]string{"config.toml": teamConfig})
 
-	p.init(t, p.initEnv(t), "oauth_token", "", "", "", gitHubSecret) // env, then the suggested variable
+	p.init(t, p.initEnv(t), mine("oauth_token", "", "", "", gitHubSecret)...) // env, then the suggested variable
 
 	signIn, _, _ := strings.Cut(p.stdout, "personal-access-tokens/new") // the Tracker's questions follow
 	mustContain(t, "stdout", signIn, "Where is the token kept?", "Which variable holds it? [CLAUDE_CODE_OAUTH_TOKEN]", "Anthropic's terms")
@@ -339,7 +345,7 @@ func TestInitCanUseAKeyAlreadyStored(t *testing.T) {
 	}
 	srv := fakeGateway(t)
 
-	p.init(t, env, "gateway", srv.URL, "", "", "", gitHubSecret) // the "" after the URL: stored, then keep it
+	p.init(t, env, mine("gateway", srv.URL, "", "", "", gitHubSecret)...) // the "" after the URL: stored, then keep it
 
 	if got := p.stored(t)["claude_gateway"]; got != "from-another-project" {
 		t.Errorf("stored = %q", got)
@@ -350,7 +356,7 @@ func TestInitSavesNothingWhenPersonalAnswersRunOut(t *testing.T) {
 	p := teamProject(t, map[string]string{"config.toml": teamConfig})
 	srv := fakeGateway(t)
 
-	code := p.init(t, p.initEnv(t), "gateway", srv.URL, "", gatewaySecret)
+	code := p.init(t, p.initEnv(t), mine("gateway", srv.URL, "", gatewaySecret)...)
 
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d", code, exitConfigError)
@@ -370,7 +376,7 @@ func TestInitSavesNothingWhenPersonalAnswersRunOut(t *testing.T) {
 }
 
 func TestInitBringsBackTheGitignoreEvenWithABrokenConfig(t *testing.T) {
-	p := teamProject(t, map[string]string{"config.toml": "version = [\n", "config.local.toml": "# mine\n"})
+	p := teamProject(t, map[string]string{"config.toml": "version = [\n", "config.local.toml": myDocker})
 
 	p.init(t, p.initEnv(t))
 
@@ -382,7 +388,7 @@ func TestInitImportsABedrockSetupWithoutARegion(t *testing.T) {
 	env := behindNothing(p.initEnv(t))
 	p.claudeSettings(t, `{"env": {"CLAUDE_CODE_USE_BEDROCK": "1", "AWS_PROFILE": "work"}}`)
 
-	p.init(t, env, "y", "eu-west-1", "", gitHubSecret)
+	p.init(t, env, mine("y", "eu-west-1", "", gitHubSecret)...)
 
 	local := p.localConfig(t)
 	if got := valueAt(local, "harnesses", "claude_code", "region"); got != "eu-west-1" {

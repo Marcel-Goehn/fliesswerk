@@ -195,22 +195,28 @@ func checkSandboxTools(ctx context.Context, values map[string]any, root string, 
 	hasServices := len(serviceNames(values)) > 0
 	switch stringAt(values, defaultSandbox, "sandbox", "kind") {
 	case "container":
-		if err := container.CheckEngine(ctx); err != nil {
+		engine, err := container.CheckEngine(ctx, engineOf(values))
+		if err != nil {
 			return err
 		}
-		say("container engine")
+		say("container engine " + engine.String())
 		if err := refuseLoopbackProxy(values); err != nil {
 			return err
 		}
 		if hasServices {
-			if err := container.CheckServices(ctx, root, composeFile(values), ownServices(values), sharedServices(values)); err != nil {
+			if err := container.CheckServices(ctx, engine, root, composeFile(values), ownServices(values), sharedServices(values)); err != nil {
 				return err
 			}
 			say("compose file")
 		}
 	case "native":
 		if hasServices {
-			if err := container.CheckPublishedServices(ctx, root, composeFile(values), ownServices(values), sharedServices(values)); err != nil {
+			engine, err := container.Resolve(ctx, engineOf(values))
+			if err != nil {
+				return err
+			}
+			say("container engine " + engine.String() + " (for the Services)")
+			if err := container.CheckPublishedServices(ctx, engineOf(values), root, composeFile(values), ownServices(values), sharedServices(values)); err != nil {
 				return err
 			}
 			say("compose file")
@@ -282,6 +288,10 @@ func loadConfig(cmd string, args []string, maxArgs int, stderr io.Writer, regist
 	}
 
 	root = projectRoot(cwd)
+	if exists(filepath.Join(root, filepath.FromSlash(config.ProjectFile))) && !exists(filepath.Join(root, filepath.FromSlash(config.LocalFile))) {
+		_, _ = fmt.Fprintf(stderr, "%s: %s isn't there, and it holds your own settings for this project, such as the Sandbox kind and the container engine; run `fliesswerk init`, which asks for them and leaves the team's files alone\n", cmd, config.LocalFile)
+		return nil, "", nil, exitConfigError, false
+	}
 	r := config.Load(root, lf.overrides(fs))
 	r.Diagnostics = append(r.Diagnostics, config.CheckFactory(r.Values, version)...)
 	for _, d := range r.Diagnostics {

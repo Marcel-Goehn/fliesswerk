@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/Marcel-Goehn/fliesswerk/internal/config"
@@ -53,35 +54,44 @@ func runInit(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	ask := setup.NewAsker(stdin, stdout)
 
 	var files []setup.File
-	var unsandboxed bool
+	var answers *setup.Answers
 	var repo string
 	var values map[string]any
+	hasServices := false
 	if hasConfig {
-		// An unreadable config has no kind, so only .gitignore can come back.
 		values = config.Load(root, nil).Values
-		files = setup.Recreated(facts, sandboxKindOf(values), h)
+		files = setup.Recreated()
 		repo = stringAt(values, facts.Repo, "tracker", "repo")
+		hasServices = config.HasServices(values)
 	} else {
-		answers, err := setup.Ask(root, ask, facts, trackerInfo.Questions)
+		a, err := setup.Ask(root, ask, facts, trackerInfo.Questions)
 		if err != nil {
 			return fail(err)
 		}
-		files, unsandboxed, repo = setup.Files(facts, answers, h), answers.Unsandboxed, answers.Values["tracker.repo"]
+		files, answers, repo, hasServices = setup.Files(facts, a, h), &a, a.Values["tracker.repo"], a.ComposeFile != ""
 	}
+	// The kind is this person's: asked now, or in the file they have. An
+	// unreadable file has no kind, so no Containerfile comes back.
+	var kind string
 	var personal setup.Personal
 	if !hasLocal {
 		home, _ := os.UserHomeDir() // without one, there's just nothing to import
 		personal, err = setup.AskPersonal(ctx, ask, setup.PersonalInput{Harness: desc, Tracker: trackerInfo.Access, Repo: repo, Store: store, Root: root, Home: home,
-			FindInterception: findInterception(values, root), TeamCACerts: stringsOf(valueAt(values, "network", "ca_certs"))})
+			FindInterception: findInterception(values, root), TeamCACerts: stringsOf(valueAt(values, "network", "ca_certs")),
+			HasServices: hasServices, Installed: installed})
 		if err != nil {
 			return fail(err)
 		}
 		if err := personal.Save(); err != nil {
 			return fail(err)
 		}
+		files = append(files, setup.LocalFile(personal))
+		kind = personal.Kind()
+	} else if local := config.LoadLocal(root); local != nil {
+		kind = sandboxKindOf(local)
 	}
-	if !hasLocal || unsandboxed {
-		files = append(files, setup.LocalFile(personal, unsandboxed))
+	if kind == "container" {
+		files = append(files, setup.Containerfile(facts, answers, h))
 	}
 
 	written, kept, err := setup.Write(root, files)
@@ -120,11 +130,13 @@ func runInit(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
-// sandboxKindOf is the Sandbox kind this person runs, "" for a config that
-// can't be read.
+// sandboxKindOf is the Sandbox kind this person runs.
 func sandboxKindOf(values map[string]any) string {
-	if values == nil {
-		return ""
-	}
 	return stringAt(values, defaultSandbox, "sandbox", "kind")
+}
+
+// installed reports whether a container engine is on PATH.
+func installed(engine string) bool {
+	_, err := exec.LookPath(engine)
+	return err == nil
 }

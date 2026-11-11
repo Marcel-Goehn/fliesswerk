@@ -226,6 +226,11 @@ func baseEnv(path string) []string {
 	return append(env, "PATH="+path)
 }
 
+// engineOnly is the least config.local.toml a project has: the engine of the
+// default container Sandbox. projectDir adds it to a config.local.toml that
+// mentions no sandbox of its own.
+const engineOnly = "[sandbox]\nengine = \"docker\"\n"
+
 // projectDir writes .fliesswerk/<name> for every file into a new git
 // checkout whose .fliesswerk/.gitignore ignores .env (unless files has its
 // own), and returns the project root.
@@ -238,6 +243,9 @@ func projectDir(t *testing.T, files map[string]string) string {
 	giveRemote(t, root)
 	if _, ok := files[".gitignore"]; !ok {
 		files[".gitignore"] = "config.local.toml\n.env\nstate/\nlogs/\n"
+	}
+	if local := files["config.local.toml"]; !strings.Contains(local, "sandbox") {
+		files["config.local.toml"] = local + engineOnly // a person's own file always has their Sandbox
 	}
 	if err := os.MkdirAll(filepath.Join(root, ".fliesswerk"), 0o750); err != nil {
 		t.Fatal(err)
@@ -335,7 +343,7 @@ func TestCheck(t *testing.T) {
 	})
 
 	t.Run("CLI flags override config files", func(t *testing.T) {
-		root := projectDir(t, map[string]string{"config.toml": "version = 1\n[sandbox]\nkind = \"container\"\n"})
+		root := projectDir(t, map[string]string{"config.toml": "version = 1\n", "config.local.toml": "[sandbox]\nkind = \"container\"\nengine = \"docker\"\n"})
 		_, stderr, code := runIn(t, bin, root, "check", "--sandbox", "none")
 		if code != 3 || !strings.Contains(stderr, "i_accept_unsandboxed_risk") {
 			t.Fatalf("exit code = %d, want 3 asking for the acknowledgement; stderr: %s", code, stderr)
