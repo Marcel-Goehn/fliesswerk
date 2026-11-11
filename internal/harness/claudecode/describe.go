@@ -27,6 +27,23 @@ func parseVersion(output string) (string, error) {
 	return m[1], nil
 }
 
+// startCheckPrompt is what `check` starts Claude Code with. Without a
+// credential it never reaches a model.
+const startCheckPrompt = "fliesswerk check: does Claude Code start? Reply with OK."
+
+// readStart tells from Claude Code's output whether it started: with no
+// credential, it says it isn't logged in. One that can't start (such as
+// without bubblewrap for env scrubbing) says so first.
+func readStart(output string) harness.Start {
+	switch {
+	case strings.Contains(output, "could not start"):
+		return harness.NotStarted
+	case strings.Contains(output, "Not logged in"):
+		return harness.Started
+	}
+	return harness.StartUnclear
+}
+
 const anthropicHost = "api.anthropic.com"
 
 func anthropicEndpoints(map[string]string) []string { return []string{anthropicHost} }
@@ -133,6 +150,26 @@ func (ClaudeCode) Describe() harness.Description {
 		// Skips the first-run onboarding in a fresh home.
 		HomeSeed:     []harness.HomeFile{{Path: ".claude.json", Content: `{"hasCompletedOnboarding":true}`}},
 		HomeWritable: []string{".claude", ".claude.json"},
+
+		StartCheck: &harness.StartCheck{
+			Step: harness.Step{Prompt: startCheckPrompt, ReportSchema: harness.ReportSchema},
+			Read: readStart,
+			ScrubNeeds: &harness.Requirement{
+				Name: "bubblewrap",
+				ContainerInstall: "USER root\n" +
+					"RUN apt-get update && apt-get install -y --no-install-recommends bubblewrap && rm -rf /var/lib/apt/lists/*\n" +
+					"USER agent\n",
+				HostInstallHint: map[string]string{"linux": "sudo apt-get install -y bubblewrap"},
+			},
+			SkipOnHost: map[string]string{"darwin": "Claude Code keeps its own login in the Keychain, which a fresh home doesn't hide"},
+			// Where its own login lives, and what switches it to a provider
+			// that signs in from the user's own AWS or Google setup.
+			LoginEnv: []string{
+				"CLAUDE_CONFIG_DIR", "ANTHROPIC_BASE_URL",
+				"CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY",
+				"AWS_PROFILE", "AWS_SHARED_CREDENTIALS_FILE", "AWS_CONFIG_FILE", "GOOGLE_APPLICATION_CREDENTIALS",
+			},
+		},
 
 		Capabilities: harness.Capabilities{
 			Prompt:       harness.Stdin,

@@ -60,7 +60,55 @@ type Description struct {
 	// the Harness must be able to write.
 	HomeWritable []string
 
+	// StartCheck is how `check` starts the Harness where Steps run, nil if
+	// it doesn't.
+	StartCheck *StartCheck
+
 	Capabilities Capabilities
+}
+
+// StartCheck is how `check` starts the Harness once with a Step's env but
+// no credential, to see that it starts where Steps run. It spends no tokens
+// and sends no credential anywhere: with none, the Harness stops at saying
+// it isn't logged in.
+type StartCheck struct {
+	// Step is what Command gets. The core sets ScrubCredentials as a Step
+	// would, and never a CredentialCommand.
+	Step Step
+	// Read tells from what the Harness printed whether it started.
+	Read func(output string) Start
+	// ScrubNeeds is what the Harness needs where Steps run to scrub
+	// credentials, nil for nothing.
+	ScrubNeeds *Requirement
+	// SkipOnHost says, by GOOS, why the Harness isn't started on the host
+	// there: where its own login is somewhere a fresh home doesn't hide,
+	// it would be logged in and spend tokens.
+	SkipOnHost map[string]string
+	// LoginEnv are variables that point the Harness at a login of its own
+	// or switch on a provider that signs in by itself, left out on the host.
+	LoginEnv []string
+}
+
+// Start is what a StartCheck read from the Harness.
+type Start int
+
+const (
+	// StartUnclear is output the Harness doesn't recognise.
+	StartUnclear Start = iota
+	// Started is the Harness starting, and stopping at the missing login.
+	Started
+	// NotStarted is the Harness saying it can't start.
+	NotStarted
+)
+
+// Requirement is something the Harness needs where Steps run.
+type Requirement struct {
+	// Name is what it is called, as in "needs bubblewrap".
+	Name string
+	// ContainerInstall is the Containerfile snippet that installs it.
+	ContainerInstall string
+	// HostInstallHint is how to install it on the host, by GOOS.
+	HostInstallHint map[string]string
 }
 
 // CheckVersion reports what's wrong with the output of the version command.

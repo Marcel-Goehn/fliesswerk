@@ -162,6 +162,8 @@ That is the trade-off. Say your tests need a `DATABASE_URL` with a password:
 - **Keep scrubbing on** (recommended), and give the tests the address in a way that isn't a secret. A test database in a [Service](services.md) has a throwaway password, so put the whole URL in `[services.postgres] env` or `[sandbox.env]`. A Hook that needs a real secret, for seeding say, gets it from `[sandbox.secrets]`.
 - **Turn scrubbing off** with `scrub_credentials = false`, and the agent's commands and `verify` get every project secret. The agent's own commands also get the Harness's credential. The agent can then read them and send them to any allowed host. `check` warns about it when there are project secrets.
 
+On Linux, Claude Code scrubs with bubblewrap, and won't start where Steps run without it. `check` starts Claude Code there once, without a credential, and fails with the fix if it can't start.
+
 ### `sandbox.network`
 
 Network access from the Sandbox. Every connection goes through the Factory's egress proxy, which lets through only the hosts on this list plus the Harness's own endpoints, and logs every host it denies.

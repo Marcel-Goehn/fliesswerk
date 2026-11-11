@@ -37,6 +37,12 @@
 // ANTHROPIC_* and GIT_* env, and the variables named in the
 // comma-separated $FWK_FAKE_LOG_ENV.
 //
+// Given the prompt `check` starts the Harness with to see it start, it
+// answers as Claude Code does without a credential: "Not logged in". With
+// $FWK_FAKE_START set it answers otherwise: `needs_bwrap` refuses to start
+// while CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1, as Claude Code does without
+// bubblewrap; `unclear` prints something else; `hang` goes silent.
+//
 // A `background` grandchild inherits stdout and stderr and appends a byte
 // to the named file, relative to the work dir, every 20ms until it is
 // killed: a test sees it is dead once the file stops growing.
@@ -52,6 +58,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness/claudecode"
 )
 
 type script struct {
@@ -116,6 +124,9 @@ func main() {
 		fail("Error: Input must be provided either through stdin or as a prompt argument when using --print")
 	}
 	logInvocation(args, prompt)
+	if prompt == (claudecode.ClaudeCode{}).Describe().StartCheck.Step.Prompt {
+		start()
+	}
 
 	s := pick(prompt)
 	w := writer{}
@@ -155,6 +166,21 @@ func main() {
 		code = *s.Exit
 	}
 	os.Exit(code)
+}
+
+// start answers `check`'s start probe, then exits.
+func start() {
+	switch os.Getenv("FWK_FAKE_START") {
+	case "needs_bwrap":
+		if os.Getenv("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB") == "1" {
+			fail("Claude Code could not start: bubblewrap is required for subprocess env scrubbing and isolation. Install with: sudo apt-get install -y bubblewrap, set sandbox.bwrapPath in managed settings, or set CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=0 to disable (loses subprocess isolation).")
+		}
+	case "unclear":
+		fail("fakeclaude: something nobody expected")
+	case "hang":
+		time.Sleep(10 * time.Minute)
+	}
+	fail("Not logged in · Please run /login")
 }
 
 func (s *session) expand() {

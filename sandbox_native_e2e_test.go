@@ -235,6 +235,7 @@ run = 'test -n "$FLIESSWERK_SANDBOX"'
 		"direct connections are blocked",
 		"github.com is reachable through the egress proxy",
 		"claude ok",
+		"claude starts where Steps run",
 		"`sandboxed` passes on main",
 	)
 
@@ -243,4 +244,48 @@ run = 'test -n "$FLIESSWERK_SANDBOX"'
 		t.Fatalf("exit code = %d, want %d\nstderr: %s", code, exitConfigError, p.stderr)
 	}
 	mustContain(t, "stderr", p.stderr, "`broken` is already failing on main", "nope")
+}
+
+func TestCheckFailsWhenTheHarnessCannotStartInANativeSandbox(t *testing.T) {
+	if _, err := exec.LookPath("bwrap"); err != nil && runtime.GOOS == "linux" {
+		t.Skip("no bwrap; the native job installs it")
+	}
+	if _, err := native.Check(context.Background()); err != nil {
+		t.Skipf("no native Sandbox here: %v", err)
+	}
+	bin := buildTestFliesswerk(t)
+	p := newRunProject(t, bin, cartIssues(), `{"sessions": []}`)
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), `[sandbox]
+kind = "native"
+
+[sandbox.env]
+FWK_FAKE_START = "needs_bwrap"
+`)
+	curl, err := exec.LookPath("curl") // `check` probes the Sandbox with it
+	if err != nil {
+		t.Fatal(err)
+	}
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := []string{fakeClaudeBinDir(t), filepath.Dir(curl), filepath.Dir(git), "/bin"}
+	if runtime.GOOS == "linux" {
+		bwrap, err := exec.LookPath("bwrap")
+		if err != nil {
+			t.Fatal(err)
+		}
+		path = append(path, filepath.Dir(bwrap))
+	}
+	p.extraEnv = append(p.extraEnv, "HOME="+t.TempDir(), "PATH="+strings.Join(path, string(os.PathListSeparator)))
+
+	code := p.fwk(t, "check")
+
+	if code != exitConfigError {
+		t.Fatalf("exit code = %d, want %d\nstdout: %s\nstderr: %s", code, exitConfigError, p.stdout, p.stderr)
+	}
+	mustContain(t, "stderr", p.stderr, "claude can't start where Steps run", "bubblewrap is required", "scrub_credentials = false")
+	if runtime.GOOS == "linux" {
+		mustContain(t, "stderr", p.stderr, "Install it: sudo apt-get install -y bubblewrap")
+	}
 }

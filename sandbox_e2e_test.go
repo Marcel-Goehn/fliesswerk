@@ -162,6 +162,7 @@ func TestCheckProvesAContainerSandboxAndRunsItsCommands(t *testing.T) {
 		"direct connections are blocked",
 		"github.com is reachable through the egress proxy",
 		"claude ok",
+		"claude starts where Steps run",
 		"sandbox_created: `"+inAContainer+"` worked",
 		"`inside` passes on main",
 	)
@@ -179,6 +180,34 @@ func TestCheckProvesAContainerSandboxAndRunsItsCommands(t *testing.T) {
 	}
 	mustContain(t, "stderr", p.stderr, "`broken` is already failing on main", "nope")
 	mustContain(t, "stdout", p.stdout, "`inside` passes on main")
+	assertNoCheckLeftBehind(t)
+}
+
+func TestCheckFailsWhenTheHarnessCannotStartInAContainerSandbox(t *testing.T) {
+	bin := buildTestFliesswerk(t)
+	p := newRunProject(t, bin, cartIssues(), `{"sessions": []}`)
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "Containerfile"), "FROM docker.io/curlimages/curl:latest\n")
+	gitIn(t, p.work, "add", ".")
+	gitIn(t, p.work, "commit", "-q", "-m", "Add the Containerfile")
+	gitIn(t, p.work, "push", "-q", "origin", "main")
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), `[sandbox]
+kind = "container"
+engine = "`+enginetest.Engine(t)+`"
+run_args = ["--mount", "type=bind,source=`+filepath.Join(fakeClaudeBinDir(t), "claude")+`,target=/usr/local/bin/claude,readonly"]
+
+[sandbox.env]
+FWK_FAKE_START = "needs_bwrap"
+`)
+	// Podman and Docker need more than the tests' minimal PATH offers.
+	p.extraEnv = append(p.extraEnv, "PATH="+fakeClaudeBinDir(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	code := p.fwk(t, "check")
+
+	if code != exitConfigError {
+		t.Fatalf("exit code = %d, want %d\nstdout: %s\nstderr: %s", code, exitConfigError, p.stdout, p.stderr)
+	}
+	mustContain(t, "stderr", p.stderr, "claude can't start where Steps run", "bubblewrap is required",
+		"Install it in .fliesswerk/Containerfile:", "apt-get install -y --no-install-recommends bubblewrap", "scrub_credentials = false")
 	assertNoCheckLeftBehind(t)
 }
 

@@ -9,11 +9,11 @@ import (
 	"strings"
 )
 
-// resolve finds argv's binary on PATH. A Windows `.cmd` or `.bat` shim
+// Resolve finds argv's binary on PATH. A Windows `.cmd` or `.bat` shim
 // (what npm installs) is replaced by the command it runs, since passing
 // arguments through cmd.exe mangles them (quotes in the report schema)
 // and is a known injection hazard.
-func resolve(argv []string) ([]string, error) {
+func Resolve(argv []string) ([]string, error) {
 	bin, err := exec.LookPath(argv[0])
 	if err != nil {
 		return nil, err

@@ -68,6 +68,20 @@ type Runner struct {
 	Sandbox sandbox.Sandbox
 }
 
+// Env is what a Step's env gets beyond what it inherits: the
+// non-interactive git env, env (its credentials and project secrets) and
+// the Harness's flags from inv.
+func Env(inv harness.Invocation, env map[string]string) []string {
+	out := slices.Clone(git.NonInteractiveEnv)
+	for k, v := range env {
+		out = append(out, k+"="+v)
+	}
+	for k, v := range inv.Env {
+		out = append(out, k+"="+v)
+	}
+	return out
+}
+
 // Run runs one Step in dir and returns its Outcome. The Step's env is the
 // Factory's own without Unset, plus the non-interactive git env, Env and
 // the Harness's flags; its stdin is the prompt, then closed. With a Sandbox
@@ -75,13 +89,7 @@ type Runner struct {
 // unused.
 func (r Runner) Run(ctx context.Context, s harness.Step, dir string) harness.Outcome {
 	inv := r.Harness.Command(s)
-	stepEnv := slices.Clone(git.NonInteractiveEnv)
-	for k, v := range r.Env {
-		stepEnv = append(stepEnv, k+"="+v)
-	}
-	for k, v := range inv.Env {
-		stepEnv = append(stepEnv, k+"="+v)
-	}
+	stepEnv := Env(inv, r.Env)
 	argv, env, start := inv.Argv, []string(nil), startTree
 	if r.Sandbox != nil {
 		argv, env = r.Sandbox.Exec(inv.Argv, stepEnv)
@@ -93,7 +101,7 @@ func (r Runner) Run(ctx context.Context, s harness.Step, dir string) harness.Out
 		})
 		env = append(env, stepEnv...)
 	}
-	argv, err := resolve(argv)
+	argv, err := Resolve(argv)
 	if err != nil {
 		return failed(fmt.Sprintf("can't start %s: %v", inv.Argv[0], err))
 	}

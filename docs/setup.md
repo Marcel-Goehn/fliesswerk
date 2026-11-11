@@ -70,7 +70,7 @@ For a language without a recipe, the Containerfile has a block marked `TODO(flie
 
 ### The end of `init`
 
-`init` ends by running `fliesswerk check --commands`. It builds the image, resolves every credential, tests the ones the Factory uses itself (GitHub, and AWS for Bedrock), does a dry-run push, starts a Sandbox, and runs your `sandbox_created` Hook and every Feedback command once on the base branch, with no agent and no tokens spent. A command that already fails on the base branch shows up here, so the agent isn't blamed for it.
+`init` ends by running `fliesswerk check --commands`. It builds the image, resolves every credential, tests the ones the Factory uses itself (GitHub, and AWS for Bedrock), does a dry-run push, starts a Sandbox, starts the Harness in it without a credential, and runs your `sandbox_created` Hook and every Feedback command once on the base branch, with no agent and no tokens spent. A command that already fails on the base branch shows up here, so the agent isn't blamed for it.
 
 It ends with either:
 
