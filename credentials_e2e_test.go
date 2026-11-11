@@ -273,7 +273,7 @@ func TestARunDeliversSecretsToTheStepAndRedactsThemEverywhere(t *testing.T) {
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, {"match": "Ticket #2", "expand": true, "actions": [
 		{"run": ["git", "commit", "-q", "--allow-empty", "-m", "token $ANTHROPIC_AUTH_TOKEN db $DB_PASSWORD"]}
 	], "report": {"outcome": "done", "summary": "Used $ANTHROPIC_AUTH_TOKEN and $DB_PASSWORD."}}]}`)
-	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), noSandbox+"scrub_credentials = false\n"+
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), noSandbox+"withhold_secrets = false\n"+
 		"[sandbox.secrets]\nDB_PASSWORD = { dotenv = \"DB_PASSWORD\" }\n"+gatewayConfig(srv.URL))
 	writeFile(t, filepath.Join(p.work, ".fliesswerk", ".env"), "DB_PASSWORD=db-secret-pw\n")
 	logPath := filepath.Join(t.TempDir(), "harness.jsonl")
@@ -294,6 +294,7 @@ func TestARunDeliversSecretsToTheStepAndRedactsThemEverywhere(t *testing.T) {
 		if env["ANTHROPIC_AUTH_TOKEN"] != "gw-secret-token" || env["ANTHROPIC_BASE_URL"] != srv.URL || env["DB_PASSWORD"] != "db-secret-pw" {
 			t.Errorf("the Step's env = %v, want the gateway credential and the project secret", env)
 		}
+		mustNotScrub(t, env)
 		for _, a := range c.Argv {
 			if strings.Contains(a, "gw-secret-token") || strings.Contains(a, "db-secret-pw") {
 				t.Errorf("a secret is on the command line: %q", c.Argv)
@@ -312,7 +313,7 @@ func TestARunDeliversSecretsToTheStepAndRedactsThemEverywhere(t *testing.T) {
 	}
 }
 
-func TestWithScrubbingOnTheAgentGetsNoProjectSecretOrTrackerToken(t *testing.T) {
+func TestWithSecretsWithheldTheAgentGetsNoProjectSecretOrTrackerToken(t *testing.T) {
 	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, {"match": "Ticket #2", "actions": [
 		{"run": ["git", "commit", "-q", "--allow-empty", "-m", "work"]}
@@ -335,9 +336,10 @@ func TestWithScrubbingOnTheAgentGetsNoProjectSecretOrTrackerToken(t *testing.T) 
 	for _, c := range calls {
 		for _, name := range []string{"DB_PASSWORD", "FWK_GH_PAT", "GH_TOKEN"} {
 			if _, ok := c.Env[name]; ok {
-				t.Errorf("the agent got %s with scrubbing on", name)
+				t.Errorf("the agent got %s with withhold_secrets on", name)
 			}
 		}
+		mustNotScrub(t, c.Env)
 	}
 }
 

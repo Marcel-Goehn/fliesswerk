@@ -200,7 +200,7 @@ func TestSecretsNeverReachTheRecord(t *testing.T) {
 	p := newRunProject(t, buildTestFliesswerk(t), cartIssues(), `{"sessions": [{"match": "Ticket #2", "expand": true, "actions": [
 		{"text": "the token is $FWK_TEST_SECRET"}
 	], "report": {"outcome": "cannot_do", "reason": "saw $FWK_TEST_SECRET", "summary": "s"}}]}`)
-	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), noSandbox+"scrub_credentials = false\n[sandbox.secrets]\nFWK_TEST_SECRET = { env = \"FWK_SOURCE\" }\n")
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), noSandbox+"withhold_secrets = false\n[sandbox.secrets]\nFWK_TEST_SECRET = { env = \"FWK_SOURCE\" }\n")
 	p.extraEnv = []string{"FWK_SOURCE=s3cr3t-hunter2"}
 
 	code := p.run(t, "--verbose")

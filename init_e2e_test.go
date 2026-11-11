@@ -216,7 +216,7 @@ func TestInitWritesEveryDefaultWithAOneLineComment(t *testing.T) {
 
 	text := p.fliesswerkFile(t, "config.toml")
 	mustContain(t, "config.toml", text, "max_parallel", "max_iterations", "in_progress_label", "cannot_do_label",
-		"prefix", "run_args", "read_only_paths", "writable_paths", "scrub_credentials", "ca_certs", "upstream_proxy",
+		"prefix", "run_args", "read_only_paths", "writable_paths", "withhold_secrets", "ca_certs", "upstream_proxy",
 		"keep_days", "idle_timeout", "[sandbox.env]", "[sandbox.secrets]", "[steps.review]", "[steps.implement]", "[steps.merge]")
 
 	key := regexp.MustCompile(`^[a-z_]+\s*=`)

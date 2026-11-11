@@ -245,9 +245,8 @@ func (c liveCheck) checkStart(ctx context.Context, desc harness.Description, sb 
 		c.say("%s isn't started on the host to see that it starts: %s", desc.Binary, why)
 		return nil
 	}
-	scrub := boolAt(c.values, true, "sandbox", "scrub_credentials")
 	st := sc.Step
-	st.ScrubCredentials, st.CredentialCommand = scrub, ""
+	st.CredentialCommand = ""
 	out, timedOut, err := c.startHarness(ctx, desc, sb, dir, theHarness.Command(st))
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -258,7 +257,7 @@ func (c liveCheck) checkStart(ctx context.Context, desc harness.Description, sb 
 	case start == harness.Started:
 		c.say("%s starts where Steps run", desc.Binary)
 	case start == harness.NotStarted:
-		return fmt.Errorf("%s can't start where Steps run, so every Step would fail. It said:\n%s%s", desc.Binary, tail(out), c.startFix(desc, scrub))
+		return fmt.Errorf("%s can't start where Steps run, so every Step would fail. It said:\n%s", desc.Binary, tail(out))
 	default:
 		how := ""
 		if err != nil {
@@ -267,18 +266,6 @@ func (c liveCheck) checkStart(ctx context.Context, desc harness.Description, sb 
 		c.warn("can't tell whether %s starts where Steps run, so a Step may fail%s. It printed:\n%s", desc.Binary, how, tail(out))
 	}
 	return nil
-}
-
-// startFix is what makes the Harness start where Steps run, as far as the
-// Factory knows.
-func (c liveCheck) startFix(desc harness.Description, scrub bool) string {
-	need := desc.StartCheck.ScrubNeeds
-	if !scrub || need == nil {
-		return ""
-	}
-	return fmt.Sprintf("\nWith `scrub_credentials` on (the default), %s needs %s where Steps run. %s\n"+
-		"Or set `scrub_credentials = false` under [sandbox]: %s then starts, but the agent's commands can read the Harness's credential and the project secrets.",
-		desc.Binary, need.Name, c.installFix(need.ContainerInstall, need.HostInstallHint), desc.Binary)
 }
 
 // startHarness runs inv where Steps run with no credential and returns what

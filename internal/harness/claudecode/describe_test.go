@@ -102,10 +102,8 @@ func TestDescribeAuthMethods(t *testing.T) {
 func TestDescribeEnvAndHome(t *testing.T) {
 	d := claudecode.ClaudeCode{}.Describe()
 
-	for _, name := range []string{"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"} {
-		if !slices.Contains(d.FixedEnv, name) {
-			t.Errorf("FixedEnv %q lacks %s", d.FixedEnv, name)
-		}
+	if !slices.Contains(d.FixedEnv, "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC") || slices.Contains(d.FixedEnv, "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB") {
+		t.Errorf("FixedEnv = %q, want CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC and never CLAUDE_CODE_SUBPROCESS_ENV_SCRUB", d.FixedEnv)
 	}
 	for _, name := range []string{"AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"} {
 		if !slices.Contains(d.RedactEnv, name) {

@@ -151,18 +151,18 @@ Extra paths a native Sandbox may read, absolute or starting with `~/`. Engine so
 
 Extra paths a native Sandbox may write, with the same rules. `check` warns about paths that reach past the Sandbox, such as your home directory, shell startup files or a directory on your `PATH`.
 
-### `sandbox.scrub_credentials`
+### `sandbox.withhold_secrets`
 
-Whether the agent's own commands run without credentials in their environment. Default `true`.
+Whether the Factory keeps the [project secrets](#sandboxsecrets) from the agent and from its own `verify` run. Default `true`.
 
-The Harness needs its credential, but the commands the agent runs, such as your tests, don't. With scrubbing on, those commands, the Factory's own `verify` run included, get neither the Harness's credential nor the [project secrets](#sandboxsecrets). Only Hooks get project secrets.
+`verify` runs the agent's code, so it gets no more than the agent does: with this on, neither of them gets a project secret. Only Hooks get them.
 
 That is the trade-off. Say your tests need a `DATABASE_URL` with a password:
 
-- **Keep scrubbing on** (recommended), and give the tests the address in a way that isn't a secret. A test database in a [Service](services.md) has a throwaway password, so put the whole URL in `[services.postgres] env` or `[sandbox.env]`. A Hook that needs a real secret, for seeding say, gets it from `[sandbox.secrets]`.
-- **Turn scrubbing off** with `scrub_credentials = false`, and the agent's commands and `verify` get every project secret. The agent's own commands also get the Harness's credential. The agent can then read them and send them to any allowed host. `check` warns about it when there are project secrets.
+- **Keep it on** (recommended), and give the tests the address in a way that isn't a secret. A test database in a [Service](services.md) has a throwaway password, so put the whole URL in `[services.postgres] env` or `[sandbox.env]`. A Hook that needs a real secret, for seeding say, gets it from `[sandbox.secrets]`.
+- **Turn it off** with `withhold_secrets = false`, and the agent and `verify` get every project secret. With `kind = "none"`, `verify` also keeps a Harness credential from your own environment. The agent can then read them and send them to any allowed host. `check` warns about it when there are project secrets.
 
-On Linux, Claude Code scrubs with bubblewrap, and won't start where Steps run without it. `check` starts Claude Code there once, without a credential, and fails with the fix if it can't start.
+The Harness's own credential is in the Harness's environment whatever you set, and a command the agent runs can read it if it goes looking (see [Residual risks](#residual-risks)). The Factory doesn't ask Claude Code to scrub its commands' environment: that needs a bubblewrap inside the Sandbox, which doesn't work there ([ADR 0010](adr/0010-no-harness-subprocess-scrubbing-the-egress-proxy-is-the-boundary.md)). The Sandbox and the egress proxy are the boundary.
 
 ### `sandbox.network`
 
@@ -194,7 +194,7 @@ NODE_ENV = "test"
 
 ### `sandbox.secrets`
 
-Project secrets, by the environment variable that holds them, each from a [secret source](#secret-sources). Every Hook in a Sandbox gets them all, and a host Hook gets only the ones its `secrets` names. With `scrub_credentials = false` the agent gets them too.
+Project secrets, by the environment variable that holds them, each from a [secret source](#secret-sources). Every Hook in a Sandbox gets them all, and a host Hook gets only the ones its `secrets` names. With `withhold_secrets = false` the agent and `verify` get them too.
 
 ### `sandbox.secrets.<name>`
 
@@ -422,6 +422,7 @@ The Sandbox narrows what an agent can do; it doesn't make the agent trustworthy.
 - **Harness-written transcripts.** The Factory redacts everything it writes, but not the transcripts the Harness itself keeps.
 - **A process escaping the kill on macOS.** A process that calls `setsid` leaves the process group the Factory kills when a Step ends.
 - **Hooks planted in `.claude/`.** Claude Code runs hooks from the project's `.claude/` inside the Sandbox. Protect `.claude/` with `protected_paths`, as `init` suggests, so an agent can't plant one for a later Step.
-- **Project secrets with scrubbing off.** The agent can read every project secret. See [`sandbox.scrub_credentials`](#sandboxscrub_credentials).
+- **The Harness's credential.** A command the agent runs can read the Harness's credential if it goes looking, for example in `/proc/<pid>/environ`, and send it to an allowed host. The Factory doesn't loosen the Sandbox to hide it ([ADR 0010](adr/0010-no-harness-subprocess-scrubbing-the-egress-proxy-is-the-boundary.md)).
+- **Project secrets with `withhold_secrets = false`.** The agent can read every project secret. See [`sandbox.withhold_secrets`](#sandboxwithhold_secrets).
 - **Shared Services.** Every Sandbox reaches the same copy, so an agent can read or change another Ticket's data.
 - **`kind = "none"`.** The agent can read and change anything your user can.

@@ -15,10 +15,9 @@ const prompt = "Implement #42.\nIt's a long prompt with \"quotes\" & newlines."
 
 func step() harness.Step {
 	return harness.Step{
-		Prompt:           prompt,
-		Model:            "claude-sonnet-5-5",
-		ReportSchema:     harness.ReportSchema,
-		ScrubCredentials: true,
+		Prompt:       prompt,
+		Model:        "claude-sonnet-5-5",
+		ReportSchema: harness.ReportSchema,
 	}
 }
 
@@ -116,19 +115,10 @@ func TestCommandSetsEffortOnlyWhenSet(t *testing.T) {
 func TestCommandEnv(t *testing.T) {
 	s := step()
 	env := claudecode.ClaudeCode{}.Command(s).Env
-	want := map[string]string{
-		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-		"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB":         "1",
-	}
+	// Never CLAUDE_CODE_SUBPROCESS_ENV_SCRUB (ADR 0010).
+	want := map[string]string{"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}
 	if !maps.Equal(env, want) {
 		t.Errorf("env = %v, want %v", env, want)
-	}
-
-	s.ScrubCredentials = false
-	env = claudecode.ClaudeCode{}.Command(s).Env
-	want = map[string]string{"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}
-	if !maps.Equal(env, want) {
-		t.Errorf("scrub off: env = %v, want %v", env, want)
 	}
 }
 

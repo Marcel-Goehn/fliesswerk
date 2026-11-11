@@ -197,7 +197,7 @@ func TestRunRedactsAProjectSecretInTheFailureComment(t *testing.T) {
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [{"match": "Ticket #2", "expand": true,
 		"actions": [{"text": "The database password is $DB_PASSWORD."}],
 		"report": {"outcome": "cannot_do", "reason": "No database.", "summary": "Stopped."}}]}`)
-	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), noSandbox+"scrub_credentials = false\n[sandbox.secrets]\nDB_PASSWORD = { env = \"FWK_TEST_DB_PASSWORD\" }\n")
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), noSandbox+"withhold_secrets = false\n[sandbox.secrets]\nDB_PASSWORD = { env = \"FWK_TEST_DB_PASSWORD\" }\n")
 	p.extraEnv = []string{"FWK_TEST_DB_PASSWORD=s3cr3t-hunter2", "FWK_FAKE_LOG_ENV=DB_PASSWORD"}
 
 	if code := p.run(t); code != 1 {

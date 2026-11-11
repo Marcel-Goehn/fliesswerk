@@ -39,9 +39,9 @@
 //
 // Given the prompt `check` starts the Harness with to see it start, it
 // answers as Claude Code does without a credential: "Not logged in". With
-// $FWK_FAKE_START set it answers otherwise: `needs_bwrap` refuses to start
-// while CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1, as Claude Code does without
-// bubblewrap; `unclear` prints something else; `hang` goes silent.
+// $FWK_FAKE_START set it answers otherwise: `cannot_start` says it could not
+// start, as Claude Code does when something it needs is missing; `unclear`
+// prints something else; `hang` goes silent.
 //
 // A `background` grandchild inherits stdout and stderr and appends a byte
 // to the named file, relative to the work dir, every 20ms until it is
@@ -171,10 +171,8 @@ func main() {
 // start answers `check`'s start probe, then exits.
 func start() {
 	switch os.Getenv("FWK_FAKE_START") {
-	case "needs_bwrap":
-		if os.Getenv("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB") == "1" {
-			fail("Claude Code could not start: bubblewrap is required for subprocess env scrubbing and isolation. Install with: sudo apt-get install -y bubblewrap, set sandbox.bwrapPath in managed settings, or set CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=0 to disable (loses subprocess isolation).")
-		}
+	case "cannot_start":
+		fail("Claude Code could not start: fakeclaude was told not to")
 	case "unclear":
 		fail("fakeclaude: something nobody expected")
 	case "hang":

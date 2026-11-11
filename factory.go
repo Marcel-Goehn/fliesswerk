@@ -422,10 +422,10 @@ func secretsForRun(values map[string]any, root string, stderr io.Writer) (s *sec
 // a warning at half the idle timeout and the Step's end line, and records
 // the attempt's prompt and raw output.
 func stepRunner(values map[string]any, sec *secrets, log *runlog.Log) func(context.Context, factory.Step) harness.Outcome {
-	scrub := boolAt(values, true, "sandbox", "scrub_credentials")
+	withhold := boolAt(values, true, "sandbox", "withhold_secrets")
 	return func(ctx context.Context, req factory.Step) harness.Outcome {
 		// Only here: what a Step gets is settled once the Run has started.
-		env, unset := sec.stepEnv(scrub)
+		env, unset := sec.stepEnv(withhold)
 		settings := settingsOf(values, req.Name)
 		attempt := log.Attempt(req.Ticket.ID.Branch, req.Name, req.Prompt)
 		defer attempt.Close()
@@ -455,7 +455,6 @@ func stepRunner(values map[string]any, sec *secrets, log *runlog.Log) func(conte
 			Model:             settings.model,
 			Effort:            settings.effort,
 			ReportSchema:      harness.ReportSchema,
-			ScrubCredentials:  scrub,
 			CredentialCommand: sec.credentialCommand(inSandbox(values)),
 		}, req.Dir)
 		req.Log(runlog.Event, runlog.StepEnd(time.Since(begin), out.Usage, out.ContextWindow))
@@ -615,11 +614,11 @@ func inSandbox(values map[string]any) bool {
 
 // verifyEnv is the env of the Feedback commands the Factory runs itself.
 func verifyEnv(values map[string]any, s *secrets) []string {
-	scrub := boolAt(values, true, "sandbox", "scrub_credentials")
+	withhold := boolAt(values, true, "sandbox", "withhold_secrets")
 	if inSandbox(values) {
-		return s.sandboxCommandEnv(scrub)
+		return s.sandboxCommandEnv(withhold)
 	}
-	return s.commandEnv(scrub)
+	return s.commandEnv(withhold)
 }
 
 // hookEnv is the env of a Hook entry.

@@ -42,8 +42,7 @@ type Description struct {
 	// home, for `init` to offer. Nil, or nil from it, means there is none.
 	ImportAuth func(home string) *ImportedAuth
 
-	// FixedEnv are env flags Command always sets, by name. Values may
-	// depend on the Step (EnvScrub is left out when scrubbing is off).
+	// FixedEnv are env flags Command always sets, by name.
 	FixedEnv []string
 	// RedactEnv are the env names whose values are credentials, redacted
 	// from every output.
@@ -72,14 +71,10 @@ type Description struct {
 // and sends no credential anywhere: with none, the Harness stops at saying
 // it isn't logged in.
 type StartCheck struct {
-	// Step is what Command gets. The core sets ScrubCredentials as a Step
-	// would, and never a CredentialCommand.
+	// Step is what Command gets. The core never sets a CredentialCommand.
 	Step Step
 	// Read tells from what the Harness printed whether it started.
 	Read func(output string) Start
-	// ScrubNeeds is what the Harness needs where Steps run to scrub
-	// credentials, nil for nothing.
-	ScrubNeeds *Requirement
 	// SkipOnHost says, by GOOS, why the Harness isn't started on the host
 	// there: where its own login is somewhere a fresh home doesn't hide,
 	// it would be logged in and spend tokens.
@@ -100,16 +95,6 @@ const (
 	// NotStarted is the Harness saying it can't start.
 	NotStarted
 )
-
-// Requirement is something the Harness needs where Steps run.
-type Requirement struct {
-	// Name is what it is called, as in "needs bubblewrap".
-	Name string
-	// ContainerInstall is the Containerfile snippet that installs it.
-	ContainerInstall string
-	// HostInstallHint is how to install it on the host, by GOOS.
-	HostInstallHint map[string]string
-}
 
 // CheckVersion reports what's wrong with the output of the version command.
 func (d Description) CheckVersion(output string) error {

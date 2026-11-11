@@ -149,10 +149,6 @@ func TestFakeHarnessGetsThePromptOnStdin(t *testing.T) {
 	if run.log["prompt"] != prompt {
 		t.Errorf("prompt = %q, want %q", run.log["prompt"], prompt)
 	}
-	env, _ := run.log["env"].(map[string]any)
-	if env["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"] != "1" {
-		t.Errorf("env = %v, want the scrub flag", env)
-	}
 }
 
 func TestFakeHarnessRunsCommands(t *testing.T) {

@@ -216,15 +216,15 @@ func (s *secrets) authWarnings(ctx context.Context) []string {
 }
 
 // stepEnv is what each Step's env gets: the Harness's credential, and the
-// project secrets only when scrubbing is off, the user having chosen to
-// let the agent's own commands see credentials. unset are the variables
-// of the Factory's own env a Step must not inherit: every host-only one,
-// and the Harness's credential variables when a configured credential
-// must win over the user's own.
-func (s *secrets) stepEnv(scrub bool) (env map[string]string, unset []string) {
+// project secrets only unless they are withheld, the user having chosen
+// to let the agent see them. unset are the variables of the Factory's own
+// env a Step must not inherit: every host-only one, and the Harness's
+// credential variables when a configured credential must win over the
+// user's own.
+func (s *secrets) stepEnv(withhold bool) (env map[string]string, unset []string) {
 	env = map[string]string{}
 	unset = append(unset, s.hostOnly...)
-	if !scrub {
+	if !withhold {
 		for k, v := range s.project {
 			env[k] = v
 		}
@@ -246,12 +246,12 @@ func (s *secrets) stepEnv(scrub bool) (env map[string]string, unset []string) {
 
 // commandEnv is the env of the Feedback commands the Factory runs itself.
 // They run the agent's code, so they get no more than the agent's own
-// commands: the Factory's env without host-only variables, the project
-// secrets only when scrubbing is off, and never a Harness credential,
-// not even one from the Factory's own env while scrubbing is on.
-func (s *secrets) commandEnv(scrub bool) []string {
+// commands: the Factory's env without host-only variables, and the project
+// secrets unless they are withheld. While they are, the Factory's own env
+// loses any Harness credential too.
+func (s *secrets) commandEnv(withhold bool) []string {
 	unset := slices.Clone(s.hostOnly)
-	if scrub {
+	if withhold {
 		unset = append(unset, s.harnessEnv...)
 	}
 	env := slices.DeleteFunc(os.Environ(), func(kv string) bool {
@@ -259,7 +259,7 @@ func (s *secrets) commandEnv(scrub bool) []string {
 		return slices.ContainsFunc(unset, func(u string) bool { return strings.EqualFold(u, name) })
 	})
 	env = append(env, git.NonInteractiveEnv...)
-	if !scrub {
+	if !withhold {
 		for k, v := range s.project {
 			env = append(env, k+"="+v)
 		}
@@ -279,9 +279,9 @@ func (s *secrets) hookEnv(where string, names []string) []string {
 }
 
 // sandboxCommandEnv is commandEnv for a command in a Sandbox, where nothing of the host's env goes in.
-func (s *secrets) sandboxCommandEnv(scrub bool) []string {
+func (s *secrets) sandboxCommandEnv(withhold bool) []string {
 	env := slices.Clone(git.NonInteractiveEnv)
-	if !scrub {
+	if !withhold {
 		for k, v := range s.project {
 			env = append(env, k+"="+v)
 		}

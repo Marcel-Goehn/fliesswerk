@@ -494,10 +494,6 @@
           },
           "type": "array"
         },
-        "scrub_credentials": {
-          "description": "Keep credentials out of the env of the agent's own commands. Default true.",
-          "type": "boolean"
-        },
         "secrets": {
           "additionalProperties": {
             "additionalProperties": false,
@@ -525,6 +521,10 @@
           },
           "description": "Project secrets, by environment variable name, each naming where it comes from.",
           "type": "object"
+        },
+        "withhold_secrets": {
+          "description": "Keep the project secrets from the agent and from verify: only Hooks get them. Default true.",
+          "type": "boolean"
         },
         "writable_paths": {
           "description": "Extra paths a native Sandbox may write.",

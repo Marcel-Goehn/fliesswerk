@@ -113,6 +113,12 @@ func TestUnknownKeyInNestedTableSuggests(t *testing.T) {
 	wantOne(t, r, config.Error, "steps.reveiw", `did you mean "review"?`)
 }
 
+func TestScrubCredentialsIsAnUnknownKey(t *testing.T) {
+	// Renamed to withhold_secrets before any release, with no alias.
+	r := load(t, "version = 1\n[sandbox]\nscrub_credentials = true\n", "")
+	wantOne(t, r, config.Error, "sandbox.scrub_credentials", "unknown key")
+}
+
 func TestUnknownKeyFarFromAnyKnownOneHasNoSuggestion(t *testing.T) {
 	r := load(t, "version = 1\nfrobnicate = 2\n", "")
 	wantOne(t, r, config.Error, "frobnicate", "unknown key")
@@ -416,7 +422,7 @@ prefix      = "fliesswerk"
 run_args = []
 read_only_paths = []
 writable_paths  = []
-scrub_credentials = true
+withhold_secrets = true
 
 [sandbox.network]
 allow = ["registry.npmjs.org"]

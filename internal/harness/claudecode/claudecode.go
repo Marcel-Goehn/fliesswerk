@@ -18,7 +18,6 @@ var _ harness.Harness = ClaudeCode{}
 // Env flags Command sets.
 const (
 	envNoTraffic = "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"
-	envScrub     = "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"
 )
 
 // settings are what Claude Code gets with --settings. Its built-in sandbox
@@ -62,9 +61,8 @@ func (ClaudeCode) Command(step harness.Step) harness.Invocation {
 	if step.Effort != "" {
 		argv = append(argv, "--effort", step.Effort)
 	}
+	// Never CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: it needs a bubblewrap inside
+	// the Sandbox (docs/adr/0010-no-harness-subprocess-scrubbing-the-egress-proxy-is-the-boundary.md).
 	env := map[string]string{envNoTraffic: "1"}
-	if step.ScrubCredentials {
-		env[envScrub] = "1"
-	}
 	return harness.Invocation{Argv: argv, Env: env, Stdin: step.Prompt}
 }

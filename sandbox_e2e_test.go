@@ -196,7 +196,7 @@ engine = "`+enginetest.Engine(t)+`"
 run_args = ["--mount", "type=bind,source=`+filepath.Join(fakeClaudeBinDir(t), "claude")+`,target=/usr/local/bin/claude,readonly"]
 
 [sandbox.env]
-FWK_FAKE_START = "needs_bwrap"
+FWK_FAKE_START = "cannot_start"
 `)
 	// Podman and Docker need more than the tests' minimal PATH offers.
 	p.extraEnv = append(p.extraEnv, "PATH="+fakeClaudeBinDir(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -206,8 +206,8 @@ FWK_FAKE_START = "needs_bwrap"
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d\nstdout: %s\nstderr: %s", code, exitConfigError, p.stdout, p.stderr)
 	}
-	mustContain(t, "stderr", p.stderr, "claude can't start where Steps run", "bubblewrap is required",
-		"Install it in .fliesswerk/Containerfile:", "apt-get install -y --no-install-recommends bubblewrap", "scrub_credentials = false")
+	mustContain(t, "stderr", p.stderr, "claude can't start where Steps run", "fakeclaude was told not to")
+	mustNotContain(t, "stderr", p.stderr, "bubblewrap")
 	assertNoCheckLeftBehind(t)
 }
 

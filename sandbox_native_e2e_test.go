@@ -259,7 +259,7 @@ func TestCheckFailsWhenTheHarnessCannotStartInANativeSandbox(t *testing.T) {
 kind = "native"
 
 [sandbox.env]
-FWK_FAKE_START = "needs_bwrap"
+FWK_FAKE_START = "cannot_start"
 `)
 	curl, err := exec.LookPath("curl") // `check` probes the Sandbox with it
 	if err != nil {
@@ -284,8 +284,6 @@ FWK_FAKE_START = "needs_bwrap"
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d\nstdout: %s\nstderr: %s", code, exitConfigError, p.stdout, p.stderr)
 	}
-	mustContain(t, "stderr", p.stderr, "claude can't start where Steps run", "bubblewrap is required", "scrub_credentials = false")
-	if runtime.GOOS == "linux" {
-		mustContain(t, "stderr", p.stderr, "Install it: sudo apt-get install -y bubblewrap")
-	}
+	mustContain(t, "stderr", p.stderr, "claude can't start where Steps run", "fakeclaude was told not to")
+	mustNotContain(t, "stderr", p.stderr, "bubblewrap")
 }

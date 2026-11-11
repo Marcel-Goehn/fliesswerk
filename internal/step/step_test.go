@@ -59,7 +59,7 @@ func withFakeHarness(t *testing.T, script string) {
 }
 
 func newStep(prompt string) harness.Step {
-	return harness.Step{Prompt: prompt, ReportSchema: harness.ReportSchema, ScrubCredentials: true}
+	return harness.Step{Prompt: prompt, ReportSchema: harness.ReportSchema}
 }
 
 func TestAStepRunsInItsDirWithThePromptOnStdin(t *testing.T) {
@@ -474,9 +474,8 @@ func TestAHarnessTheFactoryKillsHasNotRunOutOfMemory(t *testing.T) {
 
 func TestAHarnessThatCantStartItsSessionSaysSo(t *testing.T) {
 	withFakeHarness(t, `{"sessions": []}`)
-	t.Setenv("FWK_FAKE_START", "needs_bwrap")
+	t.Setenv("FWK_FAKE_START", "cannot_start")
 	s := (claudecode.ClaudeCode{}).Describe().StartCheck.Step
-	s.ScrubCredentials = true
 
 	out := step.Runner{Harness: claudecode.ClaudeCode{}}.Run(context.Background(), s, t.TempDir())
 

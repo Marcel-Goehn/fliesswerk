@@ -204,7 +204,7 @@ func configTOML(f Facts, a Answers, h Harness) string {
 		"# Extra container engine flags.", "run_args = []",
 		"# Extra paths a native Sandbox may read.", "read_only_paths = []",
 		"# Extra paths a native Sandbox may write.", "writable_paths = []",
-		"# Keep credentials out of the env of the agent's own commands.", "scrub_credentials = true", "",
+		"# Keep the project secrets from the agent and from verify: only Hooks get them.", "withhold_secrets = true", "",
 		"[sandbox.network]",
 		"# Hosts the agent may reach. The Harness's own endpoints are added automatically.", "allow = "+quoteList(allowed(f, a)), "",
 		"# Environment variables set in every Sandbox. Not for secrets.", "[sandbox.env]", "",

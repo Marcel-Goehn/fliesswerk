@@ -32,8 +32,8 @@ func parseVersion(output string) (string, error) {
 const startCheckPrompt = "fliesswerk check: does Claude Code start? Reply with OK."
 
 // readStart tells from Claude Code's output whether it started: with no
-// credential, it says it isn't logged in. One that can't start (such as
-// without bubblewrap for env scrubbing) says so first.
+// credential, it says it isn't logged in. One that can't start says so
+// first.
 func readStart(output string) harness.Start {
 	switch {
 	case strings.Contains(output, "could not start"):
@@ -136,7 +136,7 @@ func (ClaudeCode) Describe() harness.Description {
 		LoginFix:     "sign Claude Code in again by running `claude`, or set a credential in `[harnesses.claude_code]`",
 		ImportAuth:   importAuth,
 
-		FixedEnv: []string{envNoTraffic, envScrub},
+		FixedEnv: []string{envNoTraffic},
 		RedactEnv: []string{
 			"CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
 			"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_BEARER_TOKEN_BEDROCK",
@@ -152,15 +152,8 @@ func (ClaudeCode) Describe() harness.Description {
 		HomeWritable: []string{".claude", ".claude.json"},
 
 		StartCheck: &harness.StartCheck{
-			Step: harness.Step{Prompt: startCheckPrompt, ReportSchema: harness.ReportSchema},
-			Read: readStart,
-			ScrubNeeds: &harness.Requirement{
-				Name: "bubblewrap",
-				ContainerInstall: "USER root\n" +
-					"RUN apt-get update && apt-get install -y --no-install-recommends bubblewrap && rm -rf /var/lib/apt/lists/*\n" +
-					"USER agent\n",
-				HostInstallHint: map[string]string{"linux": "sudo apt-get install -y bubblewrap"},
-			},
+			Step:       harness.Step{Prompt: startCheckPrompt, ReportSchema: harness.ReportSchema},
+			Read:       readStart,
 			SkipOnHost: map[string]string{"darwin": "Claude Code keeps its own login in the Keychain, which a fresh home doesn't hide"},
 			// Where its own login lives, and what switches it to a provider
 			// that signs in from the user's own AWS or Google setup.

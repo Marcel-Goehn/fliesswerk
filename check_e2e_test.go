@@ -32,6 +32,24 @@ func mustContain(t *testing.T, what, got string, wants ...string) {
 	}
 }
 
+func mustNotContain(t *testing.T, what, got string, unwanted ...string) {
+	t.Helper()
+	for _, u := range unwanted {
+		if strings.Contains(got, u) {
+			t.Errorf("%s has %q:\n%s", what, u, got)
+		}
+	}
+}
+
+// mustNotScrub checks that the Harness wasn't asked to scrub its commands'
+// env (docs/adr/0010-no-harness-subprocess-scrubbing-the-egress-proxy-is-the-boundary.md).
+func mustNotScrub(t *testing.T, env map[string]string) {
+	t.Helper()
+	if v, ok := env["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"]; ok {
+		t.Errorf("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB = %q, want it never set", v)
+	}
+}
+
 func TestCheckCommandsReportsEachCommandOnTheBaseBranch(t *testing.T) {
 	p := checkProject(t, `
 [commands]
@@ -294,20 +312,18 @@ func TestCheckRefusesWhileATodoLineIsLeft(t *testing.T) {
 	mustContain(t, "stderr", p.stderr, ".fliesswerk/Containerfile:2", "TODO(fliesswerk): install Ruby")
 }
 
-func TestCheckFailsWhenTheHarnessCannotStartWithAStepsScrubbing(t *testing.T) {
+func TestCheckFailsWhenTheHarnessCannotStart(t *testing.T) {
 	startsOnTheHost(t)
 	p := checkProject(t, "")
-	p.extraEnv = []string{"FWK_FAKE_START=needs_bwrap"}
+	p.extraEnv = []string{"FWK_FAKE_START=cannot_start"}
 
 	code := p.fwk(t, "check")
 
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d\nstdout: %s\nstderr: %s", code, exitConfigError, p.stdout, p.stderr)
 	}
-	mustContain(t, "stderr", p.stderr, "bubblewrap is required for subprocess env scrubbing", "scrub_credentials = false", "can read the Harness's credential and the project secrets")
-	if runtime.GOOS == "linux" {
-		mustContain(t, "stderr", p.stderr, "sudo apt-get install -y bubblewrap")
-	}
+	mustContain(t, "stderr", p.stderr, "claude can't start where Steps run", "fakeclaude was told not to")
+	mustNotContain(t, "stderr", p.stderr, "bubblewrap")
 }
 
 func TestCheckSaysTheHarnessStartsWhenItOnlyLacksALogin(t *testing.T) {
@@ -342,11 +358,11 @@ func TestCheckOnlyWarnsWhenItCannotTellWhetherTheHarnessStarts(t *testing.T) {
 	}
 }
 
-func TestCheckStartsTheHarnessWithAStepsScrubbingAndNoCredential(t *testing.T) {
+func TestCheckStartsTheHarnessWithAStepsEnvAndNoCredential(t *testing.T) {
 	startsOnTheHost(t)
-	for _, scrub := range []bool{true, false} {
-		t.Run(fmt.Sprintf("scrub_credentials = %t", scrub), func(t *testing.T) {
-			p := checkProject(t, fmt.Sprintf(`scrub_credentials = %t
+	for _, withhold := range []bool{true, false} {
+		t.Run(fmt.Sprintf("withhold_secrets = %t", withhold), func(t *testing.T) {
+			p := checkProject(t, fmt.Sprintf(`withhold_secrets = %t
 
 [sandbox.secrets]
 DB_PASSWORD = { env = "FWK_TEST_DB_PASSWORD" }
@@ -354,28 +370,31 @@ DB_PASSWORD = { env = "FWK_TEST_DB_PASSWORD" }
 [harnesses.claude_code]
 method = "oauth_token"
 secret = { env = "CLAUDE_CODE_OAUTH_TOKEN" }
-`, scrub))
+`, withhold))
 			logPath := filepath.Join(t.TempDir(), "harness.jsonl")
 			userHome := t.TempDir()
 			p.extraEnv = []string{"HOME=" + userHome, "XDG_CONFIG_HOME=" + filepath.Join(userHome, ".config"), "AppData=" + filepath.Join(userHome, "AppData"),
-				"FWK_FAKE_HARNESS_LOG=" + logPath, "FWK_FAKE_START=needs_bwrap",
+				"FWK_FAKE_HARNESS_LOG=" + logPath,
 				"CLAUDE_CODE_OAUTH_TOKEN=a-claude-credential", "ANTHROPIC_API_KEY=an-api-key",
 				"CLAUDE_CODE_USE_BEDROCK=1", "CLAUDE_CONFIG_DIR=" + filepath.Join(userHome, ".claude"),
 				"FWK_TEST_DB_PASSWORD=s3cr3t-hunter2", "FWK_FAKE_LOG_ENV=DB_PASSWORD,FWK_TEST_DB_PASSWORD,HOME"}
 
 			code := p.fwk(t, "check")
 
-			if want := map[bool]int{true: exitConfigError, false: exitOK}[scrub]; code != want {
-				t.Fatalf("exit code = %d, want %d\nstdout: %s\nstderr: %s", code, want, p.stdout, p.stderr)
+			if code != exitOK {
+				t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+			}
+			if warning := "warning: sandbox.withhold_secrets is false"; withhold {
+				mustNotContain(t, "stderr", p.stderr, warning)
+			} else {
+				mustContain(t, "stderr", p.stderr, warning, "the agent can read them")
 			}
 			calls := harnessCalls(t, logPath)
 			if len(calls) != 1 {
 				t.Fatalf("the Harness was started %d times, want once", len(calls))
 			}
 			got := calls[0]
-			if v, ok := got.Env["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"]; ok != scrub || ok && v != "1" {
-				t.Errorf("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB = %q (set: %t), want it set exactly when scrubbing", v, ok)
-			}
+			mustNotScrub(t, got.Env)
 			for _, name := range []string{"CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CONFIG_DIR", "DB_PASSWORD", "FWK_TEST_DB_PASSWORD"} {
 				if v, ok := got.Env[name]; ok {
 					t.Errorf("the Harness got %s=%q", name, v)
@@ -406,7 +425,7 @@ func TestCheckDoesNotStartTheHarnessOnAMacHost(t *testing.T) {
 	}
 	p := checkProject(t, "")
 	logPath := filepath.Join(t.TempDir(), "harness.jsonl")
-	p.extraEnv = []string{"FWK_FAKE_HARNESS_LOG=" + logPath, "FWK_FAKE_START=needs_bwrap"}
+	p.extraEnv = []string{"FWK_FAKE_HARNESS_LOG=" + logPath, "FWK_FAKE_START=cannot_start"}
 
 	if code := p.fwk(t, "check"); code != exitOK {
 		t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
