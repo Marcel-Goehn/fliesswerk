@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: textkit
+      POSTGRES_PASSWORD: textkit
+      POSTGRES_DB: textkit
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U textkit -d textkit"]
+      interval: 2s
+      timeout: 5s
+      retries: 15

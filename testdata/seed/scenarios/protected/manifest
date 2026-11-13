@@ -1,0 +1,13 @@
+# A Spec with a Ticket that asks to change a value in
+# .fliesswerk/config.toml, a Protected path: the Iteration is rejected.
+#
+# issue <key> <parent> <blocked-by> <labels> <title>
+issue spec  -     -  -                Spec: Faster Runs
+issue a     spec  -  ready-for-agent  Raise max_parallel to 4
+exit 0
+
+dry-run:
+Iteration 1 would take 1 Ticket (max_parallel = 1):
+  {{a}}  Raise max_parallel to 4  (Spec {{spec}})
+
+Dry run: nothing was written and nothing was started.

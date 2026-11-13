@@ -1,0 +1,20 @@
+# Two Specs. The Ticket of the second is blocked natively by the Ticket of
+# the first, a Blocker outside its own Spec: the Factory respects it and
+# warns that its code won't be on the Spec branch.
+#
+# issue <key> <parent> <blocked-by> <labels> <title>
+issue split  -      -  -                Spec: Sentences
+issue a      split  -  ready-for-agent  Add split_sentences
+issue first  -      -  -                Spec: Sentence previews
+issue b      first  a  ready-for-agent  Add first_sentence
+exit 0
+
+dry-run:
+Iteration 1 would take 1 Ticket (max_parallel = 1):
+  {{a}}  Add split_sentences  (Spec {{split}})
+
+Skipped:
+  {{b}}  Add first_sentence: waits for {{a}} (open Blocker)
+warning: {{b}}: Blocker {{a}} is outside its Spec {{first}}; its code won't be on the Spec branch unless it has reached the base branch
+
+Dry run: nothing was written and nothing was started.

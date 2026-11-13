@@ -1,0 +1,19 @@
+# A Spec whose Tickets form a chain of native Blockers: A ← B ← C. Only A is
+# ready; B waits for A, and C for B.
+#
+# issue <key> <parent> <blocked-by> <labels> <title>
+issue spec  -     -  -                Spec: Wrapped text blocks
+issue a     spec  -  ready-for-agent  Add wrap
+issue b     spec  a  ready-for-agent  Add indent_block on top of wrap
+issue c     spec  b  ready-for-agent  Add format_block on top of indent_block
+exit 0
+
+dry-run:
+Iteration 1 would take 1 Ticket (max_parallel = 1):
+  {{a}}  Add wrap  (Spec {{spec}})
+
+Skipped:
+  {{b}}  Add indent_block on top of wrap: waits for {{a}} (open Blocker)
+  {{c}}  Add format_block on top of indent_block: waits for {{b}} (open Blocker)
+
+Dry run: nothing was written and nothing was started.

@@ -1,0 +1,18 @@
+# A Spec with two independent Tickets that must both change the same
+# function, normalize_whitespace. Both are ready; run with max_parallel = 2
+# or more, and their merge conflicts.
+#
+# issue <key> <parent> <blocked-by> <labels> <title>
+issue spec  -     -  -                Spec: Cleaner whitespace
+issue zw    spec  -  ready-for-agent  Drop zero-width characters in normalize_whitespace
+issue para  spec  -  ready-for-agent  Keep paragraph breaks in normalize_whitespace
+exit 0
+
+dry-run:
+Iteration 1 would take 1 Ticket (max_parallel = 1):
+  {{zw}}  Drop zero-width characters in normalize_whitespace  (Spec {{spec}})
+
+Ready, for a later Iteration:
+  {{para}}  Keep paragraph breaks in normalize_whitespace  (Spec {{spec}})
+
+Dry run: nothing was written and nothing was started.

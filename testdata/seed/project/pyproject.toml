@@ -1,0 +1,14 @@
+[project]
+name = "textkit"
+version = "0.1.0"
+description = "Small text helpers, the fixture project of Fliesswerk's acceptance pass"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["psycopg[binary]>=3.2"]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
