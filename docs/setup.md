@@ -146,7 +146,7 @@ A Claude subscription token is never kept in your credentials file: Anthropic's 
 When you choose `.fliesswerk/.env`, `init` suggests the same name as for an environment variable, such as `CLAUDE_CODE_OAUTH_TOKEN`, and fills the file in once it has written `.fliesswerk/.gitignore`:
 
 - **A subscription token**: `init` never asks for it. It adds the empty line `CLAUDE_CODE_OAUTH_TOKEN=` and names the file's full path. Paste the token from `claude setup-token` after the `=`, save the file and press Enter. `init` reads the token only at its check, as `check` and every Run start do.
-- **The GitHub token**: the same, under the suggested name `GH_TOKEN`. `init` repeats the walkthrough while it waits.
+- **The GitHub token**: the same, under the suggested name `GH_TOKEN`.
 - **Any other secret** (an API key, a gateway token): `init` asks for it with a hidden prompt and adds it under the name you chose.
 
 Either way, `init` never overwrites the file: it only appends a missing key, and a key that already has a value is used without asking. A new file is readable only by you. If `.fliesswerk/.env` isn't git-ignored, `init` writes no secret there and says why. Leave the secret empty, and `init` still finishes, but its check fails and names the file and the key until you add it.

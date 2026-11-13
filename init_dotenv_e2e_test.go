@@ -219,6 +219,9 @@ func TestInitWaitsForAGitHubTokenPutIntoDotenv(t *testing.T) {
 	if strings.Contains(tracker, "Paste the token") {
 		t.Errorf("asked for the GitHub token:\n%s", p.stdout)
 	}
+	if n := strings.Count(p.stdout, "personal-access-tokens/new"); n != 1 {
+		t.Errorf("the walkthrough is there %d times:\n%s", n, p.stdout)
+	}
 	if whileWaiting != "GH_TOKEN=\n" {
 		t.Errorf(".env while waiting = %q", whileWaiting)
 	}

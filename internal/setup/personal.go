@@ -305,11 +305,10 @@ func (a Asker) reachTracker(ctx context.Context, in PersonalInput, p *Personal) 
 			return err
 		}
 	}
-	walkthrough := access.Walkthrough(in.Repo)
-	a.say("%s", walkthrough)
+	a.say("%s", access.Walkthrough(in.Repo))
 	var err error
 	f := harness.AuthField{Prompt: "the token", StoreKey: access.TokenKey(in.Repo), SuggestEnv: access.TokenEnv, FilledByHand: true}
-	p.tracker, err = a.keep(ctx, in, f, walkthrough, p)
+	p.tracker, err = a.keep(ctx, in, f, "", p) // the walkthrough above is its hint
 	return err
 }
 
