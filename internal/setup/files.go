@@ -32,13 +32,13 @@ type Harness struct {
 // File is one file `init` creates, by its path below the project root.
 type File struct{ Path, Content string }
 
-// Files are every file the answers call for. factory is this binary's
-// version, empty in a development build.
-func Files(f Facts, a Answers, h Harness, factory string) []File {
+// Files are every file the answers call for. factoryVersion is this
+// binary's version, empty in a development build.
+func Files(f Facts, a Answers, h Harness, factoryVersion string) []File {
 	in := func(name string) string { return path.Join(config.Dir, name) }
 	files := []File{
 		gitignoreFile(),
-		{in("config.toml"), configTOML(f, a, h, factory)},
+		{in("config.toml"), configTOML(f, a, h, factoryVersion)},
 	}
 	for _, step := range prompt.Steps {
 		files = append(files, File{path.Join(prompt.Dir, step+".md"), prompt.Marker(step) + "\n\n" + prompt.Builtin(step, prompt.Latest(step))})
@@ -160,8 +160,8 @@ func installs(f Facts, a Answers) []string {
 
 // pinExample is the `factory` pin that allows the installed major and its
 // later releases, or "1" for a build with no version to go by.
-func pinExample(factory string) string {
-	v, _, ok := version.Parse(factory)
+func pinExample(factoryVersion string) string {
+	v, _, ok := version.Parse(factoryVersion)
 	if !ok {
 		return "1"
 	}
@@ -169,7 +169,7 @@ func pinExample(factory string) string {
 }
 
 // configTOML is the team's config, with every default written out.
-func configTOML(f Facts, a Answers, h Harness, factory string) string {
+func configTOML(f Facts, a Answers, h Harness, factoryVersion string) string {
 	var b strings.Builder
 	w := func(lines ...string) {
 		for _, l := range lines {
@@ -187,7 +187,7 @@ func configTOML(f Facts, a Answers, h Harness, factory string) string {
 		"# The Harness that carries out every Step.", "harness = "+quote(h.Name),
 		"# The model every Step uses, unless [steps.<name>] sets its own (they can also set harness and effort).", `model = "claude-opus-5-5"`,
 		"# The reasoning effort every Step uses; unset leaves the Harness's own default.", `# effort = "high"`,
-		"# A semver range the Factory's version must match.", "# factory = "+quote(pinExample(factory)),
+		"# A semver range the Factory's version must match.", "# factory = "+quote(pinExample(factoryVersion)),
 		"# Say when a newer Fliesswerk is out, at most once a day and never in CI.", "# update_notice = false",
 		"# How many Tickets an Iteration works on at once.", "max_parallel = 1",
 		"# How many Iterations a Run may have.", "max_iterations = 10",

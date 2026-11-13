@@ -40,7 +40,7 @@ func TestASubscriptionShowsItsCostAsAnAPIPriceEstimate(t *testing.T) {
 
 	// Five model calls at $0.001 each on implement, one on review.
 	for _, want := range []*regexp.Regexp{
-		regexp.MustCompile(`(?m)  #2  implement  finished in \d+s, tokens 500 in, 100 out, context 100, ≈\$0\.0050 API-price estimate \(covered by your subscription\)$`),
+		regexp.MustCompile(`(?m)^\d\d:\d\d:\d\d  #2  implement  finished in \d+s, tokens 500 in, 100 out, context 100, ≈\$0\.0050 API-price estimate \(covered by your subscription\)$`),
 		regexp.MustCompile(`(?m)^  #2  Add the cart  \(Spec #1\).*≈\$0\.\d+ API-price estimate \(covered by your subscription\)$`),
 		regexp.MustCompile(`(?m)^  Run  .*≈\$0\.\d+ API-price estimate \(covered by your subscription\)$`),
 	} {
@@ -61,7 +61,7 @@ func TestAnAPIKeyShowsItsCostAsBilled(t *testing.T) {
 	p := costProject(t, "api_key")
 
 	for _, want := range []*regexp.Regexp{
-		regexp.MustCompile(`(?m)  #2  implement  finished in \d+s, tokens 500 in, 100 out, context 100, \$0\.0050$`),
+		regexp.MustCompile(`(?m)^\d\d:\d\d:\d\d  #2  implement  finished in \d+s, tokens 500 in, 100 out, context 100, \$0\.0050$`),
 		regexp.MustCompile(`(?m)^  Run  \d+ in, \d+ out  \$0\.\d+$`),
 	} {
 		if !want.MatchString(p.stdout) {

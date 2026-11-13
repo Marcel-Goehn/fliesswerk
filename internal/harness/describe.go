@@ -125,12 +125,20 @@ type AuthMethod struct {
 	// given the method's resolved field values.
 	Endpoints func(fields map[string]string) []string
 	// CostBasis is what the cost the Harness reports means with this
-	// method; empty is Billed.
+	// method; empty is Billed. Read it with Basis.
 	CostBasis CostBasis
 	// RejectedFix is what to do when the Harness rejects the credential
 	// at a Step. The Factory never tests a credential the Harness sends
 	// itself (docs/adr/0007-only-the-harness-sends-its-credential.md), so a Step is where a bad one shows.
 	RejectedFix string
+}
+
+// Basis is what the cost the Harness reports means with the method.
+func (m AuthMethod) Basis() CostBasis {
+	if m.CostBasis == "" {
+		return Billed
+	}
+	return m.CostBasis
 }
 
 // ImportedAuth is an auth setup found on the user's machine.

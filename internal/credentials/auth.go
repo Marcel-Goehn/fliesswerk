@@ -171,10 +171,7 @@ func ResolveAuth(ctx context.Context, r Resolver, desc harness.Description, tabl
 	}
 	name, _ := table["method"].(string)
 	m := methodOf(desc, name)
-	a := &Auth{Harness: desc.Name, Method: name, Env: map[string]string{}, CostBasis: harness.Billed, rejectedFix: m.RejectedFix}
-	if m.CostBasis != "" {
-		a.CostBasis = m.CostBasis
-	}
+	a := &Auth{Harness: desc.Name, Method: name, Env: map[string]string{}, CostBasis: m.Basis(), rejectedFix: m.RejectedFix}
 	fields := map[string]string{}
 	for _, f := range m.Fields {
 		v, set := table[f.Key]
