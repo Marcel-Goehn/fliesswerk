@@ -224,6 +224,9 @@ type Access struct {
 	// TokenKey is the token's name in the user-level credentials file. It
 	// differs per repo, as such a token only reaches one.
 	TokenKey func(repo string) string
+	// TokenEnv is the name `init` suggests for the token in an environment
+	// variable or .fliesswerk/.env.
+	TokenEnv string
 }
 
 // Question is one question `init` asks.

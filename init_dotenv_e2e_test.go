@@ -203,3 +203,27 @@ func TestInitFinishesWhenAnAPIKeyIsLeftOut(t *testing.T) {
 	}
 	mustContain(t, "stderr", p.stderr, ".fliesswerk/.env", "ANTHROPIC_API_KEY")
 }
+
+func TestInitWaitsForAGitHubTokenPutIntoDotenv(t *testing.T) {
+	p := teamProject(t, map[string]string{"config.toml": teamConfig})
+	srv := fakeGateway(t)
+	var whileWaiting string
+
+	p.initWaiting(t, p.initEnv(t), func() {
+		whileWaiting = p.fliesswerkFile(t, ".env")
+		writeFile(t, p.dotenvPath(), "GH_TOKEN="+gitHubSecret+"\n")
+	}, mine("gateway", srv.URL, "", gatewaySecret, "dotenv", "")...) // the suggested name
+
+	_, tracker, _ := strings.Cut(p.stdout, "personal-access-tokens/new")
+	mustContain(t, "stdout", tracker, "Under which name is it in .fliesswerk/.env? [GH_TOKEN]", p.dotenvPath())
+	if strings.Contains(tracker, "Paste the token") {
+		t.Errorf("asked for the GitHub token:\n%s", p.stdout)
+	}
+	if whileWaiting != "GH_TOKEN=\n" {
+		t.Errorf(".env while waiting = %q", whileWaiting)
+	}
+	if got := valueAt(p.localConfig(t), "tracker", "token", "dotenv"); got != "GH_TOKEN" {
+		t.Errorf("tracker.token = %v", got)
+	}
+	p.noSecretIn(t, gatewaySecret, gitHubSecret)
+}

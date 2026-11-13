@@ -167,6 +167,10 @@ type AuthField struct {
 	// SuggestEnv is the environment variable `init` suggests a Secret comes
 	// from, "" for none.
 	SuggestEnv string
+	// FilledByHand keeps `init` from taking the Secret when it is kept in
+	// .fliesswerk/.env: `init` adds the empty line and waits while the
+	// person puts it in, as for a NotStored one.
+	FilledByHand bool
 	// UnlessSet names a field that, once answered, makes this one
 	// unnecessary, so `init` doesn't ask for it.
 	UnlessSet string

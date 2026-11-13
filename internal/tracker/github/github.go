@@ -395,6 +395,7 @@ func (t *Tracker) Describe() tracker.Description {
 			TokenLabel:  "A fine-grained token that reaches only this repository",
 			Walkthrough: tokenWalkthrough,
 			TokenKey:    tokenKey,
+			TokenEnv:    "GH_TOKEN",
 		},
 		TokenSource:    "`[tracker] token` in config.local.toml, handed to gh as GH_TOKEN; without it, gh's own login",
 		LinkBlockerFix: t.linkBlockerFix,

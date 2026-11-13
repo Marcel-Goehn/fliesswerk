@@ -305,9 +305,11 @@ func (a Asker) reachTracker(ctx context.Context, in PersonalInput, p *Personal) 
 			return err
 		}
 	}
-	a.say("%s", access.Walkthrough(in.Repo))
+	walkthrough := access.Walkthrough(in.Repo)
+	a.say("%s", walkthrough)
 	var err error
-	p.tracker, err = a.keep(ctx, in, harness.AuthField{Prompt: "the token", StoreKey: access.TokenKey(in.Repo)}, "", p)
+	f := harness.AuthField{Prompt: "the token", StoreKey: access.TokenKey(in.Repo), SuggestEnv: access.TokenEnv, FilledByHand: true}
+	p.tracker, err = a.keep(ctx, in, f, walkthrough, p)
 	return err
 }
 
@@ -384,8 +386,8 @@ func (a Asker) dotenvSecret(in PersonalInput, f harness.AuthField, key, hint str
 	}
 	k := dotenvLine{name: key, what: f.Prompt, hint: hint}
 	// An empty line already there is never changed: the person fills it in,
-	// as for a secret `init` may not take.
-	if f.NotStored == "" && !inFile {
+	// as for a secret `init` may not take or is to leave to them.
+	if f.NotStored == "" && !f.FilledByHand && !inFile {
 		if k.value, err = a.hidden("Paste " + f.Prompt + ", Enter to put it in yourself later"); err != nil {
 			return err
 		}
