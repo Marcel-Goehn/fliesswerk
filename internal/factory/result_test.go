@@ -51,10 +51,10 @@ func TestEveryAttemptOfAStepCountsTowardsItsTicketAndTheRun(t *testing.T) {
 	if s.Ticket.ID.Display != "#2" || s.Commits != 1 || s.LargestContextWindow != 900 {
 		t.Errorf("stats = %+v, want #2 with 1 commit and its largest context window, 900", s)
 	}
-	if s.Usage.Input != 30 || s.Usage.Output != 3 || s.Usage.CostString() != "$3.00" {
+	if s.Usage.Input != 30 || s.Usage.Output != 3 || s.Usage.CostString(harness.Billed) != "$3.00" {
 		t.Errorf("Ticket usage = %+v", s.Usage)
 	}
-	if res.Usage.Input != 30 || res.Usage.CostString() != "$3.00" {
+	if res.Usage.Input != 30 || res.Usage.CostString(harness.Billed) != "$3.00" {
 		t.Errorf("Run usage = %+v", res.Usage)
 	}
 }

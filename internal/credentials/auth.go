@@ -24,6 +24,8 @@ type Auth struct {
 	Endpoints []string
 	// Bedrock signs in to AWS, nil for every other method.
 	Bedrock *bedrock.Client
+	// CostBasis is what the Harness's reported cost means with the method.
+	CostBasis harness.CostBasis
 
 	// baseURL is a gateway's, "" for every other method.
 	baseURL     string
@@ -169,7 +171,10 @@ func ResolveAuth(ctx context.Context, r Resolver, desc harness.Description, tabl
 	}
 	name, _ := table["method"].(string)
 	m := methodOf(desc, name)
-	a := &Auth{Harness: desc.Name, Method: name, Env: map[string]string{}, rejectedFix: m.RejectedFix}
+	a := &Auth{Harness: desc.Name, Method: name, Env: map[string]string{}, CostBasis: harness.Billed, rejectedFix: m.RejectedFix}
+	if m.CostBasis != "" {
+		a.CostBasis = m.CostBasis
+	}
 	fields := map[string]string{}
 	for _, f := range m.Fields {
 		v, set := table[f.Key]

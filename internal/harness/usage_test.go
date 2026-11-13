@@ -55,7 +55,31 @@ func TestCostsAreSummedPerUnitAndNeverConverted(t *testing.T) {
 			for _, u := range c.usages {
 				total.Add(u)
 			}
-			if got := total.CostString(); got != c.want {
+			if got := total.CostString(harness.Billed); got != c.want {
+				t.Errorf("CostString() = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+func TestASubscriptionsCostReadsAsAnEstimate(t *testing.T) {
+	cases := []struct {
+		name   string
+		usages []harness.Usage
+		want   string
+	}{
+		{"none reported", []harness.Usage{{}}, "no cost reported"},
+		{"one unit", []harness.Usage{{Cost: 0.28, CostUnit: harness.USD}}, "≈$0.28 API-price estimate (covered by your subscription)"},
+		{"a silent Step", []harness.Usage{{Cost: 0.28, CostUnit: harness.USD}, {}},
+			"≈$0.28 API-price estimate (covered by your subscription, 1 Step reported no cost)"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var total harness.Totals
+			for _, u := range c.usages {
+				total.Add(u)
+			}
+			if got := total.CostString(harness.SubscriptionEstimate); got != c.want {
 				t.Errorf("CostString() = %q, want %q", got, c.want)
 			}
 		})

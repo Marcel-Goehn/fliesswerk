@@ -167,6 +167,15 @@ func (s *secrets) authRejectedFix() string {
 	return s.auth.RejectedFix()
 }
 
+// costBasis is what the Harness's reported cost means for this Run. With
+// the Harness's own login the Factory can't tell, and shows it as billed.
+func (s *secrets) costBasis() harness.CostBasis {
+	if s.auth == nil {
+		return harness.Billed
+	}
+	return s.auth.CostBasis
+}
+
 // usesBedrock reports whether the Run signs in to AWS on the host, and so
 // has a credential directory for its Sandboxes to mount.
 func (s *secrets) usesBedrock() bool {

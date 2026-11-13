@@ -178,7 +178,7 @@ func runFactory(values map[string]any, root, only string, view runView, stdout, 
 		s.stopCredentials()
 	}
 	code = exitCode(res)
-	summary := log.Finish(summaryOf(res, log.ID(), started, code))
+	summary := log.Finish(summaryOf(res, log.ID(), started, code, s.costBasis()))
 	if view.json {
 		_, _ = stdout.Write(summary)
 	}
@@ -457,7 +457,7 @@ func stepRunner(values map[string]any, sec *secrets, log *runlog.Log) func(conte
 			ReportSchema:      harness.ReportSchema,
 			CredentialCommand: sec.credentialCommand(inSandbox(values)),
 		}, req.Dir)
-		req.Log(runlog.Event, runlog.StepEnd(time.Since(begin), out.Usage, out.ContextWindow))
+		req.Log(runlog.Event, runlog.StepEnd(time.Since(begin), out.Usage, out.ContextWindow, sec.costBasis()))
 		return out
 	}
 }

@@ -68,7 +68,7 @@ func runInit(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		if err != nil {
 			return fail(err)
 		}
-		files, answers, repo, hasServices = setup.Files(facts, a, h), &a, a.Values["tracker.repo"], a.ComposeFile != ""
+		files, answers, repo, hasServices = setup.Files(facts, a, h, version), &a, a.Values["tracker.repo"], a.ComposeFile != ""
 	}
 	// The kind is this person's: asked now, or in the file they have. An
 	// unreadable file has no kind, so no Containerfile comes back.

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Marcel-Goehn/fliesswerk/internal/factory"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
 )
 
 // withFakeDocker adds a docker to env that reports the given platform.
@@ -240,7 +241,7 @@ func TestCheckSaysWhenNoPeakHasBeenMeasured(t *testing.T) {
 }
 
 func TestSummaryCarriesTheMemoryOfTheRun(t *testing.T) {
-	s := summaryOf(factory.Result{Memory: &factory.MemoryReport{PeakEstimate: 3 << 30, Waits: 4}}, "run", time.Now(), exitOK)
+	s := summaryOf(factory.Result{Memory: &factory.MemoryReport{PeakEstimate: 3 << 30, Waits: 4}}, "run", time.Now(), exitOK, harness.Billed)
 
 	if s.Memory == nil || s.Memory.PeakEstimateMB != 3072 || s.Memory.Waits != 4 {
 		t.Errorf("memory = %+v, want 3072 MB and 4 waits", s.Memory)

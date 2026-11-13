@@ -124,6 +124,9 @@ type AuthMethod struct {
 	// Endpoints are the hosts the egress allowlist gains for this method,
 	// given the method's resolved field values.
 	Endpoints func(fields map[string]string) []string
+	// CostBasis is what the cost the Harness reports means with this
+	// method; empty is Billed.
+	CostBasis CostBasis
 	// RejectedFix is what to do when the Harness rejects the credential
 	// at a Step. The Factory never tests a credential the Harness sends
 	// itself (docs/adr/0007-only-the-harness-sends-its-credential.md), so a Step is where a bad one shows.

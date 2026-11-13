@@ -121,7 +121,7 @@ func TestTheJSONKeepsEverySectionForScripts(t *testing.T) {
 }
 
 func TestAStepsEndLineShowsDurationTokensContextAndCost(t *testing.T) {
-	got := runlog.StepEnd(75*time.Second, usageOf(), 4500)
+	got := runlog.StepEnd(75*time.Second, usageOf(), 4500, harness.Billed)
 	want := "finished in 1m15s, tokens 1150 in, 200 out, context 4500, $0.03"
 	if got != want {
 		t.Errorf("StepEnd = %q, want %q", got, want)

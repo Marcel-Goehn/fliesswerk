@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/Marcel-Goehn/fliesswerk/internal/factory"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
 	"github.com/Marcel-Goehn/fliesswerk/internal/memory"
 	"github.com/Marcel-Goehn/fliesswerk/internal/runlog"
 	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
@@ -22,22 +23,23 @@ func exitMeaning(code int) string {
 	return "the project isn't set up for a Run"
 }
 
-// summaryOf is the summary of a Run that ended with res.
-func summaryOf(res factory.Result, id string, started time.Time, code int) runlog.Summary {
+// summaryOf is the summary of a Run that ended with res, its costs shown
+// as basis.
+func summaryOf(res factory.Result, id string, started time.Time, code int, basis harness.CostBasis) runlog.Summary {
 	stats := map[string]*factory.TicketStats{}
 	s := runlog.Summary{
 		RunID: id, StartedAt: started, DurationSeconds: time.Since(started).Seconds(),
 		Iterations: res.Iterations, ExitCode: code, ExitMeaning: exitMeaning(code),
-		StillReady: res.StillReady, Usage: runlog.UsageOf(res.Usage), LogDir: runlog.RelDir(id),
+		StillReady: res.StillReady, CostBasis: basis, Usage: runlog.UsageOf(res.Usage, basis), LogDir: runlog.RelDir(id),
 	}
 	for _, st := range res.Stats {
 		stats[st.Ticket.ID.Key] = st
-		s.Tickets = append(s.Tickets, runlog.TicketUsage{ID: st.Ticket.ID.String(), Usage: runlog.UsageOf(st.Usage)})
+		s.Tickets = append(s.Tickets, runlog.TicketUsage{ID: st.Ticket.ID.String(), Usage: runlog.UsageOf(st.Usage, basis)})
 	}
 	for _, tk := range res.Closed {
 		c := runlog.ClosedTicket{ID: tk.ID.String(), Title: tk.Title, Spec: specOf(tk)}
 		if st := stats[tk.ID.Key]; st != nil {
-			c.Commits, c.LargestContextWindow, c.CostDisplay = st.Commits, st.LargestContextWindow, st.Usage.CostString()
+			c.Commits, c.LargestContextWindow, c.CostDisplay = st.Commits, st.LargestContextWindow, st.Usage.CostString(basis)
 		}
 		s.Closed = append(s.Closed, c)
 	}

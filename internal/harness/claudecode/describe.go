@@ -61,8 +61,11 @@ var authMethods = []harness.AuthMethod{
 			NotStored:  "Anthropic's terms don't let other tools store a Claude subscription token",
 			SuggestEnv: "CLAUDE_CODE_OAUTH_TOKEN",
 		}},
-		Env:         map[string]string{"CLAUDE_CODE_OAUTH_TOKEN": "secret"},
-		Endpoints:   anthropicEndpoints,
+		Env:       map[string]string{"CLAUDE_CODE_OAUTH_TOKEN": "secret"},
+		Endpoints: anthropicEndpoints,
+		// Claude Code's total_cost_usd is what the tokens would cost at
+		// API prices; the subscription covers them.
+		CostBasis:   harness.SubscriptionEstimate,
 		RejectedFix: "get a new token with `claude setup-token`",
 	},
 	{

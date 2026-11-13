@@ -41,7 +41,7 @@ The config format version. Must be `1`, and is the only required key. A version 
 
 ### `factory`
 
-A semver range the Factory's version must match, such as `"1"`, `"~1.2"` or `">=1.2 <2"`. A teammate on a version outside it gets an error that names the command to run. Unset, any version is accepted.
+A semver range the Factory's version must match, such as `"1"`, `"~1.2"` or `">=1.2 <2"`. A teammate on a version outside it gets an error that names the command to run. Unset, any version is accepted. `init` writes it commented out, allowing the major you installed: `# factory = "0"` on a `0.x` release.
 
 ### `update_notice`
 

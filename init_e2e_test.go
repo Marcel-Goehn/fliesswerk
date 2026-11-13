@@ -539,3 +539,28 @@ func TestInitPointsAtTheSettingsThatAreNotTheTeams(t *testing.T) {
 	mustContain(t, "config.toml", p.fliesswerkFile(t, "config.toml"),
 		"# token = { stored", "# [harnesses.claude_code]", "# effort = ", "# factory = ")
 }
+
+func TestInitPinsTheInstalledMajorInItsExampleAndCheckAcceptsIt(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake pnpm is a shell script")
+	}
+	p := initProject(t, nodePostgres())
+	p.bin = ownCopy(t, builtFliesswerk(t, "fwkfake", "-X main.version=0.3.1"))
+	// CI keeps the update notice from asking GitHub for releases.
+	env := append(p.initEnv(t, "pnpm"), "CI=true")
+
+	if code := p.init(t, env, p.thenSandbox(t, acceptAll, "3", "y", "")...); code != exitOK {
+		t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+	}
+	text := p.fliesswerkFile(t, "config.toml")
+	mustContain(t, "config.toml", text, `# factory = "0"`)
+
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.toml"), strings.Replace(text, `# factory = "0"`, `factory = "0"`, 1))
+	stdout, stderr, code := runEnv(t, p.bin, p.work, env, "check")
+	if code != exitOK {
+		t.Fatalf("check: exit code = %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	if strings.Contains(stdout+stderr, "factory") {
+		t.Errorf("check has a finding about the pin:\nstdout: %s\nstderr: %s", stdout, stderr)
+	}
+}

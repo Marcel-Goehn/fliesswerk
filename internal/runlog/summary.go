@@ -32,6 +32,9 @@ type Summary struct {
 	// Memory is nil when nothing measured it.
 	Memory       *Memory  `json:"memory"`
 	QueuedWrites []string `json:"queued_writes"`
+	// CostBasis is what every cost in the summary is: "billed", or
+	// "subscription_estimate" for an API-price figure a subscription covers.
+	CostBasis harness.CostBasis `json:"cost_basis"`
 	// Tickets are the tokens and cost of each Ticket that ran a Step, and
 	// Usage those of the whole Run.
 	Tickets []TicketUsage `json:"tickets"`
@@ -127,15 +130,15 @@ type Usage struct {
 	CostDisplay      string             `json:"cost_display"`
 }
 
-// UsageOf is the summary's form of t.
-func UsageOf(t harness.Totals) Usage {
+// UsageOf is the summary's form of t, its cost shown as basis.
+func UsageOf(t harness.Totals, basis harness.CostBasis) Usage {
 	cost := map[string]float64{}
 	for unit, v := range t.Costs {
 		cost[string(unit)] = v
 	}
 	return Usage{
 		Input: t.Input, Output: t.Output, CacheRead: t.CacheRead, CacheWrite: t.CacheWrite,
-		Cost: cost, StepsWithoutCost: t.NoCost, CostDisplay: t.CostString(),
+		Cost: cost, StepsWithoutCost: t.NoCost, CostDisplay: t.CostString(basis),
 	}
 }
 
@@ -143,12 +146,12 @@ func (u Usage) tokens() string { return tokens(u.Input+u.CacheRead+u.CacheWrite,
 
 func tokens(in, out int64) string { return fmt.Sprintf("%d in, %d out", in, out) }
 
-// StepEnd is the text of a Step's end line.
-func StepEnd(d time.Duration, u harness.Usage, contextWindow int64) string {
+// StepEnd is the text of a Step's end line, its cost shown as basis.
+func StepEnd(d time.Duration, u harness.Usage, contextWindow int64, basis harness.CostBasis) string {
 	var cost harness.Totals
 	cost.Add(u)
 	return fmt.Sprintf("finished in %s, tokens %s, context %d, %s",
-		d.Round(time.Second), tokens(u.Input+u.CacheRead+u.CacheWrite, u.Output), contextWindow, cost.CostString())
+		d.Round(time.Second), tokens(u.Input+u.CacheRead+u.CacheWrite, u.Output), contextWindow, cost.CostString(basis))
 }
 
 // Text is the summary for a person, its sections in the Spec's order.

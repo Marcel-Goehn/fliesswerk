@@ -146,6 +146,8 @@ When a Run ends it prints a summary, leaving out empty sections: the duration, I
 
 Cost is shown in the unit the Harness reports and never converted. Mixed units are summed separately, such as `$3.10 + 12 credits (2 Steps reported no cost)`. A cost the Harness doesn't report is never made up.
 
+With a Claude subscription (`method = "oauth_token"`) nobody is charged that cost: Claude Code reports what the tokens would cost at API prices. So each Step's end line and the summary mark it as an estimate, such as `≈$0.28 API-price estimate (covered by your subscription)`. With `api_key`, `bedrock` and `gateway` the cost is what you're billed and shows as a plain amount. So does the cost with Claude Code's own login, since the Factory can't tell which kind of account that is.
+
 ## The log directory
 
 Every Run gets its own directory, `.fliesswerk/logs/<run-id>/`, named after its start time, such as `2026-11-07T14-03-12`. `fliesswerk logs` prints the latest one.
@@ -188,6 +190,7 @@ Only directories named like Run ids are removed. Anything else in `.fliesswerk/l
 | `memory` | `peak_estimate_mb`, `waits`, or `null` when nothing was measured |
 | `queued_writes` | Tracker writes waiting to be replayed |
 | `tickets` | `id` and `usage` for each Ticket that ran a Step |
+| `cost_basis` | What every cost in the summary is: `"subscription_estimate"` (an API-price figure a Claude subscription covers) or `"billed"` |
 | `usage` | The Run's `input`, `output`, `cache_read`, `cache_write`, `cost` (by unit), `steps_without_cost` and `cost_display` |
 | `log_dir` | The Run's log directory |
 
