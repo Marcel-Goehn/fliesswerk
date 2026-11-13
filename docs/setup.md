@@ -226,6 +226,8 @@ engine = "podman"
 
 The Factory uses that engine and no other: it never picks one by itself, and if yours doesn't respond, `check` and `run` say so rather than fall back to the other. Without `engine` where it is needed, every command stops and names the key. Docker runs in its current context; Podman uses its default connection, rootful or rootless. See [`sandbox.engine`](config.md#sandboxengine).
 
+Docker needs its buildx plugin to build the Sandbox image. Docker's own packages and Docker Desktop include it, but Debian's and Ubuntu's `docker.io` only suggest it: install it with `sudo apt install docker-buildx`. `check` stops at the engine line when it is missing.
+
 ### Running with no Sandbox
 
 `kind = "none"` keeps the worktree isolation, the timeouts, the Protected path check and the non-interactive environment, but nothing else. A committed `config.toml` can't set it, so a change in the repo can never disarm the team's Sandbox. Set it for yourself in `config.local.toml`:

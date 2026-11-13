@@ -45,4 +45,5 @@ The whole unit and end-to-end suite also runs on every change on Linux x64, macO
 | `gh` | 2.94.0 |
 | Claude Code | 2.1.319 |
 | Docker Compose | 2.24.4 |
+| Docker's buildx plugin, with Docker | any |
 | `podman-compose` | 1.4.0 |

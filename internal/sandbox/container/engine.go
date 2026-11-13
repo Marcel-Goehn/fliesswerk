@@ -179,6 +179,13 @@ func resolve(ctx context.Context, binary string, getenv func(string) string, run
 	if err != nil {
 		return Engine{}, fmt.Errorf("sandbox.engine is %s, and it didn't respond; start it, or set the other engine in `sandbox.engine`\n  %w", binary, err)
 	}
+	// The Containerfile's `RUN --mount` needs BuildKit, which Docker only
+	// has with its buildx plugin. Distribution packages often leave it out.
+	if binary == docker {
+		if _, err := run(ctx, docker, "buildx", "version"); err != nil {
+			return Engine{}, fmt.Errorf("sandbox.engine is docker, and it has no buildx plugin, which builds the Sandbox image; install it (Debian/Ubuntu: `sudo apt install docker-buildx`; see https://docs.docker.com/go/buildx/), or set podman in `sandbox.engine`\n  %w", err)
+		}
+	}
 	return e, nil
 }
 

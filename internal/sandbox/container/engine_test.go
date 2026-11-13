@@ -29,6 +29,7 @@ func onPath(name string) (string, error) { return "/usr/bin/" + name, nil }
 
 func TestDockerIsPinnedToItsCurrentContext(t *testing.T) {
 	e, err := resolve(context.Background(), "docker", noEnv, fakeCLI{
+		"docker buildx version":        "github.com/docker/buildx 0.30.1\n",
 		"docker context show":          "colima\n",
 		"docker --context colima info": "[name=seccomp]\n",
 	}.run, onPath)
@@ -45,6 +46,7 @@ func TestDockerIsPinnedToItsCurrentContext(t *testing.T) {
 
 func TestRootlessDockerIsNoticed(t *testing.T) {
 	e, err := resolve(context.Background(), "docker", noEnv, fakeCLI{
+		"docker buildx version":         "github.com/docker/buildx 0.30.1\n",
 		"docker context show":           "default\n",
 		"docker --context default info": "[name=seccomp name=rootless]\n",
 	}.run, onPath)
@@ -106,6 +108,7 @@ func TestPodmansEnvConnectionWins(t *testing.T) {
 
 // bothRespond is a machine where Docker and Podman both answer.
 var bothRespond = fakeCLI{
+	"docker buildx version":         "github.com/docker/buildx 0.30.1\n",
 	"docker context show":           "default\n",
 	"docker --context default info": "[]\n",
 	"podman system connection list": `[]`,
@@ -148,6 +151,25 @@ func TestAnEngineThatIsNotInstalledNamesTheInstallCommand(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%s: err = %v, want one with %q", engine, err, want)
 		}
+	}
+}
+
+func TestADockerWithoutBuildxNamesTheFix(t *testing.T) {
+	_, err := resolve(context.Background(), "docker", noEnv, fakeCLI{
+		"docker context show":           "default\n",
+		"docker --context default info": "[]\n",
+	}.run, onPath)
+
+	if err == nil {
+		t.Fatal("resolved a Docker without buildx")
+	}
+	for _, want := range []string{"buildx", "sudo apt install docker-buildx"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("%q lacks %q", err, want)
+		}
+	}
+	if strings.Contains(err.Error(), "didn't respond") {
+		t.Errorf("%q blames a Docker that responded", err)
 	}
 }
 

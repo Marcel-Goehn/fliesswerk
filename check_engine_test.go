@@ -23,6 +23,7 @@ func withFakeDocker(t *testing.T, env []string, platform string) []string {
 	script := `#!/bin/sh
 case "$*" in
   "context show") echo default ;;
+  "buildx version") echo 'github.com/docker/buildx 0.30.1' ;;
   *SecurityOptions*) echo '[]' ;;
   *OSType*) echo '` + platform + `' ;;
   *) exit 1 ;;
@@ -129,6 +130,7 @@ func withFakeCompose(t *testing.T, env []string, version, config string) []strin
 	script := `#!/bin/sh
 case "$*" in
   "context show") echo default ;;
+  "buildx version") echo 'github.com/docker/buildx 0.30.1' ;;
   *SecurityOptions*) echo '[]' ;;
   *OSType*) echo 'linux x86_64' ;;
   *"compose version"*) echo '` + version + `' ;;
