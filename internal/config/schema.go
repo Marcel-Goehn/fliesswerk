@@ -149,7 +149,7 @@ var schema = table("Fliesswerk configuration.", map[string]*node{
 		"kind":              enum("The Tracker.", "github"),
 		"repo":              str("The repository, as owner/name."),
 		"ready_label":       str("The label that marks a Ticket Ready for agent."),
-		"in_progress_label": str("The label that marks a claimed Spec."),
+		"in_progress_label": str("The label that marks a claimed Spec or standalone Ticket."),
 		"cannot_do_label":   str("The label a Ticket gets when the agent can't do it."),
 		"token":             local(secret("Where the Tracker token comes from."), "a Tracker credential", always),
 	}),

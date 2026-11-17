@@ -136,7 +136,7 @@ func trackerToken(ctx context.Context, r credentials.Resolver, values map[string
 	}
 	src, ok := credentials.ParseSource(v)
 	if !ok {
-		return "", errors.New("tracker.token: must say where the token comes from, e.g. `{ stored = \"github\" }`")
+		return "", errors.New("tracker.token: must say where the token comes from, e.g. `{ env = \"GH_TOKEN\" }`")
 	}
 	token, err := r.Resolve(ctx, src)
 	if err != nil {

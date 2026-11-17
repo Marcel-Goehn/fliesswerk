@@ -38,6 +38,9 @@ type Answers struct {
 	Services      []Service
 	Standards     string
 	ProtectClaude bool
+	// TokenKey is the key the Tracker's token is stored under in the
+	// credentials file, for the example in config.toml.
+	TokenKey string
 }
 
 // Asker puts questions to a person, one line per answer.

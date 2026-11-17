@@ -68,6 +68,7 @@ func runInit(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		if err != nil {
 			return fail(err)
 		}
+		a.TokenKey = trackerInfo.Access.TokenKey(a.Values["tracker.repo"])
 		files, answers, repo, hasServices = setup.Files(facts, a, h, version), &a, a.Values["tracker.repo"], a.ComposeFile != ""
 	}
 	// The kind is this person's: asked now, or in the file they have. An

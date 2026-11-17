@@ -537,7 +537,10 @@ func TestInitPointsAtTheSettingsThatAreNotTheTeams(t *testing.T) {
 	p.init(t, p.initEnv(t), p.thenSignIn(t, acceptAll)...)
 
 	mustContain(t, "config.toml", p.fliesswerkFile(t, "config.toml"),
-		"# token = { stored", "# [harnesses.claude_code]", "# effort = ", "# factory = ")
+		`# token = { stored = "github.acme.shop" }`, "# [harnesses.claude_code]", "# effort = ", "# factory = ", `# model = "claude-opus-5-5"`)
+	if m := valueAt(p.config(t), "model"); m != nil {
+		t.Errorf("model = %v, want it unset so the Harness's own default is used", m)
+	}
 }
 
 func TestInitPinsTheInstalledMajorInItsExampleAndCheckAcceptsIt(t *testing.T) {

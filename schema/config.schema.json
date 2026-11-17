@@ -692,7 +692,7 @@
           "type": "string"
         },
         "in_progress_label": {
-          "description": "The label that marks a claimed Spec.",
+          "description": "The label that marks a claimed Spec or standalone Ticket.",
           "type": "string"
         },
         "kind": {
