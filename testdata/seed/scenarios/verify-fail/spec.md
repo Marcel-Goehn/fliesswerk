@@ -4,8 +4,8 @@ Our headlines capitalise every word, small words included, but `title_case` keep
 
 ## Solution
 
-Change `title_case` so that it capitalises every word.
+Change `title_case` so that it capitalises every word, and add a guard test that the suite runs under Claude Code.
 
 ## Testing Decisions
 
-The existing tests stay exactly as they are. Only `src/textkit/__init__.py` changes.
+Update the test that pins the old behaviour, and add the guard test exactly as the Ticket gives it.

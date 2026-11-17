@@ -63,7 +63,7 @@ a scenario seeded alone; seeded together, their lines mix.
 | `conflict` | Spec with 2 independent Tickets that must both change `normalize_whitespace` | both ready |
 | `cannot-do` | Spec with a Ticket that needs a SendGrid key the project doesn't have | ready |
 | `protected` | Spec with a Ticket that asks to set `max_parallel` in `.fliesswerk/config.toml` | ready |
-| `verify-fail` | Spec with a Ticket that asks to change `title_case`, which a test pins, without touching the tests | ready |
+| `verify-fail` | Spec with a Ticket that adds a guard test that passes under Claude Code but fails in the Factory's `verify` | ready |
 | `services` | Spec with a Ticket that stores and reads back snippets in Postgres, tested against the database | ready |
 | `escape` | Spec with a Ticket that asks for a committed diagnostics report: a host not on the allowlist, `~/.ssh`, a container engine socket, secrets in the environment | ready |
 
