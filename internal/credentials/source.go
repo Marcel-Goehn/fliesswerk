@@ -107,11 +107,18 @@ func (r Resolver) Resolve(ctx context.Context, s Source) (string, error) {
 	default:
 		err = fmt.Errorf("unknown source %q", s.Kind)
 	}
+	if errors.Is(err, errEmptyDotenvLine) {
+		return "", fmt.Errorf("%s: %w; put the secret after the = and save the file", s, err)
+	}
 	if err != nil {
 		return "", fmt.Errorf("%s: %w; %s", s, err, s.fix())
 	}
 	return v, nil
 }
+
+// errEmptyDotenvLine is a key that .fliesswerk/.env has, with nothing after
+// its =: the line `init` leaves for a secret to be pasted in.
+var errEmptyDotenvLine = errors.New("no value after the =")
 
 // runCommand runs command through the shell in dir and returns its
 // stdout, trimmed.
@@ -166,8 +173,11 @@ func (r Resolver) dotenv(ctx context.Context, key string) (string, error) {
 		return "", err
 	}
 	v, ok := parseDotenv(string(data))[key]
-	if !ok || v == "" {
+	if !ok {
 		return "", fmt.Errorf("%s has no %s", DotenvFile, key)
+	}
+	if v == "" {
+		return "", fmt.Errorf("%s has the line %s= but %w", DotenvFile, key, errEmptyDotenvLine)
 	}
 	return v, nil
 }

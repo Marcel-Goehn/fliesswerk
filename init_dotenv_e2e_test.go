@@ -117,7 +117,7 @@ func TestInitFinishesWhenASubscriptionTokenIsLeftOut(t *testing.T) {
 	if code == exitOK {
 		t.Fatalf("init passed with no token:\n%s", p.stdout)
 	}
-	mustContain(t, "stderr", p.stderr, ".fliesswerk/.env has no CLAUDE_CODE_OAUTH_TOKEN")
+	mustContain(t, "stderr", p.stderr, ".fliesswerk/.env has the line CLAUDE_CODE_OAUTH_TOKEN= but no value after the =; put the secret after the =")
 	if !p.hasFliesswerkFile("config.local.toml") {
 		t.Error("init didn't finish")
 	}

@@ -164,8 +164,21 @@ func TestDotenvSource(t *testing.T) {
 		}
 	}
 	_, err := r.Resolve(context.Background(), source(t, map[string]any{"dotenv": "MISSING"}))
-	if err == nil || !strings.Contains(err.Error(), "MISSING") {
-		t.Errorf("Resolve of a missing key = %v, want it named", err)
+	if err == nil || !strings.Contains(err.Error(), "MISSING") || !strings.Contains(err.Error(), "add `MISSING=…`") {
+		t.Errorf("Resolve of a missing key = %v, want it named, with the line to add", err)
+	}
+}
+
+func TestAnEmptyDotenvLineSaysToFillItIn(t *testing.T) {
+	r := project(t, ".env\n")
+	write(t, filepath.Join(r.Root, ".fliesswerk", ".env"), "TOKEN=\n")
+
+	_, err := r.Resolve(context.Background(), source(t, map[string]any{"dotenv": "TOKEN"}))
+	if err == nil {
+		t.Fatal("Resolve of an empty line passed")
+	}
+	if msg := err.Error(); !strings.Contains(msg, "has the line TOKEN= but no value") || !strings.Contains(msg, "put the secret after the =") || strings.Contains(msg, "add `TOKEN=") {
+		t.Errorf("Resolve of an empty line = %q, want it to say the line is there and to fill it in", msg)
 	}
 }
 
