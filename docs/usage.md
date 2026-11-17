@@ -17,7 +17,7 @@ Blockers come only from GitHub's own issue dependencies, never from text. Set th
 - on github.com: open the Ticket, then under **Relationships** choose **Mark as blocked by** and pick the Blocker
 - or with `gh`: `gh issue edit 43 --add-blocked-by 42`
 
-A Ticket whose body names a Blocker in a `## Blocked by` section or on a `Blocked by:` line, with no matching link, is skipped. The dry run, `check` and the Run's summary name it and print the `gh issue edit … --add-blocked-by …` command that fixes it.
+A Ticket whose body names a Blocker in a `## Blocked by` section or on a `Blocked by:` line, with no matching link, is skipped. The dry run and the Run's summary name it and print the `gh issue edit … --add-blocked-by …` command that fixes it.
 
 A Blocker outside the Ticket's Spec is respected: the Ticket waits for it to close. The Run warns, though, because that Blocker's code is on another branch and not on this Spec's branch. Keep a Spec's Tickets depending only on each other and on the base branch.
 
