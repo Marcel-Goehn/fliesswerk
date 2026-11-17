@@ -160,7 +160,7 @@ Whether the Factory keeps the [project secrets](#sandboxsecrets) from the agent 
 That is the trade-off. Say your tests need a `DATABASE_URL` with a password:
 
 - **Keep it on** (recommended), and give the tests the address in a way that isn't a secret. A test database in a [Service](services.md) has a throwaway password, so put the whole URL in `[services.postgres] env` or `[sandbox.env]`. A Hook that needs a real secret, for seeding say, gets it from `[sandbox.secrets]`.
-- **Turn it off** with `withhold_secrets = false`, and the agent and `verify` get every project secret. With `kind = "none"`, `verify` also keeps a Harness credential from your own environment. The agent can then read them and send them to any allowed host. `check` warns about it when there are project secrets.
+- **Turn it off** with `withhold_secrets = false`, and the agent and `verify` get every project secret. With `kind = "none"`, `verify` also keeps a Harness credential from your own environment. The agent can then read them and send them to any allowed host. `check` and every Run warn about it when there are project secrets.
 
 The Harness's own credential is in the Harness's environment whatever you set, and a command the agent runs can read it if it goes looking (see [Residual risks](#residual-risks)). The Factory doesn't ask Claude Code to scrub its commands' environment: that needs a bubblewrap inside the Sandbox, which doesn't work there ([ADR 0010](adr/0010-no-harness-subprocess-scrubbing-the-egress-proxy-is-the-boundary.md)). The Sandbox and the egress proxy are the boundary.
 

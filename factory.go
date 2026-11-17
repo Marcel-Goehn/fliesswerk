@@ -120,7 +120,7 @@ func runFactory(values map[string]any, root, only string, view runView, stdout, 
 		log.Write(runlog.Line{Kind: runlog.Warning, Text: fmt.Sprintf("warning: pruning old logs: %v", err)})
 	}
 	writeBanner(log, values, s)
-	for _, w := range slices.Concat(s.authWarnings(context.Background()), sandboxWarnings) {
+	for _, w := range slices.Concat(s.authWarnings(context.Background()), s.secretWarnings(values), sandboxWarnings) {
 		log.Write(runlog.Line{Kind: runlog.Warning, Text: "warning: " + w})
 	}
 	if lock.StalePID != 0 {

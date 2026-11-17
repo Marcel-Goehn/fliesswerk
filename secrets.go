@@ -224,6 +224,15 @@ func (s *secrets) authWarnings(ctx context.Context) []string {
 	return s.auth.Bedrock.Warnings(ctx, time.Now())
 }
 
+// secretWarnings warns, for check and for every Run, that the agent gets the
+// project secrets when they aren't withheld.
+func (s *secrets) secretWarnings(values map[string]any) []string {
+	if len(s.project) == 0 || boolAt(values, true, "sandbox", "withhold_secrets") {
+		return nil
+	}
+	return []string{"sandbox.withhold_secrets is false: the agent and verify get the project secrets ([sandbox.secrets]), and the agent can read them"}
+}
+
 // stepEnv is what each Step's env gets: the Harness's credential, and the
 // project secrets only unless they are withheld, the user having chosen
 // to let the agent see them. unset are the variables of the Factory's own

@@ -114,8 +114,8 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	}
 	if len(s.project) > 0 {
 		_, _ = fmt.Fprintf(stdout, "fliesswerk check: %d project %s resolved\n", len(s.project), pluralize(len(s.project), "secret", "secrets"))
-		if !boolAt(values, true, "sandbox", "withhold_secrets") {
-			_, _ = fmt.Fprintln(stderr, "warning: sandbox.withhold_secrets is false: the agent and verify get the project secrets ([sandbox.secrets]), and the agent can read them")
+		for _, w := range s.secretWarnings(values) {
+			_, _ = fmt.Fprintf(stderr, "warning: %s\n", w)
 		}
 	}
 

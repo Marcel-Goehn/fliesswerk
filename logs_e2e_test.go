@@ -225,6 +225,36 @@ func TestSecretsNeverReachTheRecord(t *testing.T) {
 	}
 }
 
+func TestARunWarnsWhenTheAgentGetsTheProjectSecrets(t *testing.T) {
+	const secret = "[sandbox.secrets]\nFWK_TEST_SECRET = { env = \"FWK_SOURCE\" }\n"
+	const warning = "warning: sandbox.withhold_secrets is false"
+	for name, local := range map[string]string{
+		"withheld":         secret,
+		"not withheld":     "withhold_secrets = false\n" + secret,
+		"no secret at all": "withhold_secrets = false\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := newRunProject(t, buildTestFliesswerk(t), cartIssues(), cartScript())
+			writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), noSandbox+local)
+			p.extraEnv = []string{"FWK_SOURCE=s3cr3t-hunter2"}
+
+			if code := p.run(t); code != 0 {
+				t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+			}
+
+			terminal := p.stdout + p.stderr
+			runLog := readFile(t, filepath.Join(p.logDir(t), "run.log"))
+			if name == "not withheld" {
+				mustContain(t, "terminal", terminal, warning, "the agent can read them")
+				mustContain(t, "run.log", runLog, warning)
+			} else {
+				mustNotContain(t, "terminal", terminal, warning)
+				mustNotContain(t, "run.log", runLog, warning)
+			}
+		})
+	}
+}
+
 func oldRun(t *testing.T, p *runProject) string {
 	t.Helper()
 	dir := filepath.Join(p.work, ".fliesswerk", "logs", "2001-01-01T00-00-00")
