@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness/claudecode"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness/claudecode"
 )
 
 func TestDescribeBinaryAndVersion(t *testing.T) {
@@ -73,24 +73,18 @@ func TestDescribeAuthMethods(t *testing.T) {
 		method    string
 		fields    map[string]string
 		endpoints []string
-		testURL   string
 		credEnv   string
 	}{
-		{"oauth_token", map[string]string{"secret": "t"}, []string{"api.anthropic.com"}, "https://api.anthropic.com/v1/models", "CLAUDE_CODE_OAUTH_TOKEN"},
-		{"api_key", map[string]string{"secret": "k"}, []string{"api.anthropic.com"}, "https://api.anthropic.com/v1/models", "ANTHROPIC_API_KEY"},
-		{"bedrock", map[string]string{"region": "eu-central-1", "profile": "dev"}, []string{"bedrock-runtime.eu-central-1.amazonaws.com"}, "", ""},
-		{"gateway", map[string]string{"base_url": "https://llm.corp.example:8443/anthropic", "secret": "t"}, []string{"llm.corp.example"}, "https://llm.corp.example:8443/anthropic/v1/models", "ANTHROPIC_AUTH_TOKEN"},
+		{"oauth_token", map[string]string{"secret": "t"}, []string{"api.anthropic.com"}, "CLAUDE_CODE_OAUTH_TOKEN"},
+		{"api_key", map[string]string{"secret": "k"}, []string{"api.anthropic.com"}, "ANTHROPIC_API_KEY"},
+		{"bedrock", map[string]string{"region": "eu-central-1", "profile": "dev"}, []string{"bedrock-runtime.eu-central-1.amazonaws.com"}, ""},
+		{"gateway", map[string]string{"base_url": "https://llm.corp.example:8443/anthropic", "secret": "t"}, []string{"llm.corp.example"}, "ANTHROPIC_AUTH_TOKEN"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.method, func(t *testing.T) {
 			m := methods[tt.method]
 			if got := m.Endpoints(tt.fields); !slices.Equal(got, tt.endpoints) {
 				t.Errorf("endpoints = %q, want %q", got, tt.endpoints)
-			}
-			if tt.testURL != "" {
-				if got := m.TestCall(tt.fields); got.URL != tt.testURL || got.Method != "GET" {
-					t.Errorf("test call = %s %s, want GET %s", got.Method, got.URL, tt.testURL)
-				}
 			}
 			if tt.credEnv == "" {
 				return
@@ -108,10 +102,8 @@ func TestDescribeAuthMethods(t *testing.T) {
 func TestDescribeEnvAndHome(t *testing.T) {
 	d := claudecode.ClaudeCode{}.Describe()
 
-	for _, name := range []string{"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"} {
-		if !slices.Contains(d.FixedEnv, name) {
-			t.Errorf("FixedEnv %q lacks %s", d.FixedEnv, name)
-		}
+	if !slices.Contains(d.FixedEnv, "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC") || slices.Contains(d.FixedEnv, "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB") {
+		t.Errorf("FixedEnv = %q, want CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC and never CLAUDE_CODE_SUBPROCESS_ENV_SCRUB", d.FixedEnv)
 	}
 	for _, name := range []string{"AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"} {
 		if !slices.Contains(d.RedactEnv, name) {

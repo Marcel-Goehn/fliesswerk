@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/fake"
 )
 
 // claimedAt is when the claims in these tests were made.
@@ -32,9 +32,9 @@ const implementsAny = `{"sessions": [` + approves + `, {"match": "", "actions": 
 ], "report": {"outcome": "done", "summary": "Changed it."}}]}`
 
 func TestDryRunListsSpecsClaimedByOthersWithClaimerAndDate(t *testing.T) {
-	p := newRunProject(t, buildTestKraftwerk(t), claimedByAlice(), `{"sessions": []}`)
+	p := newRunProject(t, buildTestFliesswerk(t), claimedByAlice(), `{"sessions": []}`)
 
-	code := p.kwk(t, "run", "--dry-run")
+	code := p.fwk(t, "run", "--dry-run")
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0: a Spec claimed by someone else needs no fix\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
@@ -50,9 +50,9 @@ func TestDryRunListsSpecsClaimedByOthersWithClaimerAndDate(t *testing.T) {
 }
 
 func TestRunSummaryListsSpecsClaimedByOthers(t *testing.T) {
-	p := newRunProject(t, buildTestKraftwerk(t), claimedByAlice(), implementsAny)
+	p := newRunProject(t, buildTestFliesswerk(t), claimedByAlice(), implementsAny)
 
-	code := p.kwk(t, "run")
+	code := p.fwk(t, "run")
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
@@ -66,9 +66,9 @@ func TestRunSummaryListsSpecsClaimedByOthers(t *testing.T) {
 }
 
 func TestCheckListsSpecsClaimedByOthers(t *testing.T) {
-	p := newRunProject(t, buildTestKraftwerk(t), claimedByAlice(), `{"sessions": []}`)
+	p := newRunProject(t, buildTestFliesswerk(t), claimedByAlice(), `{"sessions": []}`)
 
-	code := p.kwk(t, "check")
+	code := p.fwk(t, "check")
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
@@ -80,9 +80,9 @@ func TestCheckListsSpecsClaimedByOthers(t *testing.T) {
 
 func TestRunNLimitsTheRunToOneSpecWhichItClaimsAndReleases(t *testing.T) {
 	issues := append(cartIssues(), fake.Issue{Number: 5, Title: "Fix the typo", Labels: []string{"ready-for-agent"}})
-	p := newRunProject(t, buildTestKraftwerk(t), issues, implementsAny)
+	p := newRunProject(t, buildTestFliesswerk(t), issues, implementsAny)
 
-	code := p.kwk(t, "run", "1")
+	code := p.fwk(t, "run", "1")
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
@@ -103,9 +103,9 @@ func TestRunNLimitsTheRunToOneSpecWhichItClaimsAndReleases(t *testing.T) {
 }
 
 func TestReleaseRemovesAClaimOnPurpose(t *testing.T) {
-	p := newRunProject(t, buildTestKraftwerk(t), claimedByAlice(), `{"sessions": []}`)
+	p := newRunProject(t, buildTestFliesswerk(t), claimedByAlice(), `{"sessions": []}`)
 
-	code := p.kwk(t, "release", "1")
+	code := p.fwk(t, "release", "1")
 
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
@@ -117,10 +117,10 @@ func TestReleaseRemovesAClaimOnPurpose(t *testing.T) {
 		t.Fatalf("Spec #1: labels %v, assignees %v; want the claim gone", spec.Labels, spec.Assignees)
 	}
 
-	if code := p.kwk(t, "release", "5"); code != 1 || !strings.Contains(p.stderr, "5 isn't claimed") {
+	if code := p.fwk(t, "release", "5"); code != 1 || !strings.Contains(p.stderr, "5 isn't claimed") {
 		t.Fatalf("release of an unclaimed issue: exit code = %d, want 1 saying so; stderr: %s", code, p.stderr)
 	}
-	if code := p.kwk(t, "release"); code != 3 {
+	if code := p.fwk(t, "release"); code != 3 {
 		t.Fatalf("release without a number: exit code = %d, want 3; stderr: %s", code, p.stderr)
 	}
 }

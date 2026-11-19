@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/forward"
+	"github.com/Marcel-Goehn/fliesswerk/internal/forward"
 )
 
 // echoUntilEOF answers each connection with what it sent, once the client
@@ -118,7 +118,7 @@ func TestParseRuleReadsListenAndTarget(t *testing.T) {
 }
 
 func TestAUnixSocketCarriesAConnectionBothWays(t *testing.T) {
-	dir, err := os.MkdirTemp("", "kwk-") // t.TempDir() is too long for a socket's path on macOS
+	dir, err := os.MkdirTemp("", "fwk-") // t.TempDir() is too long for a socket's path on macOS
 	if err != nil {
 		t.Fatal(err)
 	}

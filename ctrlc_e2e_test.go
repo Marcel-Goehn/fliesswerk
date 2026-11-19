@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/fake"
 )
 
 // pressCtrlC signals the Run's whole process group, as a terminal does.
@@ -22,7 +22,7 @@ func pressCtrlC(t *testing.T, r *liveRun) {
 }
 
 func TestTheFirstCtrlCLetsTheTicketInFlightFinishAndStartsNothingNew(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	issues := append(cartIssues(), fake.Issue{Number: 3, Title: "Cart page", Labels: []string{"ready-for-agent"}, Parent: 1})
 	p := newRunProject(t, bin, issues, `{"sessions": [`+approves+`, {"match": "Implement Ticket #2", "actions": [
 		{"write": "started.txt", "content": "x"},
@@ -32,7 +32,7 @@ func TestTheFirstCtrlCLetsTheTicketInFlightFinishAndStartsNothingNew(t *testing.
 		{"run": ["git", "commit", "-q", "-m", "Add the cart package"]}
 	], "report": {"outcome": "done", "summary": "Added the cart package."}}]}`)
 	harnessLog := filepath.Join(t.TempDir(), "harness.jsonl")
-	p.extraEnv = []string{"KWK_FAKE_HARNESS_LOG=" + harnessLog}
+	p.extraEnv = []string{"FWK_FAKE_HARNESS_LOG=" + harnessLog}
 
 	r := p.start(t, &syscall.SysProcAttr{Setpgid: true})
 	marker := filepath.Join(p.worktreePath("ticket-2"), "started.txt")
@@ -59,7 +59,7 @@ func TestTheFirstCtrlCLetsTheTicketInFlightFinishAndStartsNothingNew(t *testing.
 }
 
 func TestTheSecondCtrlCKillsTheStepDiscardsTheWorkAndKeepsTheClaim(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [{"match": "Implement Ticket #2", "actions": [
 		{"write": "started.txt", "content": "x"}, {"sleep": "1m"}]}]}`)
 
@@ -88,7 +88,7 @@ func TestTheSecondCtrlCKillsTheStepDiscardsTheWorkAndKeepsTheClaim(t *testing.T)
 	if got := p.writes(t); len(got) != 1 || got[0].Op != "claim" {
 		t.Errorf("writes = %+v, want only the claim", got)
 	}
-	if exists(p.worktreePath("ticket-2")) || gitIn(t, p.work, "branch", "--list", "kraftwerk/ticket-*") != "" {
+	if exists(p.worktreePath("ticket-2")) || gitIn(t, p.work, "branch", "--list", "fliesswerk/ticket-*") != "" {
 		t.Errorf("the work in flight wasn't discarded\nstdout: %s", r.stdout)
 	}
 	if exists(p.lockPath()) {

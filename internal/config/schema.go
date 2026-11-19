@@ -79,8 +79,8 @@ var (
 var secretSource = &node{kind: kTable, oneOf: []string{"env", "command", "stored", "dotenv"}, fields: map[string]*node{
 	"env":     str("Read from this environment variable."),
 	"command": str("Run this command and use its stdout."),
-	"stored":  str("Read this key from the user-level credentials file written by `kraftwerk auth set`."),
-	"dotenv":  str("Read this key from .kraftwerk/.env, which must be git-ignored."),
+	"stored":  str("Read this key from the user-level credentials file written by `fliesswerk auth set`."),
+	"dotenv":  str("Read this key from .fliesswerk/.env, which must be git-ignored."),
 }}
 
 func stepTable(name string) *node {
@@ -110,7 +110,7 @@ func harnessTable() *node {
 	cred := func(doc string) *node { return local(secret(doc), "a Harness credential", always) }
 	return table("Settings of the Claude Code Harness.", map[string]*node{
 		"method":            enum("How to sign in.", authMethods...),
-		"secret":            cred("Where the token or API key comes from."),
+		"secret":            cred("Where the token or API key comes from. A subscription token (method = \"oauth_token\") can't be `stored`."),
 		"base_url":          str("The gateway's URL (method = \"gateway\")."),
 		"region":            str("The AWS region (method = \"bedrock\")."),
 		"profile":           str("The AWS profile (method = \"bedrock\")."),
@@ -132,10 +132,10 @@ func containsStar(v any) bool {
 	return false
 }
 
-var schema = table("Kraftwerk configuration.", map[string]*node{
+var schema = table("Fliesswerk configuration.", map[string]*node{
 	"version":         {kind: kVersion, doc: "The config format version. Must be 1."},
 	"factory":         str("A semver range the Factory's version must match, e.g. \"1\"."),
-	"update_notice":   boolean("Say when a newer Kraftwerk is out, at most once a day and never in CI. Default true."),
+	"update_notice":   boolean("Say when a newer Fliesswerk is out, at most once a day and never in CI. Default true."),
 	"harness":         enum("The Harness every Step uses unless the Step sets its own.", harnessNames...),
 	"model":           str("The model every Step uses unless the Step sets its own."),
 	"effort":          str("The reasoning effort every Step uses unless the Step sets its own."),
@@ -149,7 +149,7 @@ var schema = table("Kraftwerk configuration.", map[string]*node{
 		"kind":              enum("The Tracker.", "github"),
 		"repo":              str("The repository, as owner/name."),
 		"ready_label":       str("The label that marks a Ticket Ready for agent."),
-		"in_progress_label": str("The label that marks a claimed Spec."),
+		"in_progress_label": str("The label that marks a claimed Spec or standalone Ticket."),
 		"cannot_do_label":   str("The label a Ticket gets when the agent can't do it."),
 		"token":             local(secret("Where the Tracker token comes from."), "a Tracker credential", always),
 	}),
@@ -161,13 +161,15 @@ var schema = table("Kraftwerk configuration.", map[string]*node{
 
 	"sandbox": table("The Sandbox each Step runs in.", map[string]*node{
 		"kind": local(enum("The Sandbox kind. \"none\" also needs i_accept_unsandboxed_risk = true.", "container", "native", "none"),
-			"kind = \"none\" (no Sandbox)", func(v any) bool { return v == "none" }),
+			"the Sandbox kind, which depends on each person's machine,", always),
+		"engine": local(enum("The container engine, for the container Sandbox and for Services.", "docker", "podman"),
+			"the container engine, which depends on each person's machine,", always),
 		"i_accept_unsandboxed_risk": local(boolean("Required with kind = \"none\": you accept that the agent runs with no Sandbox."),
 			"the acknowledgement for running without a Sandbox", always),
-		"run_args":          strList("Extra container engine flags."),
-		"read_only_paths":   strList("Extra paths a native Sandbox may read."),
-		"writable_paths":    strList("Extra paths a native Sandbox may write."),
-		"scrub_credentials": boolean("Keep credentials out of the env of the agent's own commands. Default true."),
+		"run_args":         strList("Extra container engine flags."),
+		"read_only_paths":  strList("Extra paths a native Sandbox may read."),
+		"writable_paths":   strList("Extra paths a native Sandbox may write."),
+		"withhold_secrets": boolean("Keep the project secrets from the agent and from verify: only Hooks get them. Default true."),
 		"network": table("Network access from the Sandbox.", map[string]*node{
 			"allow": local(strList("Hosts the Sandbox may reach, besides the Harness's own endpoints."),
 				"allow = [\"*\"] (open network)", containsStar),

@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
+	"github.com/Marcel-Goehn/fliesswerk/internal/factory"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/fake"
 )
 
 // failingCloses is a Tracker whose next closes fail with the errors in

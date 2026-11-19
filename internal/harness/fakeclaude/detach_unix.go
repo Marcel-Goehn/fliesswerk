@@ -1,4 +1,4 @@
-//go:build kwkfake && unix
+//go:build fwkfake && unix
 
 package main
 

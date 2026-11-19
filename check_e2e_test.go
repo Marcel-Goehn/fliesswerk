@@ -1,21 +1,22 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/fake"
 )
 
 // checkProject is a project with no Sandbox and a remote, whose local config
 // gets extra appended.
 func checkProject(t *testing.T, extra string) *runProject {
 	t.Helper()
-	p := newRunProject(t, buildTestKraftwerk(t), []fake.Issue{}, `{"sessions": []}`)
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), `[sandbox]
+	p := newRunProject(t, buildTestFliesswerk(t), []fake.Issue{}, `{"sessions": []}`)
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), `[sandbox]
 kind = "none"
 i_accept_unsandboxed_risk = true
 `+extra)
@@ -31,6 +32,24 @@ func mustContain(t *testing.T, what, got string, wants ...string) {
 	}
 }
 
+func mustNotContain(t *testing.T, what, got string, unwanted ...string) {
+	t.Helper()
+	for _, u := range unwanted {
+		if strings.Contains(got, u) {
+			t.Errorf("%s has %q:\n%s", what, u, got)
+		}
+	}
+}
+
+// mustNotScrub checks that the Harness wasn't asked to scrub its commands'
+// env (docs/adr/0010-no-harness-subprocess-scrubbing-the-egress-proxy-is-the-boundary.md).
+func mustNotScrub(t *testing.T, env map[string]string) {
+	t.Helper()
+	if v, ok := env["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"]; ok {
+		t.Errorf("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB = %q, want it never set", v)
+	}
+}
+
 func TestCheckCommandsReportsEachCommandOnTheBaseBranch(t *testing.T) {
 	p := checkProject(t, `
 [commands]
@@ -40,7 +59,7 @@ test = "echo all good"
 run = "echo created"
 `)
 
-	if code := p.kwk(t, "check", "--commands"); code != exitOK {
+	if code := p.fwk(t, "check", "--commands"); code != exitOK {
 		t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
 	}
 	mustContain(t, "stdout", p.stdout, "sandbox_created: `echo created` worked", "`test` passes on main")
@@ -54,7 +73,7 @@ test = "echo all good"
 typecheck = "echo types are wrong && exit 4"
 `)
 
-	code := p.kwk(t, "check", "--commands")
+	code := p.fwk(t, "check", "--commands")
 
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d\nstdout: %s\nstderr: %s", code, exitConfigError, p.stdout, p.stderr)
@@ -75,7 +94,7 @@ pushed = "test -f README.md && test ! -f unpushed.txt"
 	gitIn(t, p.work, "add", "unpushed.txt")
 	gitIn(t, p.work, "commit", "-q", "-m", "Not pushed")
 
-	if code := p.kwk(t, "check", "--commands"); code != exitOK {
+	if code := p.fwk(t, "check", "--commands"); code != exitOK {
 		t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
 	}
 }
@@ -89,7 +108,7 @@ test = "echo must not run"
 run = "echo install broke && exit 1"
 `)
 
-	code := p.kwk(t, "check", "--commands")
+	code := p.fwk(t, "check", "--commands")
 
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d\nstderr: %s", code, exitConfigError, p.stderr)
@@ -103,13 +122,13 @@ run = "echo install broke && exit 1"
 func TestCheckCommandsLeavesNoWorktreeBehind(t *testing.T) {
 	p := checkProject(t, "\n[commands]\ntest = \"echo fine\"\n")
 
-	if code := p.kwk(t, "check", "--commands"); code != exitOK {
+	if code := p.fwk(t, "check", "--commands"); code != exitOK {
 		t.Fatalf("exit code = %d\nstderr: %s", code, p.stderr)
 	}
 	if got := gitIn(t, p.work, "worktree", "list"); strings.Contains(got, "probe") {
 		t.Errorf("a worktree was left:\n%s", got)
 	}
-	if _, err := os.Stat(filepath.Join(p.work, ".kraftwerk", "state", "probe")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(p.work, ".fliesswerk", "state", "probe")); !os.IsNotExist(err) {
 		t.Errorf("the probe directory is still there: %v", err)
 	}
 }
@@ -117,7 +136,7 @@ func TestCheckCommandsLeavesNoWorktreeBehind(t *testing.T) {
 func TestCheckCommandsWithoutFeedbackCommandsSaysSo(t *testing.T) {
 	p := checkProject(t, "")
 
-	if code := p.kwk(t, "check", "--commands"); code != exitOK {
+	if code := p.fwk(t, "check", "--commands"); code != exitOK {
 		t.Fatalf("exit code = %d\nstderr: %s", code, p.stderr)
 	}
 	mustContain(t, "stdout", p.stdout, "[commands] is empty")
@@ -127,16 +146,16 @@ func TestCheckCommandsRefusesWhileARunIsInProgress(t *testing.T) {
 	p := checkProject(t, "\n[commands]\ntest = \"echo fine\"\n")
 	holdRunLock(t, p.work)
 
-	code := p.kwk(t, "check", "--commands")
+	code := p.fwk(t, "check", "--commands")
 
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d\nstderr: %s", code, exitConfigError, p.stderr)
 	}
-	mustContain(t, "stderr", p.stderr, "kraftwerk check --commands")
+	mustContain(t, "stderr", p.stderr, "fliesswerk check --commands")
 }
 
 func TestCheckDoesARealDryRunPush(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
 	remote := gitIn(t, root, "remote", "get-url", "origin")
 
@@ -146,13 +165,13 @@ func TestCheckDoesARealDryRunPush(t *testing.T) {
 		t.Fatalf("exit code = %d\nstderr: %s", code, stderr)
 	}
 	mustContain(t, "stdout", stdout, "dry-run push")
-	if refs := gitIn(t, remote, "for-each-ref", "--format=%(refname)"); strings.Contains(refs, "kraftwerk-check") {
+	if refs := gitIn(t, remote, "for-each-ref", "--format=%(refname)"); strings.Contains(refs, "fliesswerk-check") {
 		t.Errorf("the dry run created a branch:\n%s", refs)
 	}
 }
 
 func TestCheckNamesTheFixForARemoteItCannotUse(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
 	gitIn(t, root, "remote", "remove", "origin")
 
@@ -165,7 +184,7 @@ func TestCheckNamesTheFixForARemoteItCannotUse(t *testing.T) {
 }
 
 func TestCheckTellsWhenTheBaseBranchIsNotOnTheRemote(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n[branches]\nbase_branch = \"trunk\"\n"})
 
 	_, stderr, code := runIn(t, bin, root, checkNoSandbox...)
@@ -196,7 +215,7 @@ func fakeTool(t *testing.T, env []string, name, output string) []string {
 }
 
 func TestCheckWantsGitAtItsMinimumVersion(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
 
 	_, stderr, code := runEnv(t, bin, root, fakeTool(t, ghEnv(t, "ok"), "git", "git version 2.30.0"), checkNoSandbox...)
@@ -208,7 +227,7 @@ func TestCheckWantsGitAtItsMinimumVersion(t *testing.T) {
 }
 
 func TestCheckWantsTheHarnessAtItsMinimumVersionOnTheHostWithNoSandbox(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
 
 	_, stderr, code := runEnv(t, bin, root, fakeTool(t, ghEnv(t, "ok"), "claude", "1.0.0 (Claude Code)"), checkNoSandbox...)
@@ -223,7 +242,7 @@ func TestCheckNamesTheFixWhenThereIsNoEngine(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake engines are shell scripts")
 	}
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
 	failing := t.TempDir()
 	for _, name := range []string{"docker", "podman"} {
@@ -237,21 +256,23 @@ func TestCheckNamesTheFixWhenThereIsNoEngine(t *testing.T) {
 			env = append(env, "PATH="+failing+string(os.PathListSeparator)+p)
 		}
 	}
-	env = append(env, "KRAFTWERK_ENGINE=") // CI picks one, and this is about having neither
 
 	_, stderr, code := runEnv(t, bin, root, env, "check")
 
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d\nstderr: %s", code, exitConfigError, stderr)
 	}
-	mustContain(t, "stderr", stderr, "needs a running Docker or Podman", "sandbox.kind", "docs.docker.com")
+	mustContain(t, "stderr", stderr, "sandbox.engine is docker, and it didn't respond", "start it")
+	if strings.Contains(stderr, "podman") {
+		t.Errorf("fell back to Podman, which is on PATH as well:\n%s", stderr)
+	}
 }
 
 func TestCheckCatchesACorporateProxyOnTheHostsOwnLocalhost(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake docker is a shell script")
 	}
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
 	env := append(withFakeDocker(t, ghEnv(t, "ok"), "linux x86_64"), "HTTPS_PROXY=http://127.0.0.1:3128")
 
@@ -267,7 +288,7 @@ func TestCheckWarnsAndSkipsTheProbeWhileARunIsInProgress(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake docker is a shell script")
 	}
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
 	holdRunLock(t, root)
 
@@ -281,12 +302,136 @@ func TestCheckWarnsAndSkipsTheProbeWhileARunIsInProgress(t *testing.T) {
 
 func TestCheckRefusesWhileATodoLineIsLeft(t *testing.T) {
 	p := checkProject(t, "")
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "Containerfile"), "FROM scratch\n# TODO(kraftwerk): install Ruby\n")
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "Containerfile"), "FROM scratch\n# TODO(fliesswerk): install Ruby\n")
 
-	code := p.kwk(t, "check")
+	code := p.fwk(t, "check")
 
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d\nstderr: %s", code, exitConfigError, p.stderr)
 	}
-	mustContain(t, "stderr", p.stderr, ".kraftwerk/Containerfile:2", "TODO(kraftwerk): install Ruby")
+	mustContain(t, "stderr", p.stderr, ".fliesswerk/Containerfile:2", "TODO(fliesswerk): install Ruby")
+}
+
+func TestCheckFailsWhenTheHarnessCannotStart(t *testing.T) {
+	startsOnTheHost(t)
+	p := checkProject(t, "")
+	p.extraEnv = []string{"FWK_FAKE_START=cannot_start"}
+
+	code := p.fwk(t, "check")
+
+	if code != exitConfigError {
+		t.Fatalf("exit code = %d, want %d\nstdout: %s\nstderr: %s", code, exitConfigError, p.stdout, p.stderr)
+	}
+	mustContain(t, "stderr", p.stderr, "claude can't start where Steps run", "fakeclaude was told not to")
+	mustNotContain(t, "stderr", p.stderr, "bubblewrap")
+}
+
+func TestCheckSaysTheHarnessStartsWhenItOnlyLacksALogin(t *testing.T) {
+	startsOnTheHost(t)
+	p := checkProject(t, "")
+
+	if code := p.fwk(t, "check"); code != exitOK {
+		t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+	}
+	mustContain(t, "stdout", p.stdout, "claude ok\n", "claude starts where Steps run")
+}
+
+func TestCheckOnlyWarnsWhenItCannotTellWhetherTheHarnessStarts(t *testing.T) {
+	startsOnTheHost(t)
+	for _, start := range []string{"unclear", "hang"} {
+		t.Run(start, func(t *testing.T) {
+			p := checkProject(t, "")
+			p.extraEnv = []string{"FWK_FAKE_START=" + start}
+
+			if code := p.fwk(t, "check"); code != exitOK {
+				t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+			}
+			if start == "unclear" {
+				mustContain(t, "stderr", p.stderr, "warning: can't tell whether claude starts where Steps run", "something nobody expected")
+			} else {
+				mustContain(t, "stderr", p.stderr, "warning: claude didn't finish starting where Steps run within")
+			}
+			if strings.Contains(p.stdout, "claude starts where Steps run") {
+				t.Errorf("check says it started:\n%s", p.stdout)
+			}
+		})
+	}
+}
+
+func TestCheckStartsTheHarnessWithAStepsEnvAndNoCredential(t *testing.T) {
+	startsOnTheHost(t)
+	for _, withhold := range []bool{true, false} {
+		t.Run(fmt.Sprintf("withhold_secrets = %t", withhold), func(t *testing.T) {
+			p := checkProject(t, fmt.Sprintf(`withhold_secrets = %t
+
+[sandbox.secrets]
+DB_PASSWORD = { env = "FWK_TEST_DB_PASSWORD" }
+
+[harnesses.claude_code]
+method = "oauth_token"
+secret = { env = "CLAUDE_CODE_OAUTH_TOKEN" }
+`, withhold))
+			logPath := filepath.Join(t.TempDir(), "harness.jsonl")
+			userHome := t.TempDir()
+			p.extraEnv = []string{"HOME=" + userHome, "XDG_CONFIG_HOME=" + filepath.Join(userHome, ".config"), "AppData=" + filepath.Join(userHome, "AppData"),
+				"FWK_FAKE_HARNESS_LOG=" + logPath,
+				"CLAUDE_CODE_OAUTH_TOKEN=a-claude-credential", "ANTHROPIC_API_KEY=an-api-key",
+				"CLAUDE_CODE_USE_BEDROCK=1", "CLAUDE_CONFIG_DIR=" + filepath.Join(userHome, ".claude"),
+				"FWK_TEST_DB_PASSWORD=s3cr3t-hunter2", "FWK_FAKE_LOG_ENV=DB_PASSWORD,FWK_TEST_DB_PASSWORD,HOME"}
+
+			code := p.fwk(t, "check")
+
+			if code != exitOK {
+				t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+			}
+			if warning := "warning: sandbox.withhold_secrets is false"; withhold {
+				mustNotContain(t, "stderr", p.stderr, warning)
+			} else {
+				mustContain(t, "stderr", p.stderr, warning, "the agent can read them")
+			}
+			calls := harnessCalls(t, logPath)
+			if len(calls) != 1 {
+				t.Fatalf("the Harness was started %d times, want once", len(calls))
+			}
+			got := calls[0]
+			mustNotScrub(t, got.Env)
+			for _, name := range []string{"CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CONFIG_DIR", "DB_PASSWORD", "FWK_TEST_DB_PASSWORD"} {
+				if v, ok := got.Env[name]; ok {
+					t.Errorf("the Harness got %s=%q", name, v)
+				}
+			}
+			if strings.Contains(strings.Join(got.Argv, " "), "awsCredentialExport") {
+				t.Errorf("the Harness got a credential command: %q", got.Argv)
+			}
+			if home := got.Env["HOME"]; home == "" || strings.HasPrefix(home, userHome) {
+				t.Errorf("HOME = %q, want a fresh one, not the user's own", home)
+			}
+		})
+	}
+}
+
+// startsOnTheHost skips a test of starting the Harness on the host where
+// `check` doesn't start it there.
+func startsOnTheHost(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "darwin" {
+		t.Skip("on macOS the Harness's own login is in the Keychain, so check doesn't start it on the host")
+	}
+}
+
+func TestCheckDoesNotStartTheHarnessOnAMacHost(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("only macOS keeps the Harness's own login where a fresh home doesn't hide it")
+	}
+	p := checkProject(t, "")
+	logPath := filepath.Join(t.TempDir(), "harness.jsonl")
+	p.extraEnv = []string{"FWK_FAKE_HARNESS_LOG=" + logPath, "FWK_FAKE_START=cannot_start"}
+
+	if code := p.fwk(t, "check"); code != exitOK {
+		t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+	}
+	mustContain(t, "stdout", p.stdout, "claude isn't started on the host", "Keychain")
+	if n := len(harnessCalls(t, logPath)); n != 0 {
+		t.Errorf("the Harness was started %d times, want never", n)
+	}
 }

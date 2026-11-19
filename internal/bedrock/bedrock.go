@@ -23,7 +23,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts/types"
 	"github.com/aws/smithy-go"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
 )
 
 // lifetime is how long minted credentials last. An hour is what every path
@@ -41,7 +41,7 @@ const (
 const ssoWarnWithin = 2 * time.Hour
 
 // sessionName names what is minted, in the user's CloudTrail.
-const sessionName = "kraftwerk-bedrock"
+const sessionName = "fliesswerk-bedrock"
 
 // policy is all that minted credentials may do. What they can do is also
 // limited to what the credentials they come from can do.
@@ -319,7 +319,7 @@ func (k *Keeper) mint(ctx context.Context) (aws.Credentials, error) {
 	}
 	session, err := c.sts.GetSessionToken(ctx, &sts.GetSessionTokenInput{DurationSeconds: duration})
 	if refused(err) {
-		return aws.Credentials{}, fmt.Errorf("AWS refused both GetFederationToken and GetSessionToken (temporary credentials, such as an SSO profile's, can call neither): %w; set `role_arn` to a role they may assume, or set `i_accept_long_lived_keys_in_sandbox = true` in .kraftwerk/config.local.toml", err)
+		return aws.Credentials{}, fmt.Errorf("AWS refused both GetFederationToken and GetSessionToken (temporary credentials, such as an SSO profile's, can call neither): %w; set `role_arn` to a role they may assume, or set `i_accept_long_lived_keys_in_sandbox = true` in .fliesswerk/config.local.toml", err)
 	}
 	if err != nil {
 		return aws.Credentials{}, fmt.Errorf("AWS STS GetSessionToken: %w", err)

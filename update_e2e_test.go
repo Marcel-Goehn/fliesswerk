@@ -17,7 +17,7 @@ import (
 
 // thisArchive is the release archive for the OS the test runs on.
 func thisArchive() string {
-	name := "kraftwerk_" + runtime.GOOS + "_" + runtime.GOARCH
+	name := "fliesswerk_" + runtime.GOOS + "_" + runtime.GOARCH
 	if runtime.GOOS == "windows" {
 		return name + ".zip"
 	}
@@ -65,7 +65,7 @@ func updateEnv(t *testing.T, r *fakeRelease, home string, extra ...string) []str
 		env = append(env, kv)
 	}
 	env = append(env,
-		"KRAFTWERK_RELEASES_API="+r.url+"/releases", "KRAFTWERK_DOWNLOAD_URL="+r.url,
+		"FLIESSWERK_RELEASES_API="+r.url+"/releases", "FLIESSWERK_DOWNLOAD_URL="+r.url,
 		"HOME="+home, "USERPROFILE="+home, "XDG_CACHE_HOME="+filepath.Join(home, ".cache"), "LocalAppData="+filepath.Join(home, "local"))
 	return append(env, extra...)
 }
@@ -92,10 +92,10 @@ func entriesOf(t *testing.T, dir string) []string {
 	return names
 }
 
-func newBinary() []byte { return []byte("the new kraftwerk\n") }
+func newBinary() []byte { return []byte("the new fliesswerk\n") }
 
 func TestUpdateInstallsTheNewestReleaseOfTheCurrentMajor(t *testing.T) {
-	bin := buildKraftwerk(t, "-X main.version=1.2.0")
+	bin := buildFliesswerk(t, "-X main.version=1.2.0")
 	r := newFakeRelease(t)
 	publish(t, r, newBinary(),
 		fakeTag{tag: "v1.3.0"}, fakeTag{tag: "v2.0.0"}, fakeTag{tag: "v1.4.0"}, fakeTag{tag: "v1.1.0"},
@@ -109,7 +109,7 @@ func TestUpdateInstallsTheNewestReleaseOfTheCurrentMajor(t *testing.T) {
 	if got := mustRead(t, bin); !bytes.Equal(got, newBinary()) {
 		t.Fatalf("the binary is %d bytes that aren't the release's", len(got))
 	}
-	mustContain(t, "stdout", stdout, "1.4.0", "`kraftwerk update --major`", "2.0.0")
+	mustContain(t, "stdout", stdout, "1.4.0", "`fliesswerk update --major`", "2.0.0")
 	mustContain(t, "requests", strings.Join(r.requested(), "\n"), "/download/v1.4.0/"+thisArchive(), "/download/v1.4.0/checksums.txt")
 
 	want := []string{filepath.Base(bin)}
@@ -127,7 +127,7 @@ func TestUpdateOnWindowsKeepsTheRunningExecutableUnderAnotherName(t *testing.T) 
 	if runtime.GOOS != "windows" {
 		t.Skip("only Windows refuses to replace a running executable")
 	}
-	bin := buildKraftwerk(t, "-X main.version=1.2.0")
+	bin := buildFliesswerk(t, "-X main.version=1.2.0")
 	running := mustRead(t, bin)
 	if err := os.WriteFile(bin+".old", []byte("an earlier update's leftover"), 0o600); err != nil {
 		t.Fatal(err)
@@ -149,7 +149,7 @@ func TestUpdateOnWindowsKeepsTheRunningExecutableUnderAnotherName(t *testing.T) 
 }
 
 func TestUpdateWhenAlreadyNewestChangesNothing(t *testing.T) {
-	bin := buildKraftwerk(t, "-X main.version=1.2.0")
+	bin := buildFliesswerk(t, "-X main.version=1.2.0")
 	before := mustRead(t, bin)
 	r := newFakeRelease(t)
 	publish(t, r, newBinary(), fakeTag{tag: "v1.2.0"}, fakeTag{tag: "v1.1.9"})
@@ -169,7 +169,7 @@ func TestUpdateWhenAlreadyNewestChangesNothing(t *testing.T) {
 }
 
 func TestUpdateFromAPrereleaseMovesToItsRelease(t *testing.T) {
-	bin := buildKraftwerk(t, "-X main.version=1.3.0-rc.1")
+	bin := buildFliesswerk(t, "-X main.version=1.3.0-rc.1")
 	r := newFakeRelease(t)
 	publish(t, r, newBinary(), fakeTag{tag: "v1.3.0"})
 
@@ -192,7 +192,7 @@ func TestUpdateRefusesADownloadThatFailsItsChecksum(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			bin := buildKraftwerk(t, "-X main.version=1.2.0")
+			bin := buildFliesswerk(t, "-X main.version=1.2.0")
 			before := mustRead(t, bin)
 			r := newFakeRelease(t)
 			publish(t, r, newBinary(), fakeTag{tag: "v1.3.0"})
@@ -215,7 +215,7 @@ func TestUpdateRefusesADownloadThatFailsItsChecksum(t *testing.T) {
 }
 
 func TestUpdateMajorMovesToTheNewestMajorAndPointsToMigrate(t *testing.T) {
-	bin := buildKraftwerk(t, "-X main.version=1.9.0")
+	bin := buildFliesswerk(t, "-X main.version=1.9.0")
 	r := newFakeRelease(t)
 	publish(t, r, newBinary(), fakeTag{tag: "v1.9.5"}, fakeTag{tag: "v3.1.0"}, fakeTag{tag: "v2.4.0"})
 
@@ -227,12 +227,12 @@ func TestUpdateMajorMovesToTheNewestMajorAndPointsToMigrate(t *testing.T) {
 	if !bytes.Equal(mustRead(t, bin), newBinary()) {
 		t.Error("the binary wasn't replaced")
 	}
-	mustContain(t, "stdout", stdout, "3.1.0", "`kraftwerk migrate`")
+	mustContain(t, "stdout", stdout, "3.1.0", "`fliesswerk migrate`")
 	mustContain(t, "requests", strings.Join(r.requested(), "\n"), "/download/v3.1.0/")
 }
 
 func TestUpdateMajorWithNoNewerMajorChangesNothing(t *testing.T) {
-	bin := buildKraftwerk(t, "-X main.version=1.2.0")
+	bin := buildFliesswerk(t, "-X main.version=1.2.0")
 	before := mustRead(t, bin)
 	r := newFakeRelease(t)
 	publish(t, r, newBinary(), fakeTag{tag: "v1.9.0"})
@@ -242,7 +242,7 @@ func TestUpdateMajorWithNoNewerMajorChangesNothing(t *testing.T) {
 	if code != exitOK {
 		t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	mustContain(t, "stdout", stdout, "no newer major", "`kraftwerk update`")
+	mustContain(t, "stdout", stdout, "no newer major", "`fliesswerk update`")
 	if !bytes.Equal(mustRead(t, bin), before) {
 		t.Error("the binary changed")
 	}
@@ -259,7 +259,7 @@ func TestUpdateInsideAProjectStaysWithinItsFactoryPin(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			bin := buildKraftwerk(t, "-X main.version="+c.version)
+			bin := buildFliesswerk(t, "-X main.version="+c.version)
 			root := projectDir(t, map[string]string{"config.toml": "version = 1\nfactory = \"" + c.pin + "\"\n"})
 			r := newFakeRelease(t)
 			publish(t, r, newBinary(), fakeTag{tag: "v1.3.5"}, fakeTag{tag: "v1.9.9"}, fakeTag{tag: "v2.4.0"}, fakeTag{tag: "v3.1.0"})
@@ -275,27 +275,27 @@ func TestUpdateInsideAProjectStaysWithinItsFactoryPin(t *testing.T) {
 	}
 }
 
-func TestUpdateRenewsAKwkThatIsAHardLinkOrACopy(t *testing.T) {
+func TestUpdateRenewsAFwkThatIsAHardLinkOrACopy(t *testing.T) {
 	for _, kind := range []string{"hard link", "copy"} {
 		t.Run(kind, func(t *testing.T) {
-			bin := buildKraftwerk(t, "-X main.version=1.2.0")
-			kwk := filepath.Join(filepath.Dir(bin), "kwk"+filepath.Ext(bin))
+			bin := buildFliesswerk(t, "-X main.version=1.2.0")
+			fwk := filepath.Join(filepath.Dir(bin), "fwk"+filepath.Ext(bin))
 			if kind == "hard link" {
-				if err := os.Link(bin, kwk); err != nil {
+				if err := os.Link(bin, fwk); err != nil {
 					t.Skipf("no hard links here: %v", err)
 				}
-			} else if err := os.WriteFile(kwk, mustRead(t, bin), 0o700); err != nil { //nolint:gosec // an executable the test runs
+			} else if err := os.WriteFile(fwk, mustRead(t, bin), 0o700); err != nil { //nolint:gosec // an executable the test runs
 				t.Fatal(err)
 			}
 			r := newFakeRelease(t)
 			publish(t, r, newBinary(), fakeTag{tag: "v1.3.0"})
 
-			stdout, stderr, code := runEnv(t, kwk, t.TempDir(), updateEnv(t, r, t.TempDir()), "update")
+			stdout, stderr, code := runEnv(t, fwk, t.TempDir(), updateEnv(t, r, t.TempDir()), "update")
 
 			if code != exitOK {
 				t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 			}
-			for _, p := range []string{bin, kwk} {
+			for _, p := range []string{bin, fwk} {
 				if !bytes.Equal(mustRead(t, p), newBinary()) {
 					t.Errorf("%s wasn't replaced", p)
 				}
@@ -308,15 +308,15 @@ func TestUpdateThroughASymlinkReplacesTheTargetAndLeavesTheLink(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the Windows install makes no symlink")
 	}
-	bin := buildKraftwerk(t, "-X main.version=1.2.0")
-	kwk := filepath.Join(filepath.Dir(bin), "kwk")
-	if err := os.Symlink("kraftwerk", kwk); err != nil {
+	bin := buildFliesswerk(t, "-X main.version=1.2.0")
+	fwk := filepath.Join(filepath.Dir(bin), "fwk")
+	if err := os.Symlink("fliesswerk", fwk); err != nil {
 		t.Fatal(err)
 	}
 	r := newFakeRelease(t)
 	publish(t, r, newBinary(), fakeTag{tag: "v1.3.0"})
 
-	stdout, stderr, code := runEnv(t, kwk, t.TempDir(), updateEnv(t, r, t.TempDir()), "update")
+	stdout, stderr, code := runEnv(t, fwk, t.TempDir(), updateEnv(t, r, t.TempDir()), "update")
 
 	if code != exitOK {
 		t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
@@ -324,14 +324,14 @@ func TestUpdateThroughASymlinkReplacesTheTargetAndLeavesTheLink(t *testing.T) {
 	if !bytes.Equal(mustRead(t, bin), newBinary()) {
 		t.Error("the target wasn't replaced")
 	}
-	if target, err := os.Readlink(kwk); err != nil || target != "kraftwerk" {
-		t.Errorf("kwk is no longer the symlink: %q, %v", target, err)
+	if target, err := os.Readlink(fwk); err != nil || target != "fliesswerk" {
+		t.Errorf("fwk is no longer the symlink: %q, %v", target, err)
 	}
 }
 
 func TestUpdateFailures(t *testing.T) {
 	t.Run("a development build has no release to update from", func(t *testing.T) {
-		bin := buildKraftwerk(t, "")
+		bin := buildFliesswerk(t, "")
 		r := newFakeRelease(t)
 		_, stderr, code := runEnv(t, bin, t.TempDir(), updateEnv(t, r, t.TempDir()), "update")
 		if code != exitConfigError {
@@ -343,18 +343,18 @@ func TestUpdateFailures(t *testing.T) {
 		}
 	})
 	t.Run("the release list can't be had", func(t *testing.T) {
-		bin := buildKraftwerk(t, "-X main.version=1.2.0")
+		bin := buildFliesswerk(t, "-X main.version=1.2.0")
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusForbidden) }))
 		t.Cleanup(srv.Close)
-		env := append(updateEnv(t, newFakeRelease(t), t.TempDir()), "KRAFTWERK_RELEASES_API="+srv.URL)
+		env := append(updateEnv(t, newFakeRelease(t), t.TempDir()), "FLIESSWERK_RELEASES_API="+srv.URL)
 		_, stderr, code := runEnv(t, bin, t.TempDir(), env, "update")
 		if code != exitFailures {
 			t.Fatalf("exit code = %d, want %d; stderr: %s", code, exitFailures, stderr)
 		}
-		mustContain(t, "stderr", stderr, "403", "KRAFTWERK_GITHUB_TOKEN")
+		mustContain(t, "stderr", stderr, "403", "FLIESSWERK_GITHUB_TOKEN")
 	})
 	t.Run("an unexpected argument", func(t *testing.T) {
-		bin := buildKraftwerk(t, "-X main.version=1.2.0")
+		bin := buildFliesswerk(t, "-X main.version=1.2.0")
 		_, stderr, code := runEnv(t, bin, t.TempDir(), updateEnv(t, newFakeRelease(t), t.TempDir()), "update", "now")
 		if code != exitConfigError {
 			t.Fatalf("exit code = %d, want %d; stderr: %s", code, exitConfigError, stderr)
@@ -383,7 +383,7 @@ func ageNoticeStamp(t *testing.T, home string) {
 const noticeSays = "is available"
 
 func TestNoticeAppearsAtMostOnceADay(t *testing.T) {
-	bin := buildKraftwerk(t, "-X main.version=1.2.0")
+	bin := buildFliesswerk(t, "-X main.version=1.2.0")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
 	r := newFakeRelease(t)
 	publish(t, r, newBinary(), fakeTag{tag: "v1.4.0"})
@@ -394,7 +394,7 @@ func TestNoticeAppearsAtMostOnceADay(t *testing.T) {
 	if code != exitOK {
 		t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	mustContain(t, "stderr", stderr, "1.4.0 "+noticeSays, "`kraftwerk update`", "update_notice = false")
+	mustContain(t, "stderr", stderr, "1.4.0 "+noticeSays, "`fliesswerk update`", "update_notice = false")
 	if strings.Contains(stdout, noticeSays) {
 		t.Errorf("the notice is on stdout, which belongs to the command: %s", stdout)
 	}
@@ -411,14 +411,14 @@ func TestNoticeAppearsAtMostOnceADay(t *testing.T) {
 }
 
 func TestNoticePointsToUpdateMajorWhenOnlyANewMajorIsOut(t *testing.T) {
-	bin := buildKraftwerk(t, "-X main.version=1.2.0")
+	bin := buildFliesswerk(t, "-X main.version=1.2.0")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
 	r := newFakeRelease(t)
 	publish(t, r, newBinary(), fakeTag{tag: "v2.0.0"}, fakeTag{tag: "v1.2.0"})
 
 	_, stderr, _ := runEnv(t, bin, root, updateEnv(t, r, t.TempDir()), checkNoSandbox...)
 
-	mustContain(t, "stderr", stderr, "2.0.0 "+noticeSays, "`kraftwerk update --major`")
+	mustContain(t, "stderr", stderr, "2.0.0 "+noticeSays, "`fliesswerk update --major`")
 }
 
 func TestNoNotice(t *testing.T) {
@@ -437,7 +437,7 @@ func TestNoNotice(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			bin := buildKraftwerk(t, c.ldflags)
+			bin := buildFliesswerk(t, c.ldflags)
 			root := projectDir(t, map[string]string{"config.toml": c.config})
 			r := newFakeRelease(t)
 			publish(t, r, newBinary(), c.releases...)
@@ -458,11 +458,11 @@ func TestNoNotice(t *testing.T) {
 }
 
 func TestNoticeThatCantReachGitHubStaysQuiet(t *testing.T) {
-	bin := buildKraftwerk(t, "-X main.version=1.2.0")
+	bin := buildFliesswerk(t, "-X main.version=1.2.0")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusBadGateway) }))
 	t.Cleanup(srv.Close)
-	env := append(updateEnv(t, newFakeRelease(t), t.TempDir()), "KRAFTWERK_RELEASES_API="+srv.URL)
+	env := append(updateEnv(t, newFakeRelease(t), t.TempDir()), "FLIESSWERK_RELEASES_API="+srv.URL)
 
 	stdout, stderr, code := runEnv(t, bin, root, env, checkNoSandbox...)
 

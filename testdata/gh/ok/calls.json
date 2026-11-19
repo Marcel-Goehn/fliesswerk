@@ -3,5 +3,6 @@
   {"args": "--version", "stdout": "gh version 2.103.0 (2026-10-21)\nhttps://github.com/cli/cli/releases/tag/v2.103.0\n"},
   {"args": "auth status", "stdout": "github.com\n  ✓ Logged in to github.com account someone (GH_TOKEN)\n"},
   {"args": "api user --jq .login", "stdout": "me\n"},
+  {"args": "label list --limit 1000 --json name", "stdout": "[{\"name\":\"bug\"},{\"name\":\"in-progress\"},{\"name\":\"needs-investigation\"},{\"name\":\"ready-for-agent\"}]"},
   {"args": "issue list --state open --label in-progress --limit 1000 --json number,title,url,assignees", "stdout": "[]"}
 ]

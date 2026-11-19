@@ -15,21 +15,21 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/frontier"
-	"github.com/Marcel-Goehn/kraftwerk/internal/git"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
-	"github.com/Marcel-Goehn/kraftwerk/internal/prompt"
-	"github.com/Marcel-Goehn/kraftwerk/internal/redact"
-	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
-	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
+	"github.com/Marcel-Goehn/fliesswerk/internal/frontier"
+	"github.com/Marcel-Goehn/fliesswerk/internal/git"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/prompt"
+	"github.com/Marcel-Goehn/fliesswerk/internal/redact"
+	"github.com/Marcel-Goehn/fliesswerk/internal/runlog"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
+	"github.com/Marcel-Goehn/fliesswerk/internal/verify"
 )
 
 // Options shape a Run.
 type Options struct {
 	Tracker tracker.Tracker
-	// Root is the project root, the directory that holds .kraftwerk/. It
+	// Root is the project root, the directory that holds .fliesswerk/. It
 	// is inside the user's checkout, which the Run never touches.
 	Root string
 	// Remote is the git remote branches are cut from and pushed to.
@@ -46,6 +46,9 @@ type Options struct {
 	// RunStep runs a Step in Step.Dir and says how it ended. Steps of
 	// different Tickets call it at the same time.
 	RunStep func(ctx context.Context, s Step) harness.Outcome
+	// AuthFix says what a person does when the Harness rejects its
+	// credential at a Step, which stops the Run. "" says nothing more.
+	AuthFix string
 	// Sandboxes creates a Sandbox for each Ticket's build, merge Step and
 	// verify of a merged result; nil means no Sandboxes (`kind = "none"`).
 	Sandboxes func(ctx context.Context, req sandbox.Request) (sandbox.Sandbox, error)
@@ -68,7 +71,7 @@ type Options struct {
 	Log func(runlog.Line)
 	// LinkBlockerFix comes from the Tracker's Description.
 	LinkBlockerFix func(ticket, blocker tracker.ID) string
-	// ProtectedPaths are the Protected paths besides .kraftwerk/, which
+	// ProtectedPaths are the Protected paths besides .fliesswerk/, which
 	// always is one: files, directories (ending in "/") or globs, relative
 	// to the project root.
 	ProtectedPaths []string
@@ -235,7 +238,7 @@ func (e *SetupError) Error() string { return e.Msg }
 
 // StateDir is the runtime state, relative to the project root. It must be
 // git-ignored.
-var StateDir = filepath.Join(".kraftwerk", "state")
+var StateDir = filepath.Join(".fliesswerk", "state")
 
 type run struct {
 	opts Options
@@ -505,7 +508,7 @@ func (r *run) checkCheckout(ctx context.Context) error {
 		return err
 	}
 	if !ignored {
-		return &SetupError{Msg: fmt.Sprintf("%s/ is not git-ignored, and the Factory keeps its worktrees there; add `state/` to .kraftwerk/.gitignore",
+		return &SetupError{Msg: fmt.Sprintf("%s/ is not git-ignored, and the Factory keeps its worktrees there; add `state/` to .fliesswerk/.gitignore",
 			filepath.ToSlash(StateDir))}
 	}
 	return nil
@@ -822,7 +825,7 @@ type build struct {
 	// sandbox is where its Steps, verify and Sandbox Hooks run, nil for no
 	// Sandbox.
 	sandbox sandbox.Sandbox
-	// sandboxName is what its Sandbox Hooks are told KRAFTWERK_SANDBOX is.
+	// sandboxName is what its Sandbox Hooks are told FLIESSWERK_SANDBOX is.
 	sandboxName string
 }
 
@@ -895,7 +898,7 @@ const (
 )
 
 // sandboxName is the name of one of a Ticket's Sandboxes, which it gets as
-// KRAFTWERK_SANDBOX.
+// FLIESSWERK_SANDBOX.
 func sandboxName(purpose string, tk tracker.Ticket) string {
 	return purpose + "-" + tk.ID.Branch
 }
@@ -1036,8 +1039,10 @@ const freshRetries = 1
 func (r *run) runStep(ctx context.Context, s Step) (out harness.Outcome, failed *failure, stop error) {
 	fresh, transient := 0, 0
 	for {
-		r.memory.noteWork(s.Sandbox)
 		out = r.opts.RunStep(ctx, s)
+		if !out.NoSession {
+			r.memory.noteWork(s.Sandbox)
+		}
 		r.countUsage(s.Ticket, out)
 		if ctx.Err() != nil {
 			return out, nil, errKilled
@@ -1046,7 +1051,13 @@ func (r *run) runStep(ctx context.Context, s Step) (out harness.Outcome, failed 
 		oom := false
 		switch {
 		case out.Kind == harness.Failed && out.Class == harness.Auth:
-			return out, nil, fmt.Errorf("%s %s: the Harness reported an auth error: %s", s.Ticket.ID, s.Name, out.Message)
+			// The credential is at fault, never the Ticket: no retry, nothing
+			// handed back.
+			err := fmt.Errorf("%s %s: the Harness reported an auth error: %s", s.Ticket.ID, s.Name, out.Message)
+			if r.opts.AuthFix != "" {
+				err = fmt.Errorf("%w; %s", err, r.opts.AuthFix)
+			}
+			return out, nil, err
 		case out.Kind == harness.Failed && out.Class == harness.Transient:
 			if transient == transientRetries {
 				return out, nil, fmt.Errorf("%s %s: the Harness reported a transient error, again after %d retries: %s",

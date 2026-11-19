@@ -1,0 +1,11 @@
+# One Ticket without a parent: the Factory takes it as a Spec of one.
+#
+# issue <key> <parent> <blocked-by> <labels> <title>
+issue a  -  -  ready-for-agent  Add is_palindrome
+exit 0
+
+dry-run:
+Iteration 1 would take 1 Ticket (max_parallel = 1):
+  {{a}}  Add is_palindrome  (standalone)
+
+Dry run: nothing was written and nothing was started.

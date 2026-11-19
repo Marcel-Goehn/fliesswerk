@@ -18,7 +18,7 @@ func RunHelper(args []string) (code int, ok bool) {
 		return 0, false
 	}
 	err := runExec(args[1:]) // only returns if it failed
-	_, _ = fmt.Fprintf(os.Stderr, "kraftwerk: the native Sandbox: %v\n", err)
+	_, _ = fmt.Fprintf(os.Stderr, "fliesswerk: the native Sandbox: %v\n", err)
 	return helperFailed, true
 }
 

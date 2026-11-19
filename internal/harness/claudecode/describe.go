@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
 )
 
 const (
@@ -27,48 +27,61 @@ func parseVersion(output string) (string, error) {
 	return m[1], nil
 }
 
+// startCheckPrompt is what `check` starts Claude Code with. Without a
+// credential it never reaches a model.
+const startCheckPrompt = "fliesswerk check: does Claude Code start? Reply with OK."
+
+// readStart tells from Claude Code's output whether it started: with no
+// credential, it says it isn't logged in. One that can't start says so
+// first.
+func readStart(output string) harness.Start {
+	switch {
+	case strings.Contains(output, "could not start"):
+		return harness.NotStarted
+	case strings.Contains(output, "Not logged in"):
+		return harness.Started
+	}
+	return harness.StartUnclear
+}
+
 const anthropicHost = "api.anthropic.com"
 
 func anthropicEndpoints(map[string]string) []string { return []string{anthropicHost} }
 
-// Listing models is free: it proves the credential without spending
-// tokens.
-func listModels(base string, header map[string]string) harness.Request {
-	header["anthropic-version"] = "2023-06-01"
-	return harness.Request{Method: "GET", URL: strings.TrimSuffix(base, "/") + "/v1/models", Header: header}
-}
-
 var authMethods = []harness.AuthMethod{
 	{
-		Name:      "oauth_token",
-		Label:     "A Claude subscription",
-		Hint:      "Get a long-lived token with `claude setup-token`.",
-		Fields:    []harness.AuthField{{Key: "secret", Secret: true, Prompt: "the token", StoreKey: "claude"}},
+		Name:  "oauth_token",
+		Label: "A Claude subscription",
+		Hint:  "Get a long-lived token with `claude setup-token`.",
+		// Anthropic's terms: developers "may not collect, store, or
+		// intermediate Claude.ai credentials or session tokens"
+		// (https://code.claude.com/docs/en/legal-and-compliance).
+		Fields: []harness.AuthField{{
+			Key: "secret", Secret: true, Prompt: "the token", StoreKey: "claude",
+			NotStored:  "Anthropic's terms don't let other tools store a Claude subscription token",
+			SuggestEnv: "CLAUDE_CODE_OAUTH_TOKEN",
+		}},
 		Env:       map[string]string{"CLAUDE_CODE_OAUTH_TOKEN": "secret"},
 		Endpoints: anthropicEndpoints,
-		TestCall: func(f map[string]string) harness.Request {
-			return listModels("https://"+anthropicHost, map[string]string{
-				"Authorization":  "Bearer " + f["secret"],
-				"anthropic-beta": "oauth-2025-04-20",
-			})
-		},
+		// Claude Code's total_cost_usd is what the tokens would cost at
+		// API prices; the subscription covers them.
+		CostBasis:   harness.SubscriptionEstimate,
+		RejectedFix: "get a new token with `claude setup-token`",
 	},
 	{
-		Name:      "api_key",
-		Label:     "An Anthropic API key",
-		Fields:    []harness.AuthField{{Key: "secret", Secret: true, Prompt: "the API key", StoreKey: "claude_api_key"}},
-		Env:       map[string]string{"ANTHROPIC_API_KEY": "secret"},
-		Endpoints: anthropicEndpoints,
-		TestCall: func(f map[string]string) harness.Request {
-			return listModels("https://"+anthropicHost, map[string]string{"x-api-key": f["secret"]})
-		},
+		Name:        "api_key",
+		Label:       "An Anthropic API key",
+		Fields:      []harness.AuthField{{Key: "secret", Secret: true, Prompt: "the API key", StoreKey: "claude_api_key"}},
+		Env:         map[string]string{"ANTHROPIC_API_KEY": "secret"},
+		Endpoints:   anthropicEndpoints,
+		RejectedFix: "check your API key in the Anthropic Console, and that its account has credit",
 	},
 	{
 		// The Factory mints temporary credentials on the host and hands
 		// them over through CredentialFile. Only the user's own keys, passed
 		// through on their acknowledgement, go in the env. The free test
-		// call is STS GetCallerIdentity, which the AWS SDK signs on the host,
-		// so the method declares no TestCall.
+		// call is STS GetCallerIdentity, which the AWS SDK signs on the host:
+		// the host needs those credentials itself, to mint the Sandbox's.
 		Name:  "bedrock",
 		Label: "Amazon Bedrock",
 		Fields: []harness.AuthField{
@@ -83,6 +96,7 @@ var authMethods = []harness.AuthMethod{
 		Endpoints: func(f map[string]string) []string {
 			return []string{"bedrock-runtime." + f["region"] + ".amazonaws.com"}
 		},
+		RejectedFix: "check that the AWS credentials may call Bedrock in `region`",
 	},
 	{
 		Name:  "gateway",
@@ -99,9 +113,7 @@ var authMethods = []harness.AuthMethod{
 			}
 			return []string{u.Hostname()}
 		},
-		TestCall: func(f map[string]string) harness.Request {
-			return listModels(f["base_url"], map[string]string{"Authorization": "Bearer " + f["secret"]})
-		},
+		RejectedFix: "check the gateway token, and that `base_url` is the gateway's",
 	},
 }
 
@@ -124,9 +136,10 @@ func (ClaudeCode) Describe() harness.Description {
 
 		AuthQuestion: "How do you sign in to Claude?",
 		AuthMethods:  authMethods,
+		LoginFix:     "sign Claude Code in again by running `claude`, or set a credential in `[harnesses.claude_code]`",
 		ImportAuth:   importAuth,
 
-		FixedEnv: []string{envNoTraffic, envScrub},
+		FixedEnv: []string{envNoTraffic},
 		RedactEnv: []string{
 			"CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
 			"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_BEARER_TOKEN_BEDROCK",
@@ -140,6 +153,19 @@ func (ClaudeCode) Describe() harness.Description {
 		// Skips the first-run onboarding in a fresh home.
 		HomeSeed:     []harness.HomeFile{{Path: ".claude.json", Content: `{"hasCompletedOnboarding":true}`}},
 		HomeWritable: []string{".claude", ".claude.json"},
+
+		StartCheck: &harness.StartCheck{
+			Step:       harness.Step{Prompt: startCheckPrompt, ReportSchema: harness.ReportSchema},
+			Read:       readStart,
+			SkipOnHost: map[string]string{"darwin": "Claude Code keeps its own login in the Keychain, which a fresh home doesn't hide"},
+			// Where its own login lives, and what switches it to a provider
+			// that signs in from the user's own AWS or Google setup.
+			LoginEnv: []string{
+				"CLAUDE_CONFIG_DIR", "ANTHROPIC_BASE_URL",
+				"CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY",
+				"AWS_PROFILE", "AWS_SHARED_CREDENTIALS_FILE", "AWS_CONFIG_FILE", "GOOGLE_APPLICATION_CREDENTIALS",
+			},
+		},
 
 		Capabilities: harness.Capabilities{
 			Prompt:       harness.Stdin,

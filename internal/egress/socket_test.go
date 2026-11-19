@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/egress"
+	"github.com/Marcel-Goehn/fliesswerk/internal/egress"
 )
 
 // connectOverSocket asks the proxy at socket for a tunnel and returns the
@@ -40,7 +40,7 @@ func TestTheAllowlistHoldsOverAUnixSocket(t *testing.T) {
 	clearProxyEnv(t)
 	srv := tlsTarget(t)
 	// Not t.TempDir(): macOS's are too long for a Unix socket's path.
-	dir, err := os.MkdirTemp("/tmp", "kwk")
+	dir, err := os.MkdirTemp("/tmp", "fwk")
 	if err != nil {
 		t.Fatal(err)
 	}

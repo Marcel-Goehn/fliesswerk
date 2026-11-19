@@ -1,4 +1,4 @@
-// Command kraftwerk is the Factory: it runs AFK agents over a Spec's ready
+// Command fliesswerk is the Factory: it runs AFK agents over a Spec's ready
 // Tickets in a loop.
 package main
 
@@ -8,7 +8,7 @@ import (
 	"os"
 	"runtime/debug"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox/native"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox/native"
 )
 
 // version is injected at build time with -ldflags "-X main.version=...".
@@ -23,21 +23,21 @@ func main() {
 }
 
 const usage = `Usage:
-  kraftwerk init                  set this project up, mostly by confirming what the repo suggests
-  kraftwerk check [--commands]    find where a setup is stuck, before any token is spent;
-                                  --commands also runs the project's commands on base_branch
-  kraftwerk run [<N>]             implement the ready Tickets, Iteration by Iteration (of only Spec or standalone Ticket N)
-  kraftwerk run --dry-run [<N>]   show what Iteration 1 would take, and what is skipped and why
-  kraftwerk run --verbose [<N>]   show the agent's text as well
-  kraftwerk run --json [<N>]      print the Run's summary as JSON to stdout, and the live lines to stderr
-  kraftwerk logs                  print the latest Run's log directory
-  kraftwerk release <N>           drop the claim on Spec or standalone Ticket N, so someone else's Run may take it
-  kraftwerk prompts diff <step>   show how the built-in prompt of a Step changed since your file's version
-  kraftwerk auth set <key>        store a secret, read from a hidden prompt, in your user-level credentials file
-  kraftwerk migrate               rewrite renamed or removed config keys, and report what changed
-  kraftwerk update                install the newest release of this major version
-  kraftwerk update --major        move to the newest major version; run kraftwerk migrate after it
-  kraftwerk --version             print the version
+  fliesswerk init                  set this project up, mostly by confirming what the repo suggests
+  fliesswerk check [--commands]    find where a setup is stuck, before any token is spent;
+                                   --commands also runs the project's commands on base_branch
+  fliesswerk run [<N>]             implement the ready Tickets, Iteration by Iteration (of only Spec or standalone Ticket N)
+  fliesswerk run --dry-run [<N>]   show what Iteration 1 would take, and what is skipped and why
+  fliesswerk run --verbose [<N>]   show the agent's text as well
+  fliesswerk run --json [<N>]      print the Run's summary as JSON to stdout, and the live lines to stderr
+  fliesswerk logs                  print the latest Run's log directory
+  fliesswerk release <N>           drop the claim on Spec or standalone Ticket N, so someone else's Run may take it
+  fliesswerk prompts diff <step>   show how the built-in prompt of a Step changed since your file's version
+  fliesswerk auth set <key>        store a secret, read from a hidden prompt, in your user-level credentials file
+  fliesswerk migrate               rewrite renamed or removed config keys, and report what changed
+  fliesswerk update                install the newest release of this major version
+  fliesswerk update --major        move to the newest major version; run fliesswerk migrate after it
+  fliesswerk --version             print the version
 `
 
 // Exit codes, as fixed by the Spec (#31). A usage error counts as a config
@@ -52,7 +52,7 @@ const (
 // runCLI executes the command line and returns its exit code.
 func runCLI(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 1 && args[0] == "--version" {
-		_, _ = fmt.Fprintf(stdout, "kraftwerk %s\n", versionString())
+		_, _ = fmt.Fprintf(stdout, "fliesswerk %s\n", versionString())
 		return exitOK
 	}
 	if len(args) > 0 && args[0] == "init" {
@@ -83,7 +83,7 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		return runUpdate(args[1:], stdout, stderr)
 	}
 	if len(args) > 0 {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk: unknown argument %q\n", args[0])
+		_, _ = fmt.Fprintf(stderr, "fliesswerk: unknown argument %q\n", args[0])
 	}
 	_, _ = fmt.Fprint(stderr, usage)
 	return exitConfigError

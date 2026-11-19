@@ -39,7 +39,7 @@ func Check(ctx context.Context) (string, error) {
 		return seatbeltPrerequisites{version: macOSVersion, probe: probeSeatbelt}.check(ctx)
 	}
 	if runtime.GOOS != "linux" {
-		return "", fmt.Errorf("the native Sandbox isn't available on %s yet; use `kind = \"container\"`, or run with `--sandbox none --i-accept-unsandboxed-risk` (or set them in .kraftwerk/config.local.toml)", runtime.GOOS)
+		return "", fmt.Errorf("the native Sandbox isn't available on %s yet; use `kind = \"container\"`, or run with `--sandbox none --i-accept-unsandboxed-risk` (or set them in .fliesswerk/config.local.toml)", runtime.GOOS)
 	}
 	return prerequisites{lookPath: exec.LookPath, probe: probe, sysctl: readSysctl}.check(ctx)
 }

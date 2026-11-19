@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness/claudecode"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
-	"github.com/Marcel-Goehn/kraftwerk/internal/step"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness/claudecode"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/step"
 )
 
 var (
@@ -40,7 +40,7 @@ func withFakeHarness(t *testing.T, script string) {
 		if runtime.GOOS == "windows" {
 			name += ".exe"
 		}
-		cmd := exec.Command("go", "build", "-tags", "kwkfake", "-o", filepath.Join(dir, name), "../harness/fakeclaude")
+		cmd := exec.Command("go", "build", "-tags", "fwkfake", "-o", filepath.Join(dir, name), "../harness/fakeclaude")
 		if out, err := cmd.CombinedOutput(); err != nil {
 			fakeErr = errors.New("go build fakeclaude: " + err.Error() + "\n" + string(out))
 			return
@@ -55,11 +55,11 @@ func withFakeHarness(t *testing.T, script string) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", fakeDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv("KWK_FAKE_HARNESS_SCRIPT", path)
+	t.Setenv("FWK_FAKE_HARNESS_SCRIPT", path)
 }
 
 func newStep(prompt string) harness.Step {
-	return harness.Step{Prompt: prompt, ReportSchema: harness.ReportSchema, ScrubCredentials: true}
+	return harness.Step{Prompt: prompt, ReportSchema: harness.ReportSchema}
 }
 
 func TestAStepRunsInItsDirWithThePromptOnStdin(t *testing.T) {
@@ -213,7 +213,7 @@ func TestAStepThatKeepsTalkingFailsAtTheStepTimeout(t *testing.T) {
 func TestEveryStepGetsTheNonInteractiveGitEnv(t *testing.T) {
 	withFakeHarness(t, `{"sessions": [{"report": {"outcome": "done", "summary": "ok"}}]}`)
 	logPath := filepath.Join(t.TempDir(), "log.jsonl")
-	t.Setenv("KWK_FAKE_HARNESS_LOG", logPath)
+	t.Setenv("FWK_FAKE_HARNESS_LOG", logPath)
 	t.Setenv("GIT_EDITOR", "vim")
 
 	out := step.Runner{Harness: claudecode.ClaudeCode{}}.Run(context.Background(), newStep("go"), t.TempDir())
@@ -232,8 +232,8 @@ func TestEveryStepGetsTheNonInteractiveGitEnv(t *testing.T) {
 func TestCredentialsGoIntoTheStepEnvNeverItsArgv(t *testing.T) {
 	withFakeHarness(t, `{"sessions": [{"report": {"outcome": "done", "summary": "ok"}}]}`)
 	logPath := filepath.Join(t.TempDir(), "log.jsonl")
-	t.Setenv("KWK_FAKE_HARNESS_LOG", logPath)
-	t.Setenv("KWK_FAKE_LOG_ENV", "DATABASE_URL")
+	t.Setenv("FWK_FAKE_HARNESS_LOG", logPath)
+	t.Setenv("FWK_FAKE_LOG_ENV", "DATABASE_URL")
 	// The user's own key would win over the configured OAuth token.
 	t.Setenv("ANTHROPIC_API_KEY", "the-users-own-key")
 
@@ -288,7 +288,7 @@ func TestOnWindowsACmdShimIsFollowedToTheRealExecutable(t *testing.T) {
 	// Only the shim is on PATH, not the fake itself.
 	t.Setenv("PATH", shimDir+string(os.PathListSeparator)+path)
 	logPath := filepath.Join(t.TempDir(), "log.jsonl")
-	t.Setenv("KWK_FAKE_HARNESS_LOG", logPath)
+	t.Setenv("FWK_FAKE_HARNESS_LOG", logPath)
 
 	s := newStep("go")
 	out := step.Runner{Harness: claudecode.ClaudeCode{}}.Run(context.Background(), s, t.TempDir())
@@ -469,5 +469,70 @@ func TestAHarnessTheFactoryKillsHasNotRunOutOfMemory(t *testing.T) {
 
 	if out.Kind != harness.Failed || out.Class != harness.Other {
 		t.Errorf("outcome = %+v, want a failure of class %q", out, harness.Other)
+	}
+}
+
+func TestAHarnessThatCantStartItsSessionSaysSo(t *testing.T) {
+	withFakeHarness(t, `{"sessions": []}`)
+	t.Setenv("FWK_FAKE_START", "cannot_start")
+	s := (claudecode.ClaudeCode{}).Describe().StartCheck.Step
+
+	out := step.Runner{Harness: claudecode.ClaudeCode{}}.Run(context.Background(), s, t.TempDir())
+
+	if out.Kind != harness.Failed || !out.NoSession {
+		t.Errorf("outcome = %+v, want a failure without a session", out)
+	}
+}
+
+func TestAMissingHarnessHasNoSession(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+
+	out := step.Runner{Harness: claudecode.ClaudeCode{}}.Run(context.Background(), newStep("go"), t.TempDir())
+
+	if !out.NoSession {
+		t.Errorf("outcome = %+v, want no session", out)
+	}
+}
+
+func TestAHarnessThatFailsInItsSessionHadOne(t *testing.T) {
+	withFakeHarness(t, `{"sessions": [{"actions": [{"text": "working"}], "error": "boom"}]}`)
+
+	out := step.Runner{Harness: claudecode.ClaudeCode{}}.Run(context.Background(), newStep("go"), t.TempDir())
+
+	if out.Kind != harness.Failed || out.NoSession {
+		t.Errorf("outcome = %+v, want a failure in a session", out)
+	}
+}
+
+func TestAStepTimedOutInItsSessionHadOne(t *testing.T) {
+	withFakeHarness(t, `{"sessions": [{"actions": [{"text": "working"}, {"sleep": "30s"}]}]}`)
+
+	out := step.Runner{Harness: claudecode.ClaudeCode{}, IdleTimeout: 200 * time.Millisecond}.Run(context.Background(), newStep("go"), t.TempDir())
+
+	if out.Kind != harness.Failed || out.NoSession {
+		t.Errorf("outcome = %+v, want a failure in a session", out)
+	}
+}
+
+func TestASilentHarnessKilledAtTheIdleTimeoutRanMeanwhile(t *testing.T) {
+	withFakeHarness(t, `{"sessions": [{"actions": [{"sleep": "30s"}]}]}`)
+
+	out := step.Runner{Harness: claudecode.ClaudeCode{}, IdleTimeout: 200 * time.Millisecond}.Run(context.Background(), newStep("go"), t.TempDir())
+
+	if out.Kind != harness.Failed || out.NoSession {
+		t.Errorf("outcome = %+v, want a failure that counts as having run", out)
+	}
+}
+
+func TestAHarnessKilledForLackOfMemoryBeforeAnyEventRan(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no SIGKILL")
+	}
+	withFakeHarness(t, `{"sessions": [{"kill": true}]}`)
+
+	out := step.Runner{Harness: claudecode.ClaudeCode{}}.Run(context.Background(), newStep("go"), t.TempDir())
+
+	if out.Class != harness.OutOfMemory || out.NoSession {
+		t.Errorf("outcome = %+v, want an out-of-memory failure that counts as having run", out)
 	}
 }

@@ -37,12 +37,47 @@ func (t *Totals) Add(u Usage) {
 	t.Costs[u.CostUnit] += u.Cost
 }
 
+// CostBasis is what a reported cost is: a charge, or an estimate of what
+// the same tokens would cost at API prices.
+type CostBasis string
+
+const (
+	// Billed is a cost the credential is charged.
+	Billed CostBasis = "billed"
+	// SubscriptionEstimate is the API-price figure of tokens a subscription
+	// covers: no one is charged it.
+	SubscriptionEstimate CostBasis = "subscription_estimate"
+)
+
 // CostString shows the costs per unit and how many Steps reported none,
-// e.g. "$3.10 + 12 credits (2 Steps reported no cost)".
-func (t Totals) CostString() string {
+// e.g. "$3.10 + 12 credits (2 Steps reported no cost)". A
+// SubscriptionEstimate reads as one, e.g. "≈$0.28 API-price estimate
+// (covered by your subscription)".
+func (t Totals) CostString(basis CostBasis) string {
 	if len(t.Costs) == 0 {
 		return "no cost reported"
 	}
+	var notes []string
+	costs := t.costs()
+	if basis == SubscriptionEstimate {
+		costs = "≈" + costs + " API-price estimate"
+		notes = append(notes, "covered by your subscription")
+	}
+	switch t.NoCost {
+	case 0:
+	case 1:
+		notes = append(notes, "1 Step reported no cost")
+	default:
+		notes = append(notes, fmt.Sprintf("%d Steps reported no cost", t.NoCost))
+	}
+	if len(notes) == 0 {
+		return costs
+	}
+	return costs + " (" + strings.Join(notes, ", ") + ")"
+}
+
+// costs are the summed costs, dollars before credits.
+func (t Totals) costs() string {
 	units := make([]CostUnit, 0, len(t.Costs))
 	for u := range t.Costs {
 		units = append(units, u)
@@ -53,14 +88,7 @@ func (t Totals) CostString() string {
 	for _, u := range units {
 		parts = append(parts, formatCost(t.Costs[u], u))
 	}
-	s := strings.Join(parts, " + ")
-	switch t.NoCost {
-	case 0:
-		return s
-	case 1:
-		return s + " (1 Step reported no cost)"
-	}
-	return fmt.Sprintf("%s (%d Steps reported no cost)", s, t.NoCost)
+	return strings.Join(parts, " + ")
 }
 
 // formatCost shows a cost in its unit. Dollars below a cent keep four

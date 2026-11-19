@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"runtime"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/version"
+	"github.com/Marcel-Goehn/fliesswerk/internal/version"
 )
 
 // MinVersion is the oldest git the Factory works with: the first whose

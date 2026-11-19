@@ -1,4 +1,4 @@
-// Package setup is what `kraftwerk init` knows: what a repo tells about
+// Package setup is what `fliesswerk init` knows: what a repo tells about
 // itself, what to ask about the rest, and which files come of the answers.
 package setup
 
@@ -16,7 +16,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/git"
+	"github.com/Marcel-Goehn/fliesswerk/internal/git"
 )
 
 // The language ids, as `init` shows and takes them.

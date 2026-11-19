@@ -14,7 +14,7 @@ The Factory supports proxies that need no login. Basic, NTLM and Kerberos proxy 
 
 ## Trusting the corporate root
 
-Add the root certificate to `.kraftwerk/config.toml` as a PEM file:
+Add the root certificate to `.fliesswerk/config.toml` as a PEM file:
 
 ```toml
 [network]
@@ -23,7 +23,7 @@ ca_certs = ["certs/corporate-root.pem"]
 
 A path can be absolute, start with `~/`, or be relative to the project root. List several files if you have several roots.
 
-`kraftwerk check` tells you when you need this. It makes one request from inside a Sandbox to the Harness's endpoint, and if the Sandbox rejects the certificate while your machine accepts it, it names the root your machine verified and prints this fix. Every Run does the same when it starts, and stops if the check fails. The request uses `curl`, so an image without `curl` gets a warning and no check.
+`fliesswerk check` tells you when you need this. It makes one request from inside a Sandbox to the Harness's endpoint, and if the Sandbox rejects the certificate while your machine accepts it, it names the root your machine verified and prints this fix. Every Run does the same when it starts, and stops if the check fails. The request uses `curl`, so an image without `curl` gets a warning and no check.
 
 ### Exporting the root
 
@@ -60,7 +60,7 @@ A container image needs a system list to add to. Without one the Sandbox stops a
 
 Sandboxes never use your proxy directly. `HTTPS_PROXY` inside one always points at the Factory's egress proxy, which chains to your corporate proxy.
 
-The egress proxy follows your host's `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY`. To use a different proxy, or if you only have a PAC file, either set `HTTPS_PROXY` in your shell or set this in `.kraftwerk/config.toml`:
+The egress proxy follows your host's `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY`. To use a different proxy, or if you only have a PAC file, either set `HTTPS_PROXY` in your shell or set this in `.fliesswerk/config.toml`:
 
 ```toml
 [network]
@@ -69,16 +69,16 @@ upstream_proxy = "http://proxy.corp.example:8080"
 
 `upstream_proxy` replaces all three host variables. To find the proxy behind a PAC file, open the PAC URL and look for the `PROXY host:port` it returns for external hosts.
 
-A proxy that listens on your machine's own localhost works with a native Sandbox only. A container Sandbox reaches the outside through a proxy sidecar, and in a container `localhost` is that container, so `kraftwerk check` stops and tells you. Make the proxy listen on an address containers can reach and name that in `upstream_proxy`, or use `kind = "native"`.
+A proxy that listens on your machine's own localhost works with a native Sandbox only. A container Sandbox reaches the outside through a proxy sidecar, and in a container `localhost` is that container, so `fliesswerk check` stops and tells you. Make the proxy listen on an address containers can reach and name that in `upstream_proxy`, or use `kind = "native"`.
 
 ## Image builds
 
-Builds go through your corporate proxy, not the egress proxy. They get your proxy variables as build args (`upstream_proxy` instead, if set) and `ca_certs` as the build secret `kraftwerk-ca`. Changing `ca_certs` rebuilds the image.
+Builds go through your corporate proxy, not the egress proxy. They get your proxy variables as build args (`upstream_proxy` instead, if set) and `ca_certs` as the build secret `fliesswerk-ca`. Changing `ca_certs` rebuilds the image.
 
-Install the secret early in `.kraftwerk/Containerfile`, so that package installs trust the proxy. On Debian or Ubuntu:
+Install the secret early in `.fliesswerk/Containerfile`, so that package installs trust the proxy. On Debian or Ubuntu:
 
 ```dockerfile
-RUN --mount=type=secret,id=kraftwerk-ca sh -c 'if [ -s /run/secrets/kraftwerk-ca ]; then cp /run/secrets/kraftwerk-ca /usr/local/share/ca-certificates/kraftwerk-ca.crt && update-ca-certificates; fi'
+RUN --mount=type=secret,id=fliesswerk-ca sh -c 'if [ -s /run/secrets/fliesswerk-ca ]; then cp /run/secrets/fliesswerk-ca /usr/local/share/ca-certificates/fliesswerk-ca.crt && update-ca-certificates; fi'
 ```
 
 The image must already have `ca-certificates` at that point. The secret is mounted only for that `RUN`, and it stays out of the image's layers.
@@ -90,7 +90,7 @@ The image must already have `ca-certificates` at that point. The secret is mount
 The JVM uses its own keystore. In a container Sandbox, import the root during the build:
 
 ```dockerfile
-RUN --mount=type=secret,id=kraftwerk-ca keytool -importcert -noprompt -trustcacerts -alias corporate-root -file /run/secrets/kraftwerk-ca -keystore "$JAVA_HOME/lib/security/cacerts" -storepass changeit
+RUN --mount=type=secret,id=fliesswerk-ca keytool -importcert -noprompt -trustcacerts -alias corporate-root -file /run/secrets/fliesswerk-ca -keystore "$JAVA_HOME/lib/security/cacerts" -storepass changeit
 ```
 
 `keytool` imports only the first certificate of a file. For several roots, split them and import each one.
@@ -99,10 +99,10 @@ In a native Sandbox, build a keystore outside the project, give the Sandbox read
 
 ```toml
 [sandbox]
-read_only_paths = ["~/.kraftwerk-java/cacerts"]
+read_only_paths = ["~/.fliesswerk-java/cacerts"]
 
 [sandbox.env]
-JAVA_TOOL_OPTIONS = "-Djavax.net.ssl.trustStore=/home/you/.kraftwerk-java/cacerts"
+JAVA_TOOL_OPTIONS = "-Djavax.net.ssl.trustStore=/home/you/.fliesswerk-java/cacerts"
 ```
 
 ### .NET

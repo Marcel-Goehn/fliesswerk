@@ -1,0 +1,19 @@
+# A Spec with three independent Tickets, each a small new function with
+# tests in a module of its own, so they also merge cleanly in parallel.
+#
+# issue <key> <parent> <blocked-by> <labels> <title>
+issue spec  -     -  -                Spec: Text statistics
+issue chars spec  -  ready-for-agent  Add char_count
+issue rev   spec  -  ready-for-agent  Add reverse_words
+issue trunc spec  -  ready-for-agent  Add truncate
+exit 0
+
+dry-run:
+Iteration 1 would take 1 Ticket (max_parallel = 1):
+  {{chars}}  Add char_count  (Spec {{spec}})
+
+Ready, for a later Iteration:
+  {{rev}}  Add reverse_words  (Spec {{spec}})
+  {{trunc}}  Add truncate  (Spec {{spec}})
+
+Dry run: nothing was written and nothing was started.

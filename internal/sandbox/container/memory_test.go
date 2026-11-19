@@ -30,12 +30,12 @@ func TestContainerMemoryAddsUpEachEnginesUnits(t *testing.T) {
 	}{
 		"docker": {
 			Engine{Binary: docker},
-			"kraftwerk-r-build-2 1.5GiB / 15.52GiB\nkraftwerk-r-build-2-forward 512KiB / 15.52GiB\n",
+			"fliesswerk-r-build-2 1.5GiB / 15.52GiB\nfliesswerk-r-build-2-forward 512KiB / 15.52GiB\n",
 			3<<29 + 512<<10,
 		},
 		"podman": {
 			Engine{Binary: podman},
-			"kraftwerk-r-build-2 1.5GB / 16.6GB\nkraftwerk-r-build-2-forward 512kB / 16.6GB\n",
+			"fliesswerk-r-build-2 1.5GB / 16.6GB\nfliesswerk-r-build-2-forward 512kB / 16.6GB\n",
 			1_500_000_000 + 512_000,
 		},
 		"a stopped container":    {Engine{Binary: docker}, "gone 0B / 0B\n", 0},

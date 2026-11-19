@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
 )
 
 // Command is one Feedback command from `[commands]`.

@@ -1,0 +1,14 @@
+# A Spec with a Ticket that needs Postgres: store something and read it
+# back, with a test against the database from compose.yaml. The set-up
+# config must name the postgres Service.
+#
+# issue <key> <parent> <blocked-by> <labels> <title>
+issue spec  -     -  -                Spec: Saved snippets
+issue a     spec  -  ready-for-agent  Store and read back snippets in Postgres
+exit 0
+
+dry-run:
+Iteration 1 would take 1 Ticket (max_parallel = 1):
+  {{a}}  Store and read back snippets in Postgres  (Spec {{spec}})
+
+Dry run: nothing was written and nothing was started.

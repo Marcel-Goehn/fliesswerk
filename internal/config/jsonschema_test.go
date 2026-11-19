@@ -12,7 +12,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/config"
+	"github.com/Marcel-Goehn/fliesswerk/internal/config"
 )
 
 var update = flag.Bool("update", false, "rewrite the published JSON Schema")

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/git"
+	"github.com/Marcel-Goehn/fliesswerk/internal/git"
 )
 
 // cloneOf is a checkout of a new bare remote that has one commit on main.
@@ -41,7 +41,7 @@ func TestADryRunPushProvesTheRemoteAndCreatesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := repo.DryRunPush(ctx, "origin", "refs/remotes/origin/main", "kraftwerk/check"); err != nil {
+	if err := repo.DryRunPush(ctx, "origin", "refs/remotes/origin/main", "fliesswerk/check"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -49,7 +49,7 @@ func TestADryRunPushProvesTheRemoteAndCreatesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(out, "kraftwerk/check") {
+	if strings.Contains(out, "fliesswerk/check") {
 		t.Errorf("the dry run created a branch:\n%s", out)
 	}
 }
@@ -64,7 +64,7 @@ func TestADryRunPushToARemoteThatIsGoneFails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := repo.DryRunPush(ctx, "origin", "refs/remotes/origin/main", "kraftwerk/check"); err == nil {
+	if err := repo.DryRunPush(ctx, "origin", "refs/remotes/origin/main", "fliesswerk/check"); err == nil {
 		t.Fatal("the dry run succeeded against a remote that is gone")
 	}
 }

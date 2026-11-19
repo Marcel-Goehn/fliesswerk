@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
 )
 
 // The Tracker writes a Run can queue.

@@ -8,10 +8,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/git"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
-	"github.com/Marcel-Goehn/kraftwerk/internal/prompt"
-	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
+	"github.com/Marcel-Goehn/fliesswerk/internal/git"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/prompt"
+	"github.com/Marcel-Goehn/fliesswerk/internal/runlog"
 )
 
 // mergeQueue lets the Tickets of one Spec merge one at a time, in the

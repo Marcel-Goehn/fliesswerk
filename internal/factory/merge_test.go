@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
-	"github.com/Marcel-Goehn/kraftwerk/internal/hook"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
-	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
+	"github.com/Marcel-Goehn/fliesswerk/internal/factory"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/hook"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/fake"
+	"github.com/Marcel-Goehn/fliesswerk/internal/verify"
 )
 
 // stepFunc is what a test runs for a Step.
@@ -151,7 +151,7 @@ func TestTheMergePromptHasTheConflictTheTicketsBehindItAndTheSpec(t *testing.T) 
 		"# Conflicting files", "`shared.txt`",
 		"# Tickets merged since this Ticket started", "#2 Write it one way", "Say one.", "Add shared.txt",
 		"# Resolve", "After resolving, run these", "go test ./...",
-		"# Do not close the Ticket", "# Rules", "`.kraftwerk/`", "# Done", "cannot_do")
+		"# Do not close the Ticket", "# Rules", "`.fliesswerk/`", "# Done", "cannot_do")
 	if strings.Contains(got, "Say nothing.") {
 		t.Errorf("the prompt names #4, whose commits didn't touch the conflicting file:\n%s", got)
 	}
@@ -240,8 +240,8 @@ func TestAMergeStepThatDoesNotResolveTheConflictReQueuesTheTicket(t *testing.T) 
 func TestAMergeStepThatChangesAProtectedPathHandsTheTicketBackWithoutARetry(t *testing.T) {
 	c := newConflict(t, func(_ context.Context, s factory.Step) harness.Outcome {
 		write(t, filepath.Join(s.Dir, "shared.txt"), "from both\n")
-		write(t, filepath.Join(s.Dir, ".kraftwerk", "config.toml"), "max_parallel = 9\n")
-		git(t, s.Dir, "add", "shared.txt", ".kraftwerk/config.toml")
+		write(t, filepath.Join(s.Dir, ".fliesswerk", "config.toml"), "max_parallel = 9\n")
+		git(t, s.Dir, "add", "shared.txt", ".fliesswerk/config.toml")
 		git(t, s.Dir, "commit", "--no-edit")
 		// A merge that is unresolved as well still gets no retry.
 		write(t, filepath.Join(s.Dir, "stray.txt"), "x\n")
@@ -256,7 +256,7 @@ func TestAMergeStepThatChangesAProtectedPathHandsTheTicketBackWithoutARetry(t *t
 	if c.implements != 1 {
 		t.Errorf("#3 was implemented %d times, want once: a Protected path gets no retry", c.implements)
 	}
-	handedBack(t, c.tr, 3, ".kraftwerk/config.toml")
+	handedBack(t, c.tr, 3, ".fliesswerk/config.toml")
 	if got := git(t, c.f.remote, "show", c.f.remoteRef(t, specBranch)+":shared.txt"); got != "from 2" {
 		t.Errorf("shared.txt on the Spec branch = %q, want #2's", got)
 	}
@@ -308,7 +308,7 @@ func TestAnAuthErrorInTheMergeStepStopsTheRun(t *testing.T) {
 // inSubdirectory makes the conflict's project live in sub/ of its checkout.
 func inSubdirectory(t *testing.T, c *conflict) {
 	t.Helper()
-	write(t, filepath.Join(c.f.work, "sub", ".kraftwerk", ".gitignore"), "state/\n")
+	write(t, filepath.Join(c.f.work, "sub", ".fliesswerk", ".gitignore"), "state/\n")
 	git(t, c.f.work, "add", ".")
 	git(t, c.f.work, "commit", "-q", "-m", "Add the project in sub/")
 	git(t, c.f.work, "push", "-q", "origin", "main")

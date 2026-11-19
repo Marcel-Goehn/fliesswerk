@@ -21,15 +21,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/config"
-	semver "github.com/Marcel-Goehn/kraftwerk/internal/version"
+	"github.com/Marcel-Goehn/fliesswerk/internal/config"
+	semver "github.com/Marcel-Goehn/fliesswerk/internal/version"
 )
 
 const (
 	// One page holds the newest 100 releases, which is far more than a
 	// supported major ever falls behind by.
-	githubReleasesAPI  = "https://api.github.com/repos/Marcel-Goehn/kraftwerk/releases?per_page=100"
-	githubDownloadBase = "https://github.com/Marcel-Goehn/kraftwerk/releases"
+	githubReleasesAPI  = "https://api.github.com/repos/Marcel-Goehn/fliesswerk/releases?per_page=100"
+	githubDownloadBase = "https://github.com/Marcel-Goehn/fliesswerk/releases"
 
 	updateTimeout  = 10 * time.Minute
 	noticeTimeout  = 2 * time.Second
@@ -38,25 +38,25 @@ const (
 	maxDownload = 1 << 30
 )
 
-// runUpdate is `kraftwerk update [--major]`.
+// runUpdate is `fliesswerk update [--major]`.
 func runUpdate(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("kraftwerk update", flag.ContinueOnError)
+	fs := flag.NewFlagSet("fliesswerk update", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	major := fs.Bool("major", false, "move to the newest major version, whose config may need `kraftwerk migrate`")
+	major := fs.Bool("major", false, "move to the newest major version, whose config may need `fliesswerk migrate`")
 	if err := fs.Parse(args); err != nil {
 		return exitConfigError
 	}
 	if fs.NArg() > 0 {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk update: unexpected argument %q\n", fs.Arg(0))
+		_, _ = fmt.Fprintf(stderr, "fliesswerk update: unexpected argument %q\n", fs.Arg(0))
 		return exitConfigError
 	}
 	current, prerelease, ok := semver.Parse(version)
 	if !ok {
-		_, _ = fmt.Fprintln(stderr, "kraftwerk update: this is a development build, which no release replaces; install one with the install script (docs/install.md)")
+		_, _ = fmt.Fprintln(stderr, "fliesswerk update: this is a development build, which no release replaces; install one with the install script (docs/install.md)")
 		return exitConfigError
 	}
 	fail := func(err error) int {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk update: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "fliesswerk update: %v\n", err)
 		return exitFailures
 	}
 
@@ -68,19 +68,19 @@ func runUpdate(args []string, stdout, stderr io.Writer) int {
 	}
 	pin := projectPin()
 	if pin != "" {
-		_, _ = fmt.Fprintf(stdout, "kraftwerk update: this project sets factory = %q, so only releases it allows count\n", pin)
+		_, _ = fmt.Fprintf(stdout, "fliesswerk update: this project sets factory = %q, so only releases it allows count\n", pin)
 	}
 	u := findUpgrades(allowedByPin(releases, pin), current, prerelease)
 
 	if *major {
 		if u.newerMajor == nil {
-			_, _ = fmt.Fprintf(stdout, "kraftwerk update: no newer major than %d is out; `kraftwerk update` looks for releases within it\n", current.Major())
+			_, _ = fmt.Fprintf(stdout, "fliesswerk update: no newer major than %d is out; `fliesswerk update` looks for releases within it\n", current.Major())
 			return exitOK
 		}
 		if err := install(ctx, *u.newerMajor); err != nil {
 			return fail(err)
 		}
-		_, _ = fmt.Fprintf(stdout, "kraftwerk update: updated from %s to %s; run `kraftwerk migrate` in each project to bring its config along\n", current, *u.newerMajor)
+		_, _ = fmt.Fprintf(stdout, "fliesswerk update: updated from %s to %s; run `fliesswerk migrate` in each project to bring its config along\n", current, *u.newerMajor)
 		return exitOK
 	}
 
@@ -88,12 +88,12 @@ func runUpdate(args []string, stdout, stderr io.Writer) int {
 		if err := install(ctx, *u.inMajor); err != nil {
 			return fail(err)
 		}
-		_, _ = fmt.Fprintf(stdout, "kraftwerk update: updated from %s to %s\n", current, *u.inMajor)
+		_, _ = fmt.Fprintf(stdout, "fliesswerk update: updated from %s to %s\n", current, *u.inMajor)
 	} else {
-		_, _ = fmt.Fprintf(stdout, "kraftwerk update: %s is up to date within major %d\n", current, current.Major())
+		_, _ = fmt.Fprintf(stdout, "fliesswerk update: %s is up to date within major %d\n", current, current.Major())
 	}
 	if u.newerMajor != nil {
-		_, _ = fmt.Fprintf(stdout, "kraftwerk update: %s is out as well; `kraftwerk update --major` moves to it\n", *u.newerMajor)
+		_, _ = fmt.Fprintf(stdout, "fliesswerk update: %s is out as well; `fliesswerk update --major` moves to it\n", *u.newerMajor)
 	}
 	return exitOK
 }
@@ -144,14 +144,14 @@ func findUpgrades(releases []semver.Version, current semver.Version, prerelease 
 }
 
 // fetchReleases lists the published, final releases.
-// KRAFTWERK_RELEASES_API replaces GitHub's API, the way
-// KRAFTWERK_DOWNLOAD_URL does its downloads. KRAFTWERK_GITHUB_TOKEN raises
+// FLIESSWERK_RELEASES_API replaces GitHub's API, the way
+// FLIESSWERK_DOWNLOAD_URL does its downloads. FLIESSWERK_GITHUB_TOKEN raises
 // GitHub's rate limit for machines that share an address; it only ever goes
 // to GitHub.
 func fetchReleases(ctx context.Context) ([]semver.Version, error) {
-	url, token := os.Getenv("KRAFTWERK_RELEASES_API"), ""
+	url, token := os.Getenv("FLIESSWERK_RELEASES_API"), ""
 	if url == "" {
-		url, token = githubReleasesAPI, os.Getenv("KRAFTWERK_GITHUB_TOKEN")
+		url, token = githubReleasesAPI, os.Getenv("FLIESSWERK_GITHUB_TOKEN")
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil) //nolint:gosec // GitHub, or the mirror its user set
 	if err != nil {
@@ -167,7 +167,7 @@ func fetchReleases(ctx context.Context) ([]semver.Version, error) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
-		return nil, fmt.Errorf("listing the releases: the server answered %d, which GitHub does at its rate limit; set KRAFTWERK_GITHUB_TOKEN to a token to raise it", resp.StatusCode)
+		return nil, fmt.Errorf("listing the releases: the server answered %d, which GitHub does at its rate limit; set FLIESSWERK_GITHUB_TOKEN to a token to raise it", resp.StatusCode)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("listing the releases: the server answered %d", resp.StatusCode)
@@ -201,12 +201,12 @@ func install(ctx context.Context, v semver.Version) error {
 		return fmt.Errorf("can't find this executable: %w", err)
 	}
 
-	base := os.Getenv("KRAFTWERK_DOWNLOAD_URL")
+	base := os.Getenv("FLIESSWERK_DOWNLOAD_URL")
 	if base == "" {
 		base = githubDownloadBase
 	}
 	url := base + "/download/v" + v.String() + "/"
-	archive := "kraftwerk_" + runtime.GOOS + "_" + runtime.GOARCH + ".tar.gz"
+	archive := "fliesswerk_" + runtime.GOOS + "_" + runtime.GOARCH + ".tar.gz"
 	if runtime.GOOS == "windows" {
 		archive = strings.TrimSuffix(archive, ".tar.gz") + ".zip"
 	}
@@ -278,12 +278,12 @@ func extractBinary(data []byte, archive string) ([]byte, error) {
 	for {
 		h, err := tr.Next()
 		if errors.Is(err, io.EOF) {
-			return nil, fmt.Errorf("%s holds no kraftwerk executable; nothing was replaced", archive)
+			return nil, fmt.Errorf("%s holds no fliesswerk executable; nothing was replaced", archive)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("reading %s: %w", archive, err)
 		}
-		if h.Typeflag == tar.TypeReg && filepath.Base(h.Name) == "kraftwerk" {
+		if h.Typeflag == tar.TypeReg && filepath.Base(h.Name) == "fliesswerk" {
 			return readBinary(tr, archive)
 		}
 	}
@@ -295,7 +295,7 @@ func extractZip(data []byte, archive string) ([]byte, error) {
 		return nil, fmt.Errorf("reading %s: %w", archive, err)
 	}
 	for _, f := range zr.File {
-		if filepath.Base(f.Name) != "kraftwerk.exe" {
+		if filepath.Base(f.Name) != "fliesswerk.exe" {
 			continue
 		}
 		rc, err := f.Open()
@@ -305,7 +305,7 @@ func extractZip(data []byte, archive string) ([]byte, error) {
 		defer func() { _ = rc.Close() }()
 		return readBinary(rc, archive)
 	}
-	return nil, fmt.Errorf("%s holds no kraftwerk executable; nothing was replaced", archive)
+	return nil, fmt.Errorf("%s holds no fliesswerk executable; nothing was replaced", archive)
 }
 
 func readBinary(r io.Reader, archive string) ([]byte, error) {
@@ -317,11 +317,11 @@ func readBinary(r io.Reader, archive string) ([]byte, error) {
 }
 
 // replaceExecutable puts binary in exe's place, byte for byte: changing a
-// macOS binary after the build breaks its signature. A kwk beside it that is
+// macOS binary after the build breaks its signature. A fwk beside it that is
 // a hard link or a copy, as install.ps1 makes it, is renewed too.
 func replaceExecutable(exe string, binary []byte) error {
 	aliases := aliasesOf(exe)
-	tmp, err := os.CreateTemp(filepath.Dir(exe), ".kraftwerk-update-*")
+	tmp, err := os.CreateTemp(filepath.Dir(exe), ".fliesswerk-update-*")
 	if err != nil {
 		return fmt.Errorf("can't write next to %s: %w", exe, err)
 	}
@@ -376,7 +376,7 @@ func aliasesOf(exe string) []string {
 	}
 	dir, ext := filepath.Dir(exe), filepath.Ext(exe)
 	var aliases []string
-	for _, name := range []string{"kraftwerk" + ext, "kwk" + ext} {
+	for _, name := range []string{"fliesswerk" + ext, "fwk" + ext} {
 		path := filepath.Join(dir, name)
 		other, err := os.Lstat(path)
 		if err != nil || path == exe || !other.Mode().IsRegular() {
@@ -429,14 +429,14 @@ func noticeNewVersion(values map[string]any, stderr io.Writer) {
 	u := findUpgrades(allowedByPin(releases, pin), current, prerelease)
 	switch {
 	case u.inMajor != nil:
-		printNotice(stderr, *u.inMajor, current, "kraftwerk update")
+		printNotice(stderr, *u.inMajor, current, "fliesswerk update")
 	case u.newerMajor != nil:
-		printNotice(stderr, *u.newerMajor, current, "kraftwerk update --major")
+		printNotice(stderr, *u.newerMajor, current, "fliesswerk update --major")
 	}
 }
 
 func printNotice(stderr io.Writer, newest, current semver.Version, command string) {
-	_, _ = fmt.Fprintf(stderr, "notice: kraftwerk %s is available (this is %s); run `%s`. Set `update_notice = false` in the config to turn this off\n", newest, current, command)
+	_, _ = fmt.Fprintf(stderr, "notice: fliesswerk %s is available (this is %s); run `%s`. Set `update_notice = false` in the config to turn this off\n", newest, current, command)
 }
 
 // inCI reports whether a CI system is running this. CI is the common signal;
@@ -461,7 +461,7 @@ func noticeIsDue() bool {
 	if err != nil {
 		return false
 	}
-	stamp := filepath.Join(cache, "kraftwerk", "update-check")
+	stamp := filepath.Join(cache, "fliesswerk", "update-check")
 	if info, err := os.Stat(stamp); err == nil && time.Since(info.ModTime()) < noticeInterval {
 		return false
 	}

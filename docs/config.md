@@ -4,7 +4,7 @@ Every key the Factory reads, what it does and its default. The same shape is pub
 
 ## How the config is read
 
-The config is TOML in `.kraftwerk/`, read in three layers, each merged over the one before key by key:
+The config is TOML in `.fliesswerk/`, read in three layers, each merged over the one before key by key:
 
 1. `config.toml`: the team's settings, committed
 2. `config.local.toml`: your own settings, git-ignored
@@ -12,11 +12,11 @@ The config is TOML in `.kraftwerk/`, read in three layers, each merged over the 
 
 A list replaces the list of the layer below; it is not appended to. No layer may hold a secret value: a secret is always a reference to where it comes from (see [Secret sources](#secret-sources)).
 
-Every command checks the config before it does anything else, so a typo never costs a token. An unknown key or a wrong type is an error, with a did-you-mean suggestion. `kraftwerk check` exits with 3 on any error.
+Every command checks the config before it does anything else, so a typo never costs a token. An unknown key or a wrong type is an error, with a did-you-mean suggestion. `fliesswerk check` exits with 3 on any error.
 
-**Local-only settings** can disarm the Sandbox or hold a credential, so they are refused in `config.toml` and accepted only from `config.local.toml` or a flag: credentials, `sandbox.kind = "none"` and its acknowledgement, `allow = ["*"]`, and the acknowledgement for passing AWS keys through. A committed change can never turn them on for the whole team.
+**Local-only settings** can disarm the Sandbox or hold a credential, so they are refused in `config.toml` and accepted only from `config.local.toml` or a flag: credentials, `sandbox.kind` and `sandbox.engine`, which depend on each person's machine, the acknowledgement for `kind = "none"`, `allow = ["*"]`, and the acknowledgement for passing AWS keys through. A committed change can never turn them on for the whole team.
 
-**Upgrades.** Within a major version, an unchanged config never changes behaviour, except for security fixes, which are announced loudly. A renamed key keeps working with a deprecation warning until the next major version, and `kraftwerk migrate` rewrites it. See the [install guide](install.md#renamed-and-removed-config-keys).
+**Upgrades.** Within a major version, an unchanged config never changes behaviour, except for security fixes, which are announced loudly. A renamed key keeps working with a deprecation warning until the next major version, and `fliesswerk migrate` rewrites it. See the [install guide](install.md#renamed-and-removed-config-keys).
 
 Durations are written like `"30s"`, `"5m"` or `"1h30m"`.
 
@@ -26,20 +26,22 @@ Every key that takes a secret takes a table with exactly one of these:
 
 | Source | Example | Reads the secret from |
 | --- | --- | --- |
-| `stored` | `{ stored = "claude" }` | Your user-level credentials file, written by `kraftwerk auth set <key>` |
+| `stored` | `{ stored = "claude_api_key" }` | Your user-level credentials file, written by `fliesswerk auth set <key>` |
 | `env` | `{ env = "ANTHROPIC_API_KEY" }` | An environment variable of the Factory |
 | `command` | `{ command = "op read op://dev/claude/token" }` | The stdout of a shell command |
-| `dotenv` | `{ dotenv = "CLAUDE_TOKEN" }` | `.kraftwerk/.env`, which must be git-ignored |
+| `dotenv` | `{ dotenv = "CLAUDE_TOKEN" }` | `.fliesswerk/.env`, which must be git-ignored |
+
+`stored` isn't accepted for a Claude subscription token (`method = "oauth_token"`), and `fliesswerk auth set` won't take one. Anthropic's terms say developers ["may not collect, store, or intermediate Claude.ai credentials or session tokens"](https://code.claude.com/docs/en/legal-and-compliance), so the token comes only from a place you own: an environment variable (Anthropic suggests `{ env = "CLAUDE_CODE_OAUTH_TOKEN" }`), a command such as a password manager, or `.fliesswerk/.env`.
 
 ## Top-level keys
 
 ### `version`
 
-The config format version. Must be `1`, and is the only required key. A version newer than this Kraftwerk understands is refused with the command that updates it.
+The config format version. Must be `1`, and is the only required key. A version newer than this Fliesswerk understands is refused with the command that updates it.
 
 ### `factory`
 
-A semver range the Factory's version must match, such as `"1"`, `"~1.2"` or `">=1.2 <2"`. A teammate on a version outside it gets an error that names the command to run. Unset, any version is accepted.
+A semver range the Factory's version must match, such as `"1"`, `"~1.2"` or `">=1.2 <2"`. A teammate on a version outside it gets an error that names the command to run. Unset, any version is accepted. `init` writes it commented out, allowing the major you installed: `# factory = "0"` on a `0.x` release.
 
 ### `update_notice`
 
@@ -75,7 +77,7 @@ The Coding standards file, relative to the project root. Only the review Step re
 
 ### `protected_paths`
 
-Extra Protected paths: files, directories (ending in `/`) or globs, relative to the project root, that the agent may not change. `.kraftwerk/`, the compose file and the standards file are always protected. A Step that changes one gets its Ticket handed back with no retry. In a native Sandbox they are also read-only.
+Extra Protected paths: files, directories (ending in `/`) or globs, relative to the project root, that the agent may not change. `.fliesswerk/`, the compose file and the standards file are always protected. A Step that changes one gets its Ticket handed back with no retry. In a native Sandbox they are also read-only.
 
 ```toml
 protected_paths = [".claude/", ".github/workflows/", "secrets/*.pem"]
@@ -95,15 +97,15 @@ The repository, as `owner/name`.
 
 ### `tracker.ready_label`
 
-The label that marks a Ticket Ready for agent. Default `"ready-for-agent"`.
+The label that marks a Ticket Ready for agent. Default `"ready-for-agent"`. The label must exist in the repository; `init` creates it.
 
 ### `tracker.in_progress_label`
 
-The label that marks a claimed Spec or standalone Ticket. Default `"in-progress"`. The label must exist in the repository.
+The label that marks a claimed Spec or standalone Ticket. Default `"in-progress"`. The label must exist in the repository; `init` creates it.
 
 ### `tracker.cannot_do_label`
 
-The label that replaces the ready label on a Ticket the Factory hands back to a person. Default `"needs-investigation"`. The label must exist in the repository.
+The label that replaces the ready label on a Ticket the Factory hands back to a person. Default `"needs-investigation"`. The label must exist in the repository; `init` creates it.
 
 ### `tracker.token`
 
@@ -119,7 +121,7 @@ The remote branch Spec branches are cut from, on `origin`. Default `"main"`. The
 
 ### `branches.prefix`
 
-The prefix of every branch the Factory creates: `<prefix>/spec-<N>-<slug>`, `<prefix>/ticket-<N>` and `<prefix>/ticket-<N>-<slug>`. Default `"kraftwerk"`.
+The prefix of every branch the Factory creates: `<prefix>/spec-<N>-<slug>`, `<prefix>/ticket-<N>` and `<prefix>/ticket-<N>-<slug>`. Default `"fliesswerk"`.
 
 ## `sandbox`
 
@@ -127,7 +129,11 @@ The Sandbox each Step runs in. See [Choosing a Sandbox kind](setup.md#choosing-a
 
 ### `sandbox.kind`
 
-`"container"` (default), `"native"` or `"none"`. `"none"` is local only and also needs `i_accept_unsandboxed_risk = true`. `--sandbox` overrides it for one Run.
+`"container"` (default), `"native"` or `"none"`. Local only: `fliesswerk init` asks for it and writes it to `config.local.toml`, because one teammate may only be able to use native, another only Podman. `"none"` also needs `i_accept_unsandboxed_risk = true`. `--sandbox` overrides it for one command.
+
+### `sandbox.engine`
+
+The container engine: `"docker"` or `"podman"`. Local only, and asked for by `fliesswerk init`. It is needed with `kind = "container"`, and with any kind once [`services.compose_file`](#servicescompose_file) is set, since Services always run in a container engine; without it, every command stops and names the key. It is used as it is, with no fallback to the other engine, and `check` reports it, or fails if it doesn't respond. Docker uses its current context (`DOCKER_CONTEXT`, `DOCKER_HOST`); Podman uses `CONTAINER_CONNECTION`, `CONTAINER_HOST` or its default connection, rootful or rootless.
 
 ### `sandbox.i_accept_unsandboxed_risk`
 
@@ -145,16 +151,18 @@ Extra paths a native Sandbox may read, absolute or starting with `~/`. Engine so
 
 Extra paths a native Sandbox may write, with the same rules. `check` warns about paths that reach past the Sandbox, such as your home directory, shell startup files or a directory on your `PATH`.
 
-### `sandbox.scrub_credentials`
+### `sandbox.withhold_secrets`
 
-Whether the agent's own commands run without credentials in their environment. Default `true`.
+Whether the Factory keeps the [project secrets](#sandboxsecrets) from the agent and from its own `verify` run. Default `true`.
 
-The Harness needs its credential, but the commands the agent runs, such as your tests, don't. With scrubbing on, those commands, the Factory's own `verify` run included, get neither the Harness's credential nor the [project secrets](#sandboxsecrets). Only Hooks get project secrets.
+`verify` runs the agent's code, so it gets no more than the agent does: with this on, neither of them gets a project secret. Only Hooks get them.
 
 That is the trade-off. Say your tests need a `DATABASE_URL` with a password:
 
-- **Keep scrubbing on** (recommended), and give the tests the address in a way that isn't a secret. A test database in a [Service](services.md) has a throwaway password, so put the whole URL in `[services.postgres] env` or `[sandbox.env]`. A Hook that needs a real secret, for seeding say, gets it from `[sandbox.secrets]`.
-- **Turn scrubbing off** with `scrub_credentials = false`, and the agent's commands and `verify` get every project secret. The agent's own commands also get the Harness's credential. The agent can then read them and send them to any allowed host. `check` warns about it when there are project secrets.
+- **Keep it on** (recommended), and give the tests the address in a way that isn't a secret. A test database in a [Service](services.md) has a throwaway password, so put the whole URL in `[services.postgres] env` or `[sandbox.env]`. A Hook that needs a real secret, for seeding say, gets it from `[sandbox.secrets]`.
+- **Turn it off** with `withhold_secrets = false`, and the agent and `verify` get every project secret. With `kind = "none"`, `verify` also keeps a Harness credential from your own environment. The agent can then read them and send them to any allowed host. `check` and every Run warn about it when there are project secrets.
+
+The Harness's own credential is in the Harness's environment whatever you set, and a command the agent runs can read it if it goes looking (see [Residual risks](#residual-risks)). The Factory doesn't ask Claude Code to scrub its commands' environment: that needs a bubblewrap inside the Sandbox, which doesn't work there ([ADR 0010](adr/0010-no-harness-subprocess-scrubbing-the-egress-proxy-is-the-boundary.md)). The Sandbox and the egress proxy are the boundary.
 
 ### `sandbox.network`
 
@@ -186,7 +194,7 @@ NODE_ENV = "test"
 
 ### `sandbox.secrets`
 
-Project secrets, by the environment variable that holds them, each from a [secret source](#secret-sources). Every Hook in a Sandbox gets them all, and a host Hook gets only the ones its `secrets` names. With `scrub_credentials = false` the agent gets them too.
+Project secrets, by the environment variable that holds them, each from a [secret source](#secret-sources). Every Hook in a Sandbox gets them all, and a host Hook gets only the ones its `secrets` names. With `withhold_secrets = false` the agent and `verify` get them too.
 
 ### `sandbox.secrets.<name>`
 
@@ -203,7 +211,7 @@ Your machine's network, for the egress proxy and for image builds. See [Behind a
 
 ### `network.ca_certs`
 
-PEM files trusted in every Sandbox on top of its system roots, and passed into image builds as the build secret `kraftwerk-ca`. A path can be absolute, start with `~/`, or be relative to the project root.
+PEM files trusted in every Sandbox on top of its system roots, and passed into image builds as the build secret `fliesswerk-ca`. A path can be absolute, start with `~/`, or be relative to the project root.
 
 ### `network.upstream_proxy`
 
@@ -244,7 +252,7 @@ Feedback commands, by name: how the agent and the Factory check that a change wo
 
 ### `commands.<name>`
 
-One Feedback command, run by the shell in the project's directory inside the worktree: the directory that holds `.kraftwerk/`.
+One Feedback command, run by the shell in the project's directory inside the worktree: the directory that holds `.fliesswerk/`.
 
 ```toml
 [commands]
@@ -262,20 +270,20 @@ parallel = ["cd web && pnpm install --frozen-lockfile", "cd api && uv sync --loc
 timeout  = "10m"
 
 [[hooks.spec_finished]]
-run = 'gh pr create --fill --head "$KRAFTWERK_BRANCH"'
+run = 'gh pr create --fill --head "$FLIESSWERK_BRANCH"'
 ```
 
 ### `hooks.run_start`
 
-Runs on your machine when a Run starts, after the credentials are tested. A failure stops the Run with exit code 2.
+Runs on your machine when a Run starts, after the credentials are resolved. A failure stops the Run with exit code 2.
 
 ### `hooks.sandbox_created`
 
-Runs when a Sandbox has been created and its Services are healthy, before the agent starts. It runs in the Sandbox by default, with `KRAFTWERK_SANDBOX` set. A failure is a Step failure: the Hook gets one fresh retry, then the Ticket is handed back.
+Runs when a Sandbox has been created and its Services are healthy, before the agent starts. It runs in the Sandbox by default, with `FLIESSWERK_SANDBOX` set. A failure is a Step failure: the Hook gets one fresh retry, then the Ticket is handed back.
 
 ### `hooks.spec_finished`
 
-Runs on your machine in the Spec branch's worktree when a Spec's last Ticket closes, or a standalone Ticket closes, with `KRAFTWERK_SPEC` (such as `#31`) and `KRAFTWERK_BRANCH` set. A failure only warns.
+Runs on your machine in the Spec branch's worktree when a Spec's last Ticket closes, or a standalone Ticket closes, with `FLIESSWERK_SPEC` (such as `#31`) and `FLIESSWERK_BRANCH` set. A failure only warns.
 
 ### `hooks.run_end`
 
@@ -368,7 +376,7 @@ How to sign in: `"oauth_token"` (a Claude subscription, with a token from `claud
 
 ### `harnesses.claude_code.secret`
 
-Where the subscription token, API key or gateway token comes from, as a [secret source](#secret-sources). Local only.
+Where the subscription token, API key or gateway token comes from, as a [secret source](#secret-sources). Local only. A subscription token can't be `stored`.
 
 ### `harnesses.claude_code.base_url`
 
@@ -400,7 +408,7 @@ Set to `true` to hand your own AWS credentials to every Sandbox as they are, ins
 
 ## `logs`
 
-Run logs, in `.kraftwerk/logs/`. See the [usage guide](usage.md#the-log-directory).
+Run logs, in `.fliesswerk/logs/`. See the [usage guide](usage.md#the-log-directory).
 
 ### `logs.keep_days`
 
@@ -414,6 +422,7 @@ The Sandbox narrows what an agent can do; it doesn't make the agent trustworthy.
 - **Harness-written transcripts.** The Factory redacts everything it writes, but not the transcripts the Harness itself keeps.
 - **A process escaping the kill on macOS.** A process that calls `setsid` leaves the process group the Factory kills when a Step ends.
 - **Hooks planted in `.claude/`.** Claude Code runs hooks from the project's `.claude/` inside the Sandbox. Protect `.claude/` with `protected_paths`, as `init` suggests, so an agent can't plant one for a later Step.
-- **Project secrets with scrubbing off.** The agent can read every project secret. See [`sandbox.scrub_credentials`](#sandboxscrub_credentials).
+- **The Harness's credential.** A command the agent runs can read the Harness's credential if it goes looking, for example in `/proc/<pid>/environ`, and send it to an allowed host. The Factory doesn't loosen the Sandbox to hide it ([ADR 0010](adr/0010-no-harness-subprocess-scrubbing-the-egress-proxy-is-the-boundary.md)).
+- **Project secrets with `withhold_secrets = false`.** The agent can read every project secret. See [`sandbox.withhold_secrets`](#sandboxwithhold_secrets).
 - **Shared Services.** Every Sandbox reaches the same copy, so an agent can read or change another Ticket's data.
 - **`kind = "none"`.** The agent can read and change anything your user can.

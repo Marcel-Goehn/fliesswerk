@@ -12,8 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox/container"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox/container"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox/enginetest"
 )
 
 func TestTheSecretIsNotInTheFirstProcesssArgv(t *testing.T) {
@@ -82,7 +83,7 @@ func TestAServiceIsReachableEveryWayTheSandboxIsToldAndNothingElseIs(t *testing.
 			t.Errorf("through %s: %q", address, got)
 		}
 	}
-	if got := mustSh(t, sb, `printf '%s %s %s' "$KRAFTWERK_SERVICE_DB_HOST" "$KRAFTWERK_SERVICE_DB_PORT" "$DATABASE_URL"`); got != "db 5432 postgres://db:5432/app" {
+	if got := mustSh(t, sb, `printf '%s %s %s' "$FLIESSWERK_SERVICE_DB_HOST" "$FLIESSWERK_SERVICE_DB_PORT" "$DATABASE_URL"`); got != "db 5432 postgres://db:5432/app" {
 		t.Errorf("the variables say %q", got)
 	}
 	listed := strings.Join(sb.Services()[0].Addresses, " ")
@@ -156,13 +157,17 @@ func TestAServiceOnTheProxysPortLeavesTheProxyAlone(t *testing.T) {
 }
 
 func TestARealComposeServiceIsReachableInsideTheSandbox(t *testing.T) {
-	if _, err := container.Resolve(context.Background()); err != nil {
+	engine, err := enginetest.Lookup()
+	if err == nil {
+		_, err = container.Resolve(context.Background(), engine)
+	}
+	if err != nil {
 		t.Skipf("no container engine: %v", err)
 	}
 	const compose = "services:\n  web:\n    image: docker.io/library/python:3-alpine\n    container_name: shop-web\n    command: python -m http.server 8000\n    ports:\n      - \"58000:8000\"\n"
 	var services *container.Published
 	pr := newProject(t, map[string]string{"compose.yaml": compose}, func(o *Options) {
-		services = container.NewPublished(container.PublishedOptions{Root: o.Root, StateDir: o.StateDir, ComposeFile: "compose.yaml", Services: []string{"web"}})
+		services = container.NewPublished(container.PublishedOptions{Root: o.Root, StateDir: o.StateDir, Engine: engine, ComposeFile: "compose.yaml", Services: []string{"web"}})
 		o.Services = services
 	})
 	sb := pr.open(t)

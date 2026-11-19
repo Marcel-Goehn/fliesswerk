@@ -11,14 +11,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/egress"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox/catest"
+	"github.com/Marcel-Goehn/fliesswerk/internal/egress"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox/catest"
 )
 
 func newCA(t *testing.T) (*catest.CA, string) {
 	t.Helper()
-	ca, err := catest.NewCA("Kraftwerk Test Root")
+	ca, err := catest.NewCA("Fliesswerk Test Root")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestWithoutCACertsNoCAVariableIsSet(t *testing.T) {
 func TestASandboxImageWithoutASystemCAListStopsWithTheFix(t *testing.T) {
 	_, file := newCA(t)
 	pr := newProject(t)
-	writeFile(t, filepath.Join(pr.root, ".kraftwerk", "Containerfile"), baseImage+"RUN rm -f /etc/ssl/certs/ca-certificates.crt /etc/ssl/cert.pem\n")
+	writeFile(t, filepath.Join(pr.root, ".fliesswerk", "Containerfile"), baseImage+"RUN rm -f /etc/ssl/certs/ca-certificates.crt /etc/ssl/cert.pem\n")
 	pr.p.opts.CACerts = []string{file}
 	ctx := context.Background()
 	if err := connectAndPrepare(ctx, pr.p); err != nil {
@@ -80,7 +80,7 @@ func TestASandboxImageWithoutASystemCAListStopsWithTheFix(t *testing.T) {
 // proxyBuild is a Containerfile recording what a build was given. NO_PROXY
 // lets the engine itself still pull directly.
 const proxyBuild = baseImage + `ARG HTTPS_PROXY
-RUN --mount=type=secret,id=kraftwerk-ca cp /run/secrets/kraftwerk-ca /built-with.pem && chmod 644 /built-with.pem && echo "$HTTPS_PROXY" > /built-behind
+RUN --mount=type=secret,id=fliesswerk-ca cp /run/secrets/fliesswerk-ca /built-with.pem && chmod 644 /built-with.pem && echo "$HTTPS_PROXY" > /built-behind
 `
 
 func TestAnImageBuildGetsTheCAAsASecretAndTheHostsProxy(t *testing.T) {
@@ -88,7 +88,7 @@ func TestAnImageBuildGetsTheCAAsASecretAndTheHostsProxy(t *testing.T) {
 	pr := newProject(t)
 	t.Setenv("HTTPS_PROXY", "http://proxy.invalid:3128")
 	t.Setenv("NO_PROXY", "*")
-	writeFile(t, filepath.Join(pr.root, ".kraftwerk", "Containerfile"), proxyBuild)
+	writeFile(t, filepath.Join(pr.root, ".fliesswerk", "Containerfile"), proxyBuild)
 	pr.p.opts.CACerts = []string{file}
 	sb := pr.open(t)
 
@@ -135,14 +135,14 @@ const curlImage = "FROM docker.io/curlimages/curl:latest\n"
 func behindInterceptor(t *testing.T, ca *catest.CA, caCerts ...string) sandbox.Sandbox {
 	t.Helper()
 	pr := newProject(t)
-	writeFile(t, filepath.Join(pr.root, ".kraftwerk", "Containerfile"), curlImage)
+	writeFile(t, filepath.Join(pr.root, ".fliesswerk", "Containerfile"), curlImage)
 	name := "kw-mitm-" + pr.p.opts.RunID
 	pr.p.opts.CACerts = caCerts
 	pr.p.opts.Egress = egress.Options{Allow: []string{interceptedHost}, UpstreamProxy: "http://" + name + ":3129"}
 	pr.prepare(t)
 
 	dir := t.TempDir()
-	build := exec.Command("go", "build", "-o", filepath.Join(dir, "interceptor"), "github.com/Marcel-Goehn/kraftwerk/internal/sandbox/catest/interceptor")
+	build := exec.Command("go", "build", "-o", filepath.Join(dir, "interceptor"), "github.com/Marcel-Goehn/fliesswerk/internal/sandbox/catest/interceptor")
 	build.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("building the interceptor: %v\n%s", err, out)
@@ -176,7 +176,7 @@ func TestInterceptionIsDetectedAndTheRootAndFixNamed(t *testing.T) {
 	if err == nil {
 		t.Fatalf("not detected (warning %q)", warning)
 	}
-	for _, want := range []string{"Kraftwerk Test Root", "ca_certs"} {
+	for _, want := range []string{"Fliesswerk Test Root", "ca_certs"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the error doesn't say %q: %v", want, err)
 		}
@@ -197,7 +197,7 @@ func TestWithCACertsTheSandboxTrustsTheInterceptingProxy(t *testing.T) {
 
 func TestASandboxWorksOnAWorktreeWithNothingCheckedOutAndNoServices(t *testing.T) {
 	pr := newProject(t)
-	dir := filepath.Join(pr.root, ".kraftwerk", "state", "probe")
+	dir := filepath.Join(pr.root, ".fliesswerk", "state", "probe")
 	gitIn(t, pr.root, "worktree", "add", "-q", "--detach", "--no-checkout", dir, "HEAD")
 	ctx := context.Background()
 	if err := connectAndPrepare(ctx, pr.p); err != nil {

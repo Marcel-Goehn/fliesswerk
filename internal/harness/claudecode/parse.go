@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
 )
 
 // line is the part of a `stream-json` line Parse reads.

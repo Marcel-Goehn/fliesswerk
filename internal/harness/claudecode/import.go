@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
 )
 
 // importAuth finds a Bedrock setup in the user's Claude Code settings, nil if

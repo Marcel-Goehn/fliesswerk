@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/shell"
+	"github.com/Marcel-Goehn/fliesswerk/internal/shell"
 )
 
 // Sandbox is one Sandbox, holding one worktree.
@@ -62,11 +62,11 @@ var proxyVariables = []string{"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY"}
 var nonEnvChars = regexp.MustCompile(`[^A-Z0-9]`)
 
 // ServiceEnv are the variables a Sandbox has for a Service at host and port,
-// 0 for none: KRAFTWERK_SERVICE_<NAME>_HOST and _PORT, and the Service's
+// 0 for none: FLIESSWERK_SERVICE_<NAME>_HOST and _PORT, and the Service's
 // `env` templates filled in. Its entries are NAME=value. A template can't set
 // a proxy variable: those always name the Sandbox's way out.
 func ServiceEnv(name, host string, port int, templates map[string]string) []string {
-	prefix := "KRAFTWERK_SERVICE_" + nonEnvChars.ReplaceAllString(strings.ToUpper(name), "_")
+	prefix := "FLIESSWERK_SERVICE_" + nonEnvChars.ReplaceAllString(strings.ToUpper(name), "_")
 	env := []string{prefix + "_HOST=" + host}
 	fill := []string{"{host}", host}
 	if port != 0 {
@@ -121,7 +121,7 @@ const CredentialFile = "credentials.json"
 
 // CredentialFileEnv names the variable that says where a command finds the
 // credential file.
-const CredentialFileEnv = "KRAFTWERK_CREDENTIAL_FILE" //nolint:gosec // the name of a variable that holds a path
+const CredentialFileEnv = "FLIESSWERK_CREDENTIAL_FILE" //nolint:gosec // the name of a variable that holds a path
 
 // CredentialEnv is what points a Sandbox's commands at the credential file
 // in dir, a path inside the Sandbox.

@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
+	"github.com/Marcel-Goehn/fliesswerk/internal/runlog"
 )
 
 func logsWith(t *testing.T, names ...string) (root, logs string) {
 	t.Helper()
 	root = t.TempDir()
-	logs = filepath.Join(root, ".kraftwerk", "logs")
+	logs = filepath.Join(root, ".fliesswerk", "logs")
 	for _, n := range names {
 		if err := os.MkdirAll(filepath.Join(logs, n), 0o750); err != nil {
 			t.Fatal(err)

@@ -12,7 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
+	"github.com/Marcel-Goehn/fliesswerk/internal/factory"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
 )
 
 // withFakeDocker adds a docker to env that reports the given platform.
@@ -22,6 +23,7 @@ func withFakeDocker(t *testing.T, env []string, platform string) []string {
 	script := `#!/bin/sh
 case "$*" in
   "context show") echo default ;;
+  "buildx version") echo 'github.com/docker/buildx 0.30.1' ;;
   *SecurityOptions*) echo '[]' ;;
   *OSType*) echo '` + platform + `' ;;
   *) exit 1 ;;
@@ -36,7 +38,7 @@ esac
 			path = dir + string(os.PathListSeparator) + p
 		}
 	}
-	return append(env, "PATH="+path, "KRAFTWERK_ENGINE=docker")
+	return append(env, "PATH="+path)
 }
 
 // holdRunLock has a Run in progress in the project, as far as `check` can
@@ -56,7 +58,7 @@ func TestCheckExplainsThatWindowsContainersCannotRunTheSidecar(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake docker is a shell script")
 	}
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
 
 	_, stderr, code := runEnv(t, bin, root, withFakeDocker(t, ghEnv(t, "ok"), "windows x86_64"), "check")
@@ -73,12 +75,44 @@ func TestCheckAcceptsAnEngineThatRunsLinuxContainers(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake docker is a shell script")
 	}
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
 	holdRunLock(t, root)
 
-	if _, stderr, code := runEnv(t, bin, root, withFakeDocker(t, ghEnv(t, "ok"), "linux x86_64"), "check"); code != exitOK {
+	stdout, stderr, code := runEnv(t, bin, root, withFakeDocker(t, ghEnv(t, "ok"), "linux x86_64"), "check")
+
+	if code != exitOK {
 		t.Fatalf("exit code = %d, want 0; stderr: %s", code, stderr)
+	}
+	mustContain(t, "stdout", stdout, "fliesswerk check: container engine docker (default) ok")
+}
+
+func TestCheckAndRunStopWithoutAConfigLocalAndNameInit(t *testing.T) {
+	bin := buildFliesswerk(t, "")
+	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
+	if err := os.Remove(filepath.Join(root, ".fliesswerk", "config.local.toml")); err != nil {
+		t.Fatal(err)
+	}
+	for _, cmd := range []string{"check", "run"} {
+		_, stderr, code := runEnv(t, bin, root, ghEnv(t, "ok"), cmd)
+
+		if code != exitConfigError {
+			t.Fatalf("%s: exit code = %d, want %d; stderr: %s", cmd, code, exitConfigError, stderr)
+		}
+		mustContain(t, cmd+" stderr", stderr, ".fliesswerk/config.local.toml isn't there", "run `fliesswerk init`")
+	}
+}
+
+func TestCheckAndRunStopWithoutTheEngineAndNameTheKey(t *testing.T) {
+	bin := buildFliesswerk(t, "")
+	root := projectDir(t, map[string]string{"config.toml": "version = 1\n", "config.local.toml": "[sandbox]\nkind = \"container\"\n"})
+	for _, cmd := range []string{"check", "run"} {
+		_, stderr, code := runEnv(t, bin, root, withFakeDocker(t, ghEnv(t, "ok"), "linux x86_64"), cmd)
+
+		if code != exitConfigError {
+			t.Fatalf("%s: exit code = %d, want %d; stderr: %s", cmd, code, exitConfigError, stderr)
+		}
+		mustContain(t, cmd+" stderr", stderr, "sandbox.engine: isn't set", `engine = "docker"`, "config.local.toml")
 	}
 }
 
@@ -96,6 +130,7 @@ func withFakeCompose(t *testing.T, env []string, version, config string) []strin
 	script := `#!/bin/sh
 case "$*" in
   "context show") echo default ;;
+  "buildx version") echo 'github.com/docker/buildx 0.30.1' ;;
   *SecurityOptions*) echo '[]' ;;
   *OSType*) echo 'linux x86_64' ;;
   *"compose version"*) echo '` + version + `' ;;
@@ -112,7 +147,7 @@ esac
 			path = dir + string(os.PathListSeparator) + p
 		}
 	}
-	return append(env, "PATH="+path, "KRAFTWERK_ENGINE=docker")
+	return append(env, "PATH="+path)
 }
 
 func TestCheckEnforcesTheComposeRules(t *testing.T) {
@@ -120,7 +155,7 @@ func TestCheckEnforcesTheComposeRules(t *testing.T) {
 		t.Skip("the fake docker is a shell script")
 	}
 	const fine = `{"services": {"db": {"image": "postgres"}}}`
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	for _, c := range []struct {
 		name, version, config string
 		want                  []string
@@ -155,13 +190,16 @@ func TestCheckRefusesAServiceANativeSandboxCouldNotReach(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake docker is a shell script")
 	}
-	bin := buildKraftwerk(t, "")
-	root := projectDir(t, map[string]string{"config.toml": "version = 1\n[sandbox]\nkind = \"native\"\n[services.db]\nshared = false\n"})
+	bin := buildFliesswerk(t, "")
+	root := projectDir(t, map[string]string{"config.toml": "version = 1\n[services.db]\nshared = false\n", "config.local.toml": "[sandbox]\nkind = \"native\"\nengine = \"docker\"\n"})
 
-	_, stderr, code := runEnv(t, bin, root, withFakeCompose(t, ghEnv(t, "ok"), "2.40.0", `{"services": {"db": {"image": "postgres", "expose": ["5432"]}}}`), "check")
+	stdout, stderr, code := runEnv(t, bin, root, withFakeCompose(t, ghEnv(t, "ok"), "2.40.0", `{"services": {"db": {"image": "postgres", "expose": ["5432"]}}}`), "check")
 
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d; stderr: %s", code, exitConfigError, stderr)
+	}
+	if !strings.Contains(stdout, "container engine docker (default) (for the Services) ok") {
+		t.Errorf("stdout doesn't name the engine: %s", stdout)
 	}
 	if !strings.Contains(stderr, "db") || !strings.Contains(stderr, `ports: ["127.0.0.1:<H>:<C>"]`) {
 		t.Errorf("stderr doesn't name the fix: %s", stderr)
@@ -172,7 +210,7 @@ func TestCheckReportsThePeakAndTheWaitsOfTheLastRun(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake docker is a shell script")
 	}
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n", "state/memory.json": `{"peak_bytes": 3221225472, "last_run_waits": 2}`})
 	holdRunLock(t, root)
 
@@ -190,7 +228,7 @@ func TestCheckSaysWhenNoPeakHasBeenMeasured(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake docker is a shell script")
 	}
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
 	holdRunLock(t, root)
 
@@ -205,7 +243,7 @@ func TestCheckSaysWhenNoPeakHasBeenMeasured(t *testing.T) {
 }
 
 func TestSummaryCarriesTheMemoryOfTheRun(t *testing.T) {
-	s := summaryOf(factory.Result{Memory: &factory.MemoryReport{PeakEstimate: 3 << 30, Waits: 4}}, "run", time.Now(), exitOK)
+	s := summaryOf(factory.Result{Memory: &factory.MemoryReport{PeakEstimate: 3 << 30, Waits: 4}}, "run", time.Now(), exitOK, harness.Billed)
 
 	if s.Memory == nil || s.Memory.PeakEstimateMB != 3072 || s.Memory.Waits != 4 {
 		t.Errorf("memory = %+v, want 3072 MB and 4 waits", s.Memory)
@@ -216,7 +254,7 @@ func TestSummaryCarriesTheMemoryOfTheRun(t *testing.T) {
 }
 
 func TestCheckRefusesACACertsFileItCannotUse(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n[network]\nca_certs = [\"missing.pem\"]\n"})
 
 	_, stderr, code := runEnv(t, bin, root, ghEnv(t, "ok"), "check")
@@ -240,7 +278,7 @@ func TestCheckLeavesARunningRunAloneAndSaysItSkippedTheTrustCheck(t *testing.T) 
 	if err := os.WriteFile(trusted, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n", "config.local.toml": gatewayConfig(srv.URL)})
 	holdRunLock(t, root)
 	home := configHome(t)

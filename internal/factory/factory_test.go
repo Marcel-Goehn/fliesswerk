@@ -13,12 +13,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
-	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
-	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
+	"github.com/Marcel-Goehn/fliesswerk/internal/factory"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/runlog"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/fake"
+	"github.com/Marcel-Goehn/fliesswerk/internal/verify"
 )
 
 const ready = "ready-for-agent"
@@ -82,7 +82,7 @@ func newFixture(t *testing.T) fixture {
 	git(t, dir, "init", "-q", "--bare", "-b", "main", f.remote)
 	git(t, dir, "clone", "-q", f.remote, f.work)
 	git(t, f.work, "symbolic-ref", "HEAD", "refs/heads/main")
-	write(t, filepath.Join(f.work, ".kraftwerk", ".gitignore"), "state/\nconfig.local.toml\n")
+	write(t, filepath.Join(f.work, ".fliesswerk", ".gitignore"), "state/\nconfig.local.toml\n")
 	write(t, filepath.Join(f.work, "README.md"), "hello\n")
 	git(t, f.work, "add", ".")
 	git(t, f.work, "commit", "-q", "-m", "Initial commit")
@@ -126,7 +126,7 @@ func options(f fixture, tr tracker.Tracker, runStep func(context.Context, factor
 		Root:          f.work,
 		Remote:        "origin",
 		BaseBranch:    "main",
-		Prefix:        "kraftwerk",
+		Prefix:        "fliesswerk",
 		ReadyLabel:    ready,
 		MaxParallel:   1,
 		MaxIterations: 10,
@@ -161,7 +161,7 @@ func TestATicketOfASpecIsImplementedPushedAndClosed(t *testing.T) {
 	if res.Stopped != nil || len(res.Failed) != 0 {
 		t.Fatalf("result = %+v, want no failures", res)
 	}
-	spec := "kraftwerk/spec-1-spec-shopping-cart"
+	spec := "fliesswerk/spec-1-spec-shopping-cart"
 	tip := f.remoteRef(t, spec)
 	if tip == "" {
 		t.Fatalf("the remote has no %s; it has:\n%s", spec, git(t, f.remote, "branch", "-a"))
@@ -172,7 +172,7 @@ func TestATicketOfASpecIsImplementedPushedAndClosed(t *testing.T) {
 	if got := f.remoteRef(t, "main"); got != base {
 		t.Errorf("main moved on the remote: %s, want %s", got, base)
 	}
-	if got := git(t, f.remote, "for-each-ref", "refs/heads/kraftwerk/ticket-2"); got != "" {
+	if got := git(t, f.remote, "for-each-ref", "refs/heads/fliesswerk/ticket-2"); got != "" {
 		t.Errorf("the internal Ticket branch was pushed: %s", got)
 	}
 
@@ -192,7 +192,7 @@ func TestATicketOfASpecIsImplementedPushedAndClosed(t *testing.T) {
 	if got := git(t, f.work, "status", "--porcelain"); got != statusBefore {
 		t.Errorf("the user's tree changed:\nbefore %q\nafter  %q", statusBefore, got)
 	}
-	if gitOK(f.work, "rev-parse", "--verify", "-q", "refs/heads/kraftwerk/ticket-2") {
+	if gitOK(f.work, "rev-parse", "--verify", "-q", "refs/heads/fliesswerk/ticket-2") {
 		t.Error("the Ticket branch was kept after success")
 	}
 	if got := git(t, f.work, "worktree", "list", "--porcelain"); strings.Count(got, "worktree ") != 1 {
@@ -218,13 +218,13 @@ func TestDoneWithoutCommitsHandsTheTicketBackWithoutARetry(t *testing.T) {
 		t.Errorf("implement ran %d times, want once: a failed Ticket isn't taken again in the same Run", calls)
 	}
 	handedBack(t, tr, 2, "reported done without changes")
-	if gitOK(f.work, "rev-parse", "--verify", "-q", "refs/heads/kraftwerk/ticket-2") {
+	if gitOK(f.work, "rev-parse", "--verify", "-q", "refs/heads/fliesswerk/ticket-2") {
 		t.Error("the Ticket branch was kept after the Ticket was handed back")
 	}
 	if got := git(t, f.work, "worktree", "list", "--porcelain"); strings.Count(got, "worktree ") != 1 {
 		t.Errorf("Factory worktrees are left:\n%s", got)
 	}
-	if got := f.remoteRef(t, "kraftwerk/spec-1-spec-shopping-cart"); got != "" {
+	if got := f.remoteRef(t, "fliesswerk/spec-1-spec-shopping-cart"); got != "" {
 		t.Errorf("the Spec branch was pushed without any work: %s", got)
 	}
 }
@@ -247,7 +247,7 @@ func TestAnExistingSpecBranchIsFoundByNumberAndContinued(t *testing.T) {
 		t.Run(where, func(t *testing.T) {
 			f := newFixture(t)
 			// The Spec was worked on under an older title, then main moved on.
-			old := "kraftwerk/spec-1-old-title"
+			old := "fliesswerk/spec-1-old-title"
 			git(t, f.work, "branch", old, "main")
 			wt := filepath.Join(t.TempDir(), "wt")
 			git(t, f.work, "worktree", "add", "-q", wt, old)
@@ -271,7 +271,7 @@ func TestAnExistingSpecBranchIsFoundByNumberAndContinued(t *testing.T) {
 			if got := git(t, f.remote, "log", "--format=%s", "--first-parent", tip); got != "Add cart.go\nEarlier Ticket\nInitial commit" {
 				t.Errorf("history of %s = %q, want the new commit on top of the old tip, not rebased", old, got)
 			}
-			if got := git(t, f.remote, "for-each-ref", "--format=%(refname)", "refs/heads/kraftwerk/"); got != "refs/heads/kraftwerk/spec-1-old-title" {
+			if got := git(t, f.remote, "for-each-ref", "--format=%(refname)", "refs/heads/fliesswerk/"); got != "refs/heads/fliesswerk/spec-1-old-title" {
 				t.Errorf("branches on the remote = %q, want only the existing Spec branch", got)
 			}
 		})
@@ -287,7 +287,7 @@ func TestAStandaloneTicketGetsABranchOfItsOwn(t *testing.T) {
 	if len(res.Closed) != 1 {
 		t.Fatalf("result = %+v, want #7 closed", res)
 	}
-	if got := git(t, f.remote, "for-each-ref", "--format=%(refname:short)", "refs/heads/kraftwerk/"); got != "kraftwerk/ticket-7-fix-the-typo-in-readme" {
+	if got := git(t, f.remote, "for-each-ref", "--format=%(refname:short)", "refs/heads/fliesswerk/"); got != "fliesswerk/ticket-7-fix-the-typo-in-readme" {
 		t.Errorf("branches on the remote = %q, want only the standalone Ticket branch", got)
 	}
 }
@@ -321,7 +321,7 @@ func TestTheNextIterationTakesTheUnblockedTicket(t *testing.T) {
 	if res.Iterations != 2 || res.LimitReached || len(res.Closed) != 2 {
 		t.Fatalf("result = %+v, want two Iterations closing #2 then #3", res)
 	}
-	if got := git(t, f.remote, "log", "--format=%s", "main..kraftwerk/spec-1-spec-shopping-cart"); got != "Add f2.go\nAdd f1.go" {
+	if got := git(t, f.remote, "log", "--format=%s", "main..fliesswerk/spec-1-spec-shopping-cart"); got != "Add f2.go\nAdd f1.go" {
 		t.Errorf("Spec branch commits = %q, want both Tickets' work", got)
 	}
 }
@@ -345,7 +345,7 @@ func TestAnAuthErrorStopsTheRun(t *testing.T) {
 
 func TestARunNeedsTheRuntimeStateIgnored(t *testing.T) {
 	f := newFixture(t)
-	write(t, filepath.Join(f.work, ".kraftwerk", ".gitignore"), "config.local.toml\n")
+	write(t, filepath.Join(f.work, ".fliesswerk", ".gitignore"), "config.local.toml\n")
 
 	res := factory.Run(context.Background(), options(f, fake.New(ready, cartSpec()...), nil))
 
@@ -357,7 +357,7 @@ func TestARunNeedsTheRuntimeStateIgnored(t *testing.T) {
 
 func TestARejectedPushLeavesTheSpecBranchAndTheTicketAsTheyWere(t *testing.T) {
 	f := newFixture(t)
-	spec := "kraftwerk/spec-1-spec-shopping-cart"
+	spec := "fliesswerk/spec-1-spec-shopping-cart"
 	git(t, f.work, "branch", spec, "main")
 	git(t, f.work, "push", "-q", "origin", spec)
 	localTip := git(t, f.work, "rev-parse", spec)
@@ -385,7 +385,7 @@ func TestARejectedPushLeavesTheSpecBranchAndTheTicketAsTheyWere(t *testing.T) {
 	if w := ticketWrites(tr); len(w) != 0 {
 		t.Errorf("tracker writes = %+v, want #2 left open", w)
 	}
-	if !gitOK(f.work, "rev-parse", "--verify", "-q", "refs/heads/kraftwerk/ticket-2") {
+	if !gitOK(f.work, "rev-parse", "--verify", "-q", "refs/heads/fliesswerk/ticket-2") {
 		t.Error("the Ticket branch was deleted after the failed push")
 	}
 }
@@ -472,7 +472,7 @@ func TestReviewApprovesWithoutCommitsInAFreshStepOnTheSameWorktree(t *testing.T)
 			t.Errorf("review prompt lacks %q:\n%s", want, rev.Prompt)
 		}
 	}
-	if got := git(t, f.remote, "log", "--format=%s", "main..kraftwerk/spec-1-spec-shopping-cart"); got != "Add cart.go" {
+	if got := git(t, f.remote, "log", "--format=%s", "main..fliesswerk/spec-1-spec-shopping-cart"); got != "Add cart.go" {
 		t.Errorf("Spec branch commits = %q, want implement's only", got)
 	}
 }
@@ -493,7 +493,7 @@ func TestReviewThatCommitsFixesTheChangeAndItsFixesArePushed(t *testing.T) {
 	if len(res.Closed) != 1 {
 		t.Fatalf("result = %+v, want #2 closed", res)
 	}
-	if got := git(t, f.remote, "log", "--format=%s", "main..kraftwerk/spec-1-spec-shopping-cart"); got != "Add cart_test.go\nAdd cart.go" {
+	if got := git(t, f.remote, "log", "--format=%s", "main..fliesswerk/spec-1-spec-shopping-cart"); got != "Add cart_test.go\nAdd cart.go" {
 		t.Errorf("Spec branch commits = %q, want implement's and review's", got)
 	}
 	if !strings.Contains(out.String(), "#2  review  fixed it in 1 commit") {
@@ -608,7 +608,7 @@ func TestVerifyFailingAgainAfterTheRetryHandsTheTicketBack(t *testing.T) {
 		t.Errorf("implement ran %d times, want 2: one retry", n)
 	}
 	handedBack(t, tr, 2, "`test`")
-	if got := f.remoteRef(t, "kraftwerk/spec-1-spec-shopping-cart"); got != "" {
+	if got := f.remoteRef(t, "fliesswerk/spec-1-spec-shopping-cart"); got != "" {
 		t.Errorf("the Spec branch was pushed with failing checks: %s", got)
 	}
 }

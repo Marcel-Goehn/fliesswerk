@@ -42,6 +42,9 @@ func validateMerged(values map[string]any) []Diagnostic {
 			c.warnAt("sandbox.kind", "the agent runs with no Sandbox (`kind = \"none\"`): it can read and change anything your user can")
 		}
 	}
+	if NeedsEngine(values) && sandbox["engine"] == nil {
+		c.errorAt("sandbox.engine", "isn't set, and "+needsEngineWhy(values)+" in a container engine; set `engine = \"docker\"` or `engine = \"podman\"` under [sandbox] in "+LocalFile+", or run `fliesswerk init` in a fresh checkout")
+	}
 	network, _ := sandbox["network"].(map[string]any)
 	if containsStar(network["allow"]) {
 		c.warnAt("sandbox.network.allow", "`allow = [\"*\"]` lets the Sandbox reach any host")
@@ -370,4 +373,39 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	slices.Sort(keys)
 	return keys
+}
+
+// NeedsEngine reports whether anything of a Run is in a container engine:
+// the container Sandbox, the default kind, or the project's Services, which
+// a compose file or a [services.<name>] table brings.
+func NeedsEngine(values map[string]any) bool {
+	return sandboxKind(values) == "container" || HasServices(values)
+}
+
+// needsEngineWhy says what NeedsEngine found.
+func needsEngineWhy(values map[string]any) string {
+	if sandboxKind(values) == "container" {
+		return "the container Sandbox runs"
+	}
+	return "the project's Services run"
+}
+
+// sandboxKind is `sandbox.kind`, the container Sandbox when it's unset.
+func sandboxKind(values map[string]any) string {
+	sandbox, _ := values["sandbox"].(map[string]any)
+	if kind, ok := sandbox["kind"].(string); ok {
+		return kind
+	}
+	return "container"
+}
+
+// HasServices reports a compose file or a Service in [services].
+func HasServices(values map[string]any) bool {
+	services, _ := values["services"].(map[string]any)
+	for _, v := range services {
+		if _, isService := v.(map[string]any); isService {
+			return true
+		}
+	}
+	return services["compose_file"] != nil
 }

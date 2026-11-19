@@ -6,25 +6,30 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/config"
+	"github.com/Marcel-Goehn/fliesswerk/internal/config"
 )
 
-// project writes .kraftwerk/config.toml (and config.local.toml, if local is
-// not empty) into a fresh directory and returns that directory.
+// engineOnly is the least a person's config.local.toml holds: the engine,
+// which the default container Sandbox needs.
+const engineOnly = "[sandbox]\nengine = \"docker\"\n"
+
+// project writes .fliesswerk/config.toml and config.local.toml, engineOnly
+// if local is empty, into a fresh directory and returns that directory.
 func project(t *testing.T, cfg, local string) string {
 	t.Helper()
 	dir := t.TempDir()
-	kw := filepath.Join(dir, ".kraftwerk")
+	kw := filepath.Join(dir, ".fliesswerk")
 	if err := os.MkdirAll(kw, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(kw, "config.toml"), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if local != "" {
-		if err := os.WriteFile(filepath.Join(kw, "config.local.toml"), []byte(local), 0o600); err != nil {
-			t.Fatal(err)
-		}
+	if local == "" {
+		local = engineOnly
+	}
+	if err := os.WriteFile(filepath.Join(kw, "config.local.toml"), []byte(local), 0o600); err != nil {
+		t.Fatal(err)
 	}
 	return dir
 }
@@ -80,7 +85,7 @@ func TestMinimalConfigIsValid(t *testing.T) {
 
 func TestVersionIsRequired(t *testing.T) {
 	r := load(t, "model = \"x\"\n", "")
-	wantOne(t, r, config.Error, ".kraftwerk/config.toml", "version = 1")
+	wantOne(t, r, config.Error, ".fliesswerk/config.toml", "version = 1")
 	if r.OK() {
 		t.Fatal("OK() = true despite an error")
 	}
@@ -90,22 +95,28 @@ func TestNewerVersionIsRefused(t *testing.T) {
 	// Keys of a newer version are unknown to this binary; only the version
 	// is reported.
 	r := load(t, "version = 2\nshiny_new_key = true\n", "")
-	wantOne(t, r, config.Error, "version 2", "kraftwerk update")
+	wantOne(t, r, config.Error, "version 2", "fliesswerk update")
 }
 
 func TestMissingConfigNamesInit(t *testing.T) {
 	r := config.Load(t.TempDir(), nil)
-	wantOne(t, r, config.Error, "config.toml", "kraftwerk init")
+	wantOne(t, r, config.Error, "config.toml", "fliesswerk init")
 }
 
 func TestUnknownKeySuggestsTheClosestKnownOne(t *testing.T) {
 	r := load(t, "version = 1\nmax_paralel = 2\n", "")
-	wantOne(t, r, config.Error, ".kraftwerk/config.toml", "max_paralel", "unknown key", `did you mean "max_parallel"?`)
+	wantOne(t, r, config.Error, ".fliesswerk/config.toml", "max_paralel", "unknown key", `did you mean "max_parallel"?`)
 }
 
 func TestUnknownKeyInNestedTableSuggests(t *testing.T) {
 	r := load(t, "version = 1\n[steps.reveiw]\nenabled = true\n", "")
 	wantOne(t, r, config.Error, "steps.reveiw", `did you mean "review"?`)
+}
+
+func TestScrubCredentialsIsAnUnknownKey(t *testing.T) {
+	// Renamed to withhold_secrets before any release, with no alias.
+	r := load(t, "version = 1\n[sandbox]\nscrub_credentials = true\n", "")
+	wantOne(t, r, config.Error, "sandbox.scrub_credentials", "unknown key")
 }
 
 func TestUnknownKeyFarFromAnyKnownOneHasNoSuggestion(t *testing.T) {
@@ -154,7 +165,7 @@ RUST_LOG = "debug"
 }
 
 func TestFullSpecShapeIsValid(t *testing.T) {
-	r := load(t, fullConfig, `[tracker]
+	r := load(t, fullConfig, engineOnly+`[tracker]
 token = { stored = "github" }
 [harnesses.claude_code]
 secret = { stored = "claude" }
@@ -169,12 +180,12 @@ max_parallel = 2
 protected_paths = [".claude/", "infra/"]
 [branches]
 base_branch = "main"
-prefix = "kraftwerk"
+prefix = "fliesswerk"
 `, `model = "local-model"
 protected_paths = ["secrets/"]
 [branches]
 prefix = "mine"
-`, config.Override{Key: "max_parallel", Value: int64(4)})
+`+engineOnly, config.Override{Key: "max_parallel", Value: int64(4)})
 	wantClean(t, r)
 
 	branches := r.Values["branches"].(map[string]any)
@@ -202,7 +213,7 @@ func TestArraysOfTablesReplace(t *testing.T) {
 run = "a"
 [[hooks.run_start]]
 run = "b"
-`, `[[hooks.run_start]]
+`, engineOnly+`[[hooks.run_start]]
 run = "c"
 `)
 	wantClean(t, r)
@@ -214,7 +225,7 @@ run = "c"
 
 func TestErrorsNameTheLayerTheyComeFrom(t *testing.T) {
 	r := load(t, "version = 1\n", "max_iterations = 0\n")
-	wantOne(t, r, config.Error, ".kraftwerk/config.local.toml", "max_iterations", "at least 1")
+	wantOne(t, r, config.Error, ".fliesswerk/config.local.toml", "max_iterations", "at least 1")
 
 	r = load(t, "version = 1\n", "", config.Override{Key: "sandbox.kind", Value: "nope"})
 	wantOne(t, r, config.Error, "command line", "sandbox.kind")
@@ -223,6 +234,8 @@ func TestErrorsNameTheLayerTheyComeFrom(t *testing.T) {
 func TestLocalOnlyKeysAreRejectedInConfigToml(t *testing.T) {
 	cases := map[string]struct{ cfg, key string }{
 		"no sandbox":                  {"[sandbox]\nkind = \"none\"\ni_accept_unsandboxed_risk = true\n", "sandbox.kind"},
+		"sandbox kind":                {"[sandbox]\nkind = \"container\"\n", "sandbox.kind"},
+		"container engine":            {"[sandbox]\nengine = \"docker\"\n", "sandbox.engine"},
 		"open network":                {"[sandbox.network]\nallow = [\"registry.npmjs.org\", \"*\"]\n", "sandbox.network.allow"},
 		"tracker token":               {"[tracker]\ntoken = { stored = \"github\" }\n", "tracker.token"},
 		"harness secret":              {"[harnesses.claude_code]\nsecret = { stored = \"claude\" }\n", "harnesses.claude_code.secret"},
@@ -246,7 +259,7 @@ func TestLocalOnlyKeysAreRejectedInConfigToml(t *testing.T) {
 }
 
 func TestLocalOnlyKeysAreAcceptedLocallyAndAsFlags(t *testing.T) {
-	r := load(t, "version = 1\n", `[tracker]
+	r := load(t, "version = 1\n", engineOnly+`[tracker]
 token = { stored = "github" }
 [harnesses.claude_code]
 secret = { env = "CLAUDE_CODE_OAUTH_TOKEN" }
@@ -265,6 +278,35 @@ allow = ["*"]
 		t.Fatalf("want OK, got %v", messages(r, config.Error))
 	}
 	wantOne(t, r, config.Warning, "no Sandbox")
+}
+
+func TestTheEngineIsNeededWhereSomethingRunsInAContainer(t *testing.T) {
+	const compose = "version = 1\n[services]\ncompose_file = \"compose.yaml\"\n"
+	for name, tc := range map[string]struct{ cfg, local string }{
+		"the container Sandbox":           {"version = 1\n", "[sandbox]\nkind = \"container\"\n"},
+		"no kind, so the container":       {"version = 1\n", "# mine\n"},
+		"Services of a native Sandbox":    {compose, "[sandbox]\nkind = \"native\"\n"},
+		"Services with no Sandbox at all": {compose, "[sandbox]\nkind = \"none\"\ni_accept_unsandboxed_risk = true\n"},
+		"a Service from the default file": {"version = 1\n[services.db]\nshared = false\n", "[sandbox]\nkind = \"native\"\n"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := load(t, tc.cfg, tc.local)
+			if r.OK() {
+				t.Fatal("want an error for the missing engine")
+			}
+			wantOne(t, r, config.Error, "sandbox.engine", "config.local.toml", `"docker"`, `"podman"`)
+		})
+	}
+}
+
+func TestTheEngineIsNotNeededWhereNothingRunsInAContainer(t *testing.T) {
+	wantClean(t, load(t, "version = 1\n", "[sandbox]\nkind = \"native\"\n"))
+	wantClean(t, load(t, "version = 1\n", "[sandbox]\nkind = \"container\"\nengine = \"podman\"\n"))
+}
+
+func TestTheEngineIsDockerOrPodman(t *testing.T) {
+	r := load(t, "version = 1\n", "[sandbox]\nkind = \"container\"\nengine = \"nerdctl\"\n")
+	wantOne(t, r, config.Error, "sandbox.engine", "nerdctl")
 }
 
 func TestNoSandboxNeedsTheAcknowledgement(t *testing.T) {
@@ -288,7 +330,7 @@ func TestStepWithHarnessNeedsModel(t *testing.T) {
 	wantOne(t, r, config.Error, "steps.review", "`model`")
 
 	// The model may come from another layer.
-	r = load(t, "version = 1\n[steps.review]\nharness = \"claude_code\"\n", "[steps.review]\nmodel = \"cheap\"\n")
+	r = load(t, "version = 1\n[steps.review]\nharness = \"claude_code\"\n", engineOnly+"[steps.review]\nmodel = \"cheap\"\n")
 	wantClean(t, r)
 }
 
@@ -374,14 +416,13 @@ cannot_do_label   = "needs-investigation"
 
 [branches]
 base_branch = "main"
-prefix      = "kraftwerk"
+prefix      = "fliesswerk"
 
 [sandbox]
-kind = "container"
 run_args = []
 read_only_paths = []
 writable_paths  = []
-scrub_credentials = true
+withhold_secrets = true
 
 [sandbox.network]
 allow = ["registry.npmjs.org"]

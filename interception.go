@@ -11,11 +11,11 @@ import (
 
 	"golang.org/x/crypto/x509roots/fallback/bundle"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/egress"
-	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
-	"github.com/Marcel-Goehn/kraftwerk/internal/git"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
-	"github.com/Marcel-Goehn/kraftwerk/internal/setup"
+	"github.com/Marcel-Goehn/fliesswerk/internal/egress"
+	"github.com/Marcel-Goehn/fliesswerk/internal/factory"
+	"github.com/Marcel-Goehn/fliesswerk/internal/git"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/setup"
 )
 
 // probeCleanupTimeout bounds one step of removing what a probe set up.

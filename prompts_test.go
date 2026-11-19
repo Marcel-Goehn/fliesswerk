@@ -6,7 +6,7 @@ import (
 )
 
 func TestCheckFailsOnAnUnknownPlaceholder(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{
 		"config.toml":          "version = 1\n",
 		"prompts/review.md":    "# Review\n\n{{commands.test}}\n\n{{standards}}\n",
@@ -18,7 +18,7 @@ func TestCheckFailsOnAnUnknownPlaceholder(t *testing.T) {
 	if code != 3 {
 		t.Fatalf("exit code = %d, want 3; stderr: %s", code, stderr)
 	}
-	want := "error: .kraftwerk/prompts/review.md: unknown placeholder {{commands.test}}; only {{commands}} and {{standards}} exist"
+	want := "error: .fliesswerk/prompts/review.md: unknown placeholder {{commands.test}}; only {{commands}} and {{standards}} exist"
 	if !strings.Contains(stderr, want) {
 		t.Errorf("stderr lacks %q:\n%s", want, stderr)
 	}
@@ -28,16 +28,16 @@ func TestCheckFailsOnAnUnknownPlaceholder(t *testing.T) {
 }
 
 func TestCheckWarnsAboutAPromptFileWithoutAMarker(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{
 		"config.toml":       "version = 1\n",
 		"prompts/merge.md":  "# Our merge\n",
-		"prompts/review.md": "<!-- kraftwerk: based on the built-in review prompt v1; this line isn't sent to the agent -->\n# Ours\n",
+		"prompts/review.md": "<!-- fliesswerk: based on the built-in review prompt v1; this line isn't sent to the agent -->\n# Ours\n",
 	})
 
 	_, stderr, code := runIn(t, bin, root, checkNoSandbox...)
 
-	want := "warning: .kraftwerk/prompts/merge.md: no marker line names the built-in it is based on"
+	want := "warning: .fliesswerk/prompts/merge.md: no marker line names the built-in it is based on"
 	if code != 0 || !strings.Contains(stderr, want) {
 		t.Fatalf("exit code = %d, want 0 with %q; stderr: %s", code, want, stderr)
 	}
@@ -47,7 +47,7 @@ func TestCheckWarnsAboutAPromptFileWithoutAMarker(t *testing.T) {
 }
 
 func TestARunWithAnUnknownPlaceholderStopsBeforeAnyStep(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 	root := projectDir(t, map[string]string{
 		"config.toml":          "version = 1\n",
 		"config.local.toml":    "[sandbox]\nkind = \"none\"\ni_accept_unsandboxed_risk = true\n",
@@ -62,12 +62,12 @@ func TestARunWithAnUnknownPlaceholderStopsBeforeAnyStep(t *testing.T) {
 }
 
 func TestPromptsDiffShowsHowTheBuiltInChangedSinceTheFilesVersion(t *testing.T) {
-	bin := buildKraftwerk(t, "")
+	bin := buildFliesswerk(t, "")
 
 	t.Run("without a file the built-in is used", func(t *testing.T) {
 		root := projectDir(t, map[string]string{"config.toml": "version = 1\n"})
 		stdout, stderr, code := runIn(t, bin, root, "prompts", "diff", "implement")
-		if code != 0 || !strings.Contains(stdout, "no .kraftwerk/prompts/implement.md, so the built-in implement prompt (v1) is used as it is") {
+		if code != 0 || !strings.Contains(stdout, "no .fliesswerk/prompts/implement.md, so the built-in implement prompt (v1) is used as it is") {
 			t.Fatalf("exit code = %d, stdout = %q, stderr = %q", code, stdout, stderr)
 		}
 	})
@@ -75,7 +75,7 @@ func TestPromptsDiffShowsHowTheBuiltInChangedSinceTheFilesVersion(t *testing.T) 
 	t.Run("a file based on the latest built-in is up to date", func(t *testing.T) {
 		root := projectDir(t, map[string]string{
 			"config.toml":       "version = 1\n",
-			"prompts/review.md": "<!-- kraftwerk: based on the built-in review prompt v1; this line isn't sent to the agent -->\n# Ours\n",
+			"prompts/review.md": "<!-- fliesswerk: based on the built-in review prompt v1; this line isn't sent to the agent -->\n# Ours\n",
 		})
 		stdout, _, code := runIn(t, bin, root, "prompts", "diff", "review")
 		if code != 0 || !strings.Contains(stdout, "is based on the latest built-in review prompt (v1)") {
@@ -92,7 +92,7 @@ func TestPromptsDiffShowsHowTheBuiltInChangedSinceTheFilesVersion(t *testing.T) 
 		if code != 0 {
 			t.Fatalf("exit code = %d, stdout = %q", code, stdout)
 		}
-		for _, want := range []string{"--- .kraftwerk/prompts/merge.md", "+++ built-in merge prompt v1", "-Our own way.", "+{{commands}}", "<!-- kraftwerk: based on the built-in merge prompt v1"} {
+		for _, want := range []string{"--- .fliesswerk/prompts/merge.md", "+++ built-in merge prompt v1", "-Our own way.", "+{{commands}}", "<!-- fliesswerk: based on the built-in merge prompt v1"} {
 			if !strings.Contains(stdout, want) {
 				t.Errorf("stdout lacks %q:\n%s", want, stdout)
 			}

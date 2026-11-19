@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
 )
 
 // dockerConfig is what `docker compose config --format json
@@ -278,7 +278,7 @@ func TestRunningContainersAreReadFromEitherProvidersOutput(t *testing.T) {
 
 func TestProjectNamesAreValidForComposeAndSeparateSandboxes(t *testing.T) {
 	got := composeProjectName("/home/me/My Shop.git", "abc123", "build-GH#54")
-	if want := "kraftwerk-my-shop-git-abc123-build-gh-54"; got != want {
+	if want := "fliesswerk-my-shop-git-abc123-build-gh-54"; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }

@@ -1,5 +1,5 @@
 // Package runlog is the record of a Run: the live lines on the terminal
-// and, in the Run's own directory under .kraftwerk/logs/, the verbose
+// and, in the Run's own directory under .fliesswerk/logs/, the verbose
 // run.log, each Step attempt's raw output and exact prompt, and the
 // summary. Everything it writes goes through the redactor first.
 package runlog
@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/redact"
+	"github.com/Marcel-Goehn/fliesswerk/internal/redact"
 )
 
 // IDFormat makes a Run's id from its start time.
@@ -97,7 +97,7 @@ func UseColour(terminal bool, noColor string) bool {
 
 // Options shape a Log.
 type Options struct {
-	// Root is the project root, which holds .kraftwerk/.
+	// Root is the project root, which holds .fliesswerk/.
 	Root string
 	// Start is when the Run started; it names the Run.
 	Start time.Time
@@ -125,7 +125,7 @@ type Log struct {
 }
 
 // logsDir is where the Run directories are, relative to the project root.
-var logsDir = filepath.Join(".kraftwerk", "logs")
+var logsDir = filepath.Join(".fliesswerk", "logs")
 
 // Open creates the Run's directory and its run.log.
 func Open(o Options) (*Log, error) {

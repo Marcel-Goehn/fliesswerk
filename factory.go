@@ -12,21 +12,21 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/config"
-	"github.com/Marcel-Goehn/kraftwerk/internal/egress"
-	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
-	"github.com/Marcel-Goehn/kraftwerk/internal/hook"
-	"github.com/Marcel-Goehn/kraftwerk/internal/prompt"
-	"github.com/Marcel-Goehn/kraftwerk/internal/runlock"
-	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox/container"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox/native"
-	"github.com/Marcel-Goehn/kraftwerk/internal/setup"
-	"github.com/Marcel-Goehn/kraftwerk/internal/step"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
-	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
+	"github.com/Marcel-Goehn/fliesswerk/internal/config"
+	"github.com/Marcel-Goehn/fliesswerk/internal/egress"
+	"github.com/Marcel-Goehn/fliesswerk/internal/factory"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/hook"
+	"github.com/Marcel-Goehn/fliesswerk/internal/prompt"
+	"github.com/Marcel-Goehn/fliesswerk/internal/runlock"
+	"github.com/Marcel-Goehn/fliesswerk/internal/runlog"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox/container"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox/native"
+	"github.com/Marcel-Goehn/fliesswerk/internal/setup"
+	"github.com/Marcel-Goehn/fliesswerk/internal/step"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
+	"github.com/Marcel-Goehn/fliesswerk/internal/verify"
 	"golang.org/x/term"
 )
 
@@ -34,7 +34,7 @@ import (
 const (
 	defaultMaxIterations = 10
 	defaultBaseBranch    = "main"
-	defaultPrefix        = "kraftwerk"
+	defaultPrefix        = "fliesswerk"
 	defaultSandbox       = "container"
 	defaultCannotDoLabel = "needs-investigation"
 	// defaultComposeFile is the compose file of a project that defines
@@ -71,7 +71,7 @@ func runFactory(values map[string]any, root, only string, view runView, stdout, 
 	kind := stringAt(values, defaultSandbox, "sandbox", "kind")
 	prompts, ok := loadPrompts(root, stderr)
 	if !ok {
-		_, _ = fmt.Fprintln(stderr, "kraftwerk run: the prompt files are not valid; fix the errors above")
+		_, _ = fmt.Fprintln(stderr, "fliesswerk run: the prompt files are not valid; fix the errors above")
 		return exitConfigError
 	}
 	s, code, ok := secretsForRun(values, root, stderr)
@@ -83,22 +83,22 @@ func runFactory(values map[string]any, root, only string, view runView, stdout, 
 		for _, r := range refused {
 			_, _ = fmt.Fprintf(stderr, "error: %s\n", r)
 		}
-		_, _ = fmt.Fprintln(stderr, "kraftwerk run: fix the errors above")
+		_, _ = fmt.Fprintln(stderr, "fliesswerk run: fix the errors above")
 		return exitConfigError
 	}
 	lock, err := runlock.Acquire(filepath.Join(root, factory.StateDir, "lock"))
 	var held *runlock.HeldError
 	if errors.As(err, &held) {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk run: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "fliesswerk run: %v\n", err)
 		return exitStopped
 	}
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk run: can't take the Run's lock: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "fliesswerk run: can't take the Run's lock: %v\n", err)
 		return exitConfigError
 	}
 	defer func() {
 		if err := lock.Release(); err != nil {
-			_, _ = fmt.Fprintf(stderr, "kraftwerk run: warning: releasing the Run's lock: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "fliesswerk run: warning: releasing the Run's lock: %v\n", err)
 		}
 	}()
 
@@ -113,14 +113,14 @@ func runFactory(values map[string]any, root, only string, view runView, stdout, 
 	started := time.Now()
 	log, err := runlog.Open(runlog.Options{Root: root, Start: started, Terminal: live, Verbose: view.verbose, Colour: colour, Redactor: s.redactor})
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk run: can't create the Run's log directory: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "fliesswerk run: can't create the Run's log directory: %v\n", err)
 		return exitConfigError
 	}
 	if err := runlog.Prune(root, keepDays(values), started); err != nil {
 		log.Write(runlog.Line{Kind: runlog.Warning, Text: fmt.Sprintf("warning: pruning old logs: %v", err)})
 	}
 	writeBanner(log, values, s)
-	for _, w := range slices.Concat(s.authWarnings(context.Background()), sandboxWarnings) {
+	for _, w := range slices.Concat(s.authWarnings(context.Background()), s.secretWarnings(values), sandboxWarnings) {
 		log.Write(runlog.Line{Kind: runlog.Warning, Text: "warning: " + w})
 	}
 	if lock.StalePID != 0 {
@@ -143,7 +143,7 @@ func runFactory(values map[string]any, root, only string, view runView, stdout, 
 			log.Write(runlog.Line{Kind: kind, Text: line})
 		})
 		opts.Preflight = func(ctx context.Context) error {
-			if err := preflight(ctx, tr, s); err != nil {
+			if err := preflight(ctx, tr, values, s); err != nil {
 				return err
 			}
 			// Before the Sandboxes: each of them mounts the directory.
@@ -178,7 +178,7 @@ func runFactory(values map[string]any, root, only string, view runView, stdout, 
 		s.stopCredentials()
 	}
 	code = exitCode(res)
-	summary := log.Finish(summaryOf(res, log.ID(), started, code))
+	summary := log.Finish(summaryOf(res, log.ID(), started, code, s.costBasis()))
 	if view.json {
 		_, _ = stdout.Write(summary)
 	}
@@ -228,7 +228,7 @@ func newSandboxes(values map[string]any, root, kind string, s *secrets, runID st
 	switch kind {
 	case "container":
 		return container.New(container.Options{
-			Root: root, StateDir: state, RunID: runID, RunArgs: runArgs(values), Env: env,
+			Root: root, StateDir: state, RunID: runID, Engine: engineOf(values), RunArgs: runArgs(values), Env: env,
 			Egress: egressOptions, CACerts: caCerts(values), CredentialDir: credentialsMount, Version: versionString(), Log: logLine,
 			ComposeFile: composeFile(values), Services: ownServices(values), Shared: sharedServices(values), EnvTemplates: serviceEnvTemplates(values),
 		})
@@ -241,7 +241,7 @@ func newSandboxes(values map[string]any, root, kind string, s *secrets, runID st
 		if names := serviceNames(values); len(names) > 0 {
 			opts.EnvTemplates = serviceEnvTemplates(values)
 			opts.Services = container.NewPublished(container.PublishedOptions{
-				Root: root, StateDir: state, ComposeFile: composeFile(values),
+				Root: root, StateDir: state, Engine: engineOf(values), ComposeFile: composeFile(values),
 				Services: ownServices(values), Shared: sharedServices(values),
 			})
 		}
@@ -339,7 +339,7 @@ func writeBanner(log *runlog.Log, values map[string]any, s *secrets) {
 	}
 	limits := settingsOf(values, factory.Implement)
 	for _, text := range []string{
-		"kraftwerk " + versionString(),
+		"fliesswerk " + versionString(),
 		fmt.Sprintf("Run %s, logs in %s", log.ID(), runlog.RelDir(log.ID())),
 		fmt.Sprintf("Harness %s, auth %s", theHarness.Describe().Name, auth),
 		"Sandbox " + stringAt(values, defaultSandbox, "sandbox", "kind"),
@@ -350,9 +350,11 @@ func writeBanner(log *runlog.Log, values map[string]any, s *secrets) {
 	}
 }
 
-// preflight proves the Harness's credential and the Tracker work before
-// any Iteration starts.
-func preflight(ctx context.Context, tr tracker.Tracker, s *secrets) error {
+// preflight proves the Tracker, its labels, and the AWS credentials the host
+// mints from, work before any Iteration starts, so before anything is
+// claimed. It sends no credential the Harness sends itself: Claude Code
+// checks that one on the first Step.
+func preflight(ctx context.Context, tr tracker.Tracker, values map[string]any, s *secrets) error {
 	if err := s.testHarnessCredential(ctx); err != nil {
 		return err
 	}
@@ -362,7 +364,7 @@ func preflight(ctx context.Context, tr tracker.Tracker, s *secrets) error {
 			return fmt.Errorf("%s: %w", c.Name, err)
 		}
 	}
-	return nil
+	return checkLabels(ctx, tr, values)
 }
 
 // factoryOptions are the Options of a Run with this config.
@@ -378,6 +380,7 @@ func factoryOptions(values map[string]any, root, only string, tr tracker.Tracker
 		MaxParallel:    maxParallel(values),
 		MaxIterations:  intAt(values, defaultMaxIterations, "max_iterations"),
 		RunStep:        stepRunner(values, s, log),
+		AuthFix:        s.authRejectedFix(),
 		Review:         boolAt(values, true, "steps", "review", "enabled"),
 		Verify:         verifyCommands(values),
 		VerifyEnv:      verifyEnv(values, s),
@@ -408,7 +411,7 @@ func factoryOptions(values map[string]any, root, only string, tr tracker.Tracker
 func secretsForRun(values map[string]any, root string, stderr io.Writer) (s *secrets, code int, ok bool) {
 	s, err := resolveSecrets(context.Background(), values, root)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk run: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "fliesswerk run: %v\n", err)
 		return nil, exitConfigError, false
 	}
 	return s, exitOK, true
@@ -419,10 +422,10 @@ func secretsForRun(values map[string]any, root string, stderr io.Writer) (s *sec
 // a warning at half the idle timeout and the Step's end line, and records
 // the attempt's prompt and raw output.
 func stepRunner(values map[string]any, sec *secrets, log *runlog.Log) func(context.Context, factory.Step) harness.Outcome {
-	scrub := boolAt(values, true, "sandbox", "scrub_credentials")
+	withhold := boolAt(values, true, "sandbox", "withhold_secrets")
 	return func(ctx context.Context, req factory.Step) harness.Outcome {
 		// Only here: what a Step gets is settled once the Run has started.
-		env, unset := sec.stepEnv(scrub)
+		env, unset := sec.stepEnv(withhold)
 		settings := settingsOf(values, req.Name)
 		attempt := log.Attempt(req.Ticket.ID.Branch, req.Name, req.Prompt)
 		defer attempt.Close()
@@ -452,10 +455,9 @@ func stepRunner(values map[string]any, sec *secrets, log *runlog.Log) func(conte
 			Model:             settings.model,
 			Effort:            settings.effort,
 			ReportSchema:      harness.ReportSchema,
-			ScrubCredentials:  scrub,
 			CredentialCommand: sec.credentialCommand(inSandbox(values)),
 		}, req.Dir)
-		req.Log(runlog.Event, runlog.StepEnd(time.Since(begin), out.Usage, out.ContextWindow))
+		req.Log(runlog.Event, runlog.StepEnd(time.Since(begin), out.Usage, out.ContextWindow, sec.costBasis()))
 		return out
 	}
 }
@@ -487,7 +489,7 @@ func stepSetting(values map[string]any, stepName, key, def string) string {
 }
 
 // protectedPaths are the Protected paths the config names, besides
-// .kraftwerk/: the compose file, the standards file and protected_paths.
+// .fliesswerk/: the compose file, the standards file and protected_paths.
 func protectedPaths(values map[string]any) []string {
 	var paths []string
 	if services, _ := valueAt(values, "services").(map[string]any); len(services) > 0 {
@@ -502,6 +504,11 @@ func protectedPaths(values map[string]any) []string {
 // composeFile is the compose file Services come from.
 func composeFile(values map[string]any) string {
 	return stringAt(values, defaultComposeFile, "services", "compose_file")
+}
+
+// engineOf is `sandbox.engine`, "" for none.
+func engineOf(values map[string]any) string {
+	return stringAt(values, "", "sandbox", "engine")
 }
 
 // serviceNames are the Services the config names, sorted.
@@ -607,11 +614,11 @@ func inSandbox(values map[string]any) bool {
 
 // verifyEnv is the env of the Feedback commands the Factory runs itself.
 func verifyEnv(values map[string]any, s *secrets) []string {
-	scrub := boolAt(values, true, "sandbox", "scrub_credentials")
+	withhold := boolAt(values, true, "sandbox", "withhold_secrets")
 	if inSandbox(values) {
-		return s.sandboxCommandEnv(scrub)
+		return s.sandboxCommandEnv(withhold)
 	}
-	return s.commandEnv(scrub)
+	return s.commandEnv(withhold)
 }
 
 // hookEnv is the env of a Hook entry.
@@ -671,9 +678,9 @@ func printStop(stderr io.Writer, res factory.Result) {
 	var setup *factory.SetupError
 	switch {
 	case errors.As(res.Stopped, &setup):
-		_, _ = fmt.Fprintf(stderr, "kraftwerk run: %v\n", res.Stopped)
+		_, _ = fmt.Fprintf(stderr, "fliesswerk run: %v\n", res.Stopped)
 	case res.Stopped != nil:
-		_, _ = fmt.Fprintf(stderr, "kraftwerk run: stopped: %v\n", res.Stopped)
+		_, _ = fmt.Fprintf(stderr, "fliesswerk run: stopped: %v\n", res.Stopped)
 	}
 }
 

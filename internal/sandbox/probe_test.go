@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
 )
 
 // network is a Sandbox whose curl answers from a table: the first entry whose

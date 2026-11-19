@@ -1,8 +1,8 @@
 {
-  "$id": "https://raw.githubusercontent.com/Marcel-Goehn/kraftwerk/main/schema/config.schema.json",
+  "$id": "https://raw.githubusercontent.com/Marcel-Goehn/fliesswerk/main/schema/config.schema.json",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "additionalProperties": false,
-  "description": "Kraftwerk configuration.",
+  "description": "Fliesswerk configuration.",
   "properties": {
     "branches": {
       "additionalProperties": false,
@@ -60,7 +60,7 @@
                   "type": "string"
                 },
                 "dotenv": {
-                  "description": "Read this key from .kraftwerk/.env, which must be git-ignored.",
+                  "description": "Read this key from .fliesswerk/.env, which must be git-ignored.",
                   "type": "string"
                 },
                 "env": {
@@ -68,7 +68,7 @@
                   "type": "string"
                 },
                 "stored": {
-                  "description": "Read this key from the user-level credentials file written by `kraftwerk auth set`.",
+                  "description": "Read this key from the user-level credentials file written by `fliesswerk auth set`.",
                   "type": "string"
                 }
               },
@@ -106,7 +106,7 @@
             },
             "secret": {
               "additionalProperties": false,
-              "description": "Where the token or API key comes from. Setting a Harness credential is allowed only in config.local.toml or as a CLI flag, never in config.toml.",
+              "description": "Where the token or API key comes from. A subscription token (method = \"oauth_token\") can't be `stored`. Setting a Harness credential is allowed only in config.local.toml or as a CLI flag, never in config.toml.",
               "maxProperties": 1,
               "minProperties": 1,
               "properties": {
@@ -115,7 +115,7 @@
                   "type": "string"
                 },
                 "dotenv": {
-                  "description": "Read this key from .kraftwerk/.env, which must be git-ignored.",
+                  "description": "Read this key from .fliesswerk/.env, which must be git-ignored.",
                   "type": "string"
                 },
                 "env": {
@@ -123,7 +123,7 @@
                   "type": "string"
                 },
                 "stored": {
-                  "description": "Read this key from the user-level credentials file written by `kraftwerk auth set`.",
+                  "description": "Read this key from the user-level credentials file written by `fliesswerk auth set`.",
                   "type": "string"
                 }
               },
@@ -140,7 +140,7 @@
                   "type": "string"
                 },
                 "dotenv": {
-                  "description": "Read this key from .kraftwerk/.env, which must be git-ignored.",
+                  "description": "Read this key from .fliesswerk/.env, which must be git-ignored.",
                   "type": "string"
                 },
                 "env": {
@@ -148,7 +148,7 @@
                   "type": "string"
                 },
                 "stored": {
-                  "description": "Read this key from the user-level credentials file written by `kraftwerk auth set`.",
+                  "description": "Read this key from the user-level credentials file written by `fliesswerk auth set`.",
                   "type": "string"
                 }
               },
@@ -438,6 +438,14 @@
       "additionalProperties": false,
       "description": "The Sandbox each Step runs in.",
       "properties": {
+        "engine": {
+          "description": "The container engine, for the container Sandbox and for Services. Setting the container engine, which depends on each person's machine, is allowed only in config.local.toml or as a CLI flag, never in config.toml.",
+          "enum": [
+            "docker",
+            "podman"
+          ],
+          "type": "string"
+        },
         "env": {
           "additionalProperties": {
             "type": "string"
@@ -450,7 +458,7 @@
           "type": "boolean"
         },
         "kind": {
-          "description": "The Sandbox kind. \"none\" also needs i_accept_unsandboxed_risk = true. Setting kind = \"none\" (no Sandbox) is allowed only in config.local.toml or as a CLI flag, never in config.toml.",
+          "description": "The Sandbox kind. \"none\" also needs i_accept_unsandboxed_risk = true. Setting the Sandbox kind, which depends on each person's machine, is allowed only in config.local.toml or as a CLI flag, never in config.toml.",
           "enum": [
             "container",
             "native",
@@ -486,10 +494,6 @@
           },
           "type": "array"
         },
-        "scrub_credentials": {
-          "description": "Keep credentials out of the env of the agent's own commands. Default true.",
-          "type": "boolean"
-        },
         "secrets": {
           "additionalProperties": {
             "additionalProperties": false,
@@ -501,7 +505,7 @@
                 "type": "string"
               },
               "dotenv": {
-                "description": "Read this key from .kraftwerk/.env, which must be git-ignored.",
+                "description": "Read this key from .fliesswerk/.env, which must be git-ignored.",
                 "type": "string"
               },
               "env": {
@@ -509,7 +513,7 @@
                 "type": "string"
               },
               "stored": {
-                "description": "Read this key from the user-level credentials file written by `kraftwerk auth set`.",
+                "description": "Read this key from the user-level credentials file written by `fliesswerk auth set`.",
                 "type": "string"
               }
             },
@@ -517,6 +521,10 @@
           },
           "description": "Project secrets, by environment variable name, each naming where it comes from.",
           "type": "object"
+        },
+        "withhold_secrets": {
+          "description": "Keep the project secrets from the agent and from verify: only Hooks get them. Default true.",
+          "type": "boolean"
         },
         "writable_paths": {
           "description": "Extra paths a native Sandbox may write.",
@@ -684,7 +692,7 @@
           "type": "string"
         },
         "in_progress_label": {
-          "description": "The label that marks a claimed Spec.",
+          "description": "The label that marks a claimed Spec or standalone Ticket.",
           "type": "string"
         },
         "kind": {
@@ -713,7 +721,7 @@
               "type": "string"
             },
             "dotenv": {
-              "description": "Read this key from .kraftwerk/.env, which must be git-ignored.",
+              "description": "Read this key from .fliesswerk/.env, which must be git-ignored.",
               "type": "string"
             },
             "env": {
@@ -721,7 +729,7 @@
               "type": "string"
             },
             "stored": {
-              "description": "Read this key from the user-level credentials file written by `kraftwerk auth set`.",
+              "description": "Read this key from the user-level credentials file written by `fliesswerk auth set`.",
               "type": "string"
             }
           },
@@ -731,7 +739,7 @@
       "type": "object"
     },
     "update_notice": {
-      "description": "Say when a newer Kraftwerk is out, at most once a day and never in CI. Default true.",
+      "description": "Say when a newer Fliesswerk is out, at most once a day and never in CI. Default true.",
       "type": "boolean"
     },
     "verify": {
@@ -750,6 +758,6 @@
   "required": [
     "version"
   ],
-  "title": "Kraftwerk config",
+  "title": "Fliesswerk config",
   "type": "object"
 }

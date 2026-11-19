@@ -15,7 +15,7 @@ import (
 )
 
 // deprecation is a key that was renamed or removed. A renamed key keeps
-// working until the next major, under a warning; `kraftwerk migrate` rewrites
+// working until the next major, under a warning; `fliesswerk migrate` rewrites
 // it. A key may name a whole table.
 type deprecation struct {
 	old string
@@ -37,11 +37,11 @@ type change struct {
 func (c change) warning() string {
 	switch {
 	case c.new == "":
-		return fmt.Sprintf("no longer has any effect and is ignored (%s); `kraftwerk migrate` removes it", c.note)
+		return fmt.Sprintf("no longer has any effect and is ignored (%s); `fliesswerk migrate` removes it", c.note)
 	case c.shadowed:
-		return fmt.Sprintf("is deprecated and ignored, because `%s` is set as well; `kraftwerk migrate` removes it", c.new)
+		return fmt.Sprintf("is deprecated and ignored, because `%s` is set as well; `fliesswerk migrate` removes it", c.new)
 	}
-	return fmt.Sprintf("is deprecated; use `%s`, which `kraftwerk migrate` rewrites it to", c.new)
+	return fmt.Sprintf("is deprecated; use `%s`, which `fliesswerk migrate` rewrites it to", c.new)
 }
 
 func (c change) report() string {
@@ -116,7 +116,7 @@ func assign(t map[string]any, path []string, v any) bool {
 	return true
 }
 
-// Migration is what `kraftwerk migrate` did to one file.
+// Migration is what `fliesswerk migrate` did to one file.
 type Migration struct {
 	File    string
 	Changes []string
@@ -232,7 +232,7 @@ func rewrite(data []byte) ([]byte, []change, error) {
 		for _, c := range changes {
 			names = append(names, "`"+c.old+"`")
 		}
-		return nil, nil, fmt.Errorf("can't be rewritten automatically; change %s by hand, as `kraftwerk check` describes", strings.Join(names, ", "))
+		return nil, nil, fmt.Errorf("can't be rewritten automatically; change %s by hand, as `fliesswerk check` describes", strings.Join(names, ", "))
 	}
 	return out, changes, nil
 }

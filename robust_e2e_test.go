@@ -16,12 +16,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/fake"
 )
 
 // lockPath is where a Run keeps its lock.
 func (p *runProject) lockPath() string {
-	return filepath.Join(p.work, ".kraftwerk", "state", "lock")
+	return filepath.Join(p.work, ".fliesswerk", "state", "lock")
 }
 
 // deadPID is the PID of a process that has already ended.
@@ -35,7 +35,7 @@ func deadPID(t *testing.T) int {
 }
 
 func TestASecondRunInTheSameCheckoutIsRefusedNamingTheHoldingPID(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": []}`)
 	holder := strconv.Itoa(os.Getpid()) // this test is a live process
 	writeFile(t, p.lockPath(), holder+"\n")
@@ -55,7 +55,7 @@ func TestASecondRunInTheSameCheckoutIsRefusedNamingTheHoldingPID(t *testing.T) {
 }
 
 func TestAStaleLockIsTakenOverAndReleasedAtTheEnd(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, `+implementsCart("Implement Ticket #2", `package cart\n`)+`]}`)
 	dead := deadPID(t)
 	writeFile(t, p.lockPath(), fmt.Sprintf("%d\n", dead))
@@ -92,7 +92,7 @@ func (s *syncBuffer) String() string {
 	return s.b.String()
 }
 
-// liveRun is a `kraftwerk run` still going.
+// liveRun is a `fliesswerk run` still going.
 type liveRun struct {
 	cmd            *exec.Cmd
 	stdout, stderr *syncBuffer
@@ -145,18 +145,18 @@ func (p *runProject) setIssues(t *testing.T, issues []fake.Issue) {
 
 // worktreePath is a Factory worktree in the user's checkout.
 func (p *runProject) worktreePath(name string) string {
-	return filepath.Join(p.work, ".kraftwerk", "state", "worktrees", name)
+	return filepath.Join(p.work, ".fliesswerk", "state", "worktrees", name)
 }
 
 func TestARunCleansUpAfterACrashedRunAndKeepsSpecBranches(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [{"match": "Implement Ticket #2", "actions": [
 		{"write": "started.txt", "content": "x"}, {"sleep": "5s"}]}]}`)
 	// A standalone Ticket's branch has the place of a Spec branch, and
 	// starts just like a Ticket branch does.
-	standalone := "kraftwerk/ticket-7-fix-the-typo"
+	standalone := "fliesswerk/ticket-7-fix-the-typo"
 	gitIn(t, p.work, "branch", standalone)
-	spec := "kraftwerk/spec-1-spec-shopping-cart"
+	spec := "fliesswerk/spec-1-spec-shopping-cart"
 
 	crashed := p.start(t, nil)
 	marker := filepath.Join(p.worktreePath("ticket-2"), "started.txt")
@@ -165,7 +165,7 @@ func TestARunCleansUpAfterACrashedRunAndKeepsSpecBranches(t *testing.T) {
 		t.Fatal(err)
 	}
 	crashed.wait(t)
-	if !exists(p.lockPath()) || gitIn(t, p.work, "branch", "--list", "kraftwerk/ticket-2") == "" {
+	if !exists(p.lockPath()) || gitIn(t, p.work, "branch", "--list", "fliesswerk/ticket-2") == "" {
 		t.Fatal("the crash left no lock or no Ticket branch to clean up")
 	}
 
@@ -181,7 +181,7 @@ func TestARunCleansUpAfterACrashedRunAndKeepsSpecBranches(t *testing.T) {
 	if got := gitIn(t, p.work, "worktree", "list", "--porcelain"); strings.Count(got, "worktree ") != 1 {
 		t.Errorf("git still knows the crashed Run's worktrees:\n%s", got)
 	}
-	if got := gitIn(t, p.work, "branch", "--list", "kraftwerk/ticket-2"); got != "" {
+	if got := gitIn(t, p.work, "branch", "--list", "fliesswerk/ticket-2"); got != "" {
 		t.Errorf("the Ticket branch is left: %q", got)
 	}
 	for _, branch := range []string{spec, standalone} {
@@ -214,10 +214,10 @@ func (p *runProject) patchTracker(t *testing.T, patch map[string]any) {
 // reach the Tracker, so all its writes are queued.
 func ranOnce(t *testing.T) (p *runProject, harnessLog string) {
 	t.Helper()
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p = newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, `+implementsCart("Implement Ticket #2", `package cart\n`)+`]}`)
 	harnessLog = filepath.Join(t.TempDir(), "harness.jsonl")
-	p.extraEnv = []string{"KWK_FAKE_HARNESS_LOG=" + harnessLog}
+	p.extraEnv = []string{"FWK_FAKE_HARNESS_LOG=" + harnessLog}
 	p.patchTracker(t, map[string]any{"fail_writes": 1000})
 
 	if code := p.run(t); code != 0 {
@@ -274,7 +274,7 @@ func TestATicketWhoseCloseIsStillQueuedDoesNotRunAgain(t *testing.T) {
 }
 
 func TestAFailingSnapshotStopsTheRunWithExit2(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": []}`)
 	p.patchTracker(t, map[string]any{"fail_snapshot": true})
 
@@ -287,8 +287,8 @@ func TestAFailingSnapshotStopsTheRunWithExit2(t *testing.T) {
 }
 
 func TestARejectedPushStopsThatSpecOnlyAndExplainsTheFix(t *testing.T) {
-	bin := buildTestKraftwerk(t)
-	spec := "kraftwerk/spec-1-spec-shopping-cart"
+	bin := buildTestFliesswerk(t)
+	spec := "fliesswerk/spec-1-spec-shopping-cart"
 	issues := append(cartIssues(),
 		fake.Issue{Number: 3, Title: "Cart page", Labels: []string{"ready-for-agent"}, Parent: 1},
 		fake.Issue{Number: 10, Title: "Spec: Search", Labels: []string{"ready-for-agent"}},
@@ -327,7 +327,7 @@ func TestARejectedPushStopsThatSpecOnlyAndExplainsTheFix(t *testing.T) {
 }
 
 func TestExitCodesMatchTheSpec(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	const repoTable = "[tracker]\nrepo = \"acme/shop\"\n"
 	twoTickets := append(cartIssues(), fake.Issue{Number: 3, Title: "Cart page", Labels: []string{"ready-for-agent"}, Parent: 1})
 	textOnly := []fake.Issue{{Number: 5, Title: "Blocked in text only", Labels: []string{"ready-for-agent"}, TextOnlyBlockers: []int{9}}}
@@ -345,7 +345,7 @@ func TestExitCodesMatchTheSpec(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			p := newRunProject(t, bin, tt.issues, script)
-			writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.toml"), tt.config)
+			writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.toml"), tt.config)
 
 			if code := p.run(t); code != tt.want {
 				t.Fatalf("exit code = %d, want %d\nstdout: %s\nstderr: %s", code, tt.want, p.stdout, p.stderr)

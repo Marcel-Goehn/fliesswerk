@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/config"
-	"github.com/Marcel-Goehn/kraftwerk/internal/egress"
+	"github.com/Marcel-Goehn/fliesswerk/internal/config"
+	"github.com/Marcel-Goehn/fliesswerk/internal/egress"
 )
 
 // start runs a proxy for the length of the test and returns its URL.
@@ -486,6 +486,10 @@ func TestOptionsComeFromTheConfigAndTheAuthEndpoints(t *testing.T) {
 	}
 	toml := fmt.Sprintf("version = 1\n[sandbox.network]\nallow = [\"registry.npmjs.org\"]\n[network]\nupstream_proxy = %q\n", up.URL)
 	if err := os.WriteFile(filepath.Join(root, config.Dir, "config.toml"), []byte(toml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A person's own file, with the engine the default container Sandbox needs.
+	if err := os.WriteFile(filepath.Join(root, config.Dir, "config.local.toml"), []byte("[sandbox]\nengine = \"docker\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	r := config.Load(root, nil)

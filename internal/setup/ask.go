@@ -12,7 +12,7 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
 )
 
 // none is what a person types to clear a suggestion.
@@ -33,15 +33,14 @@ type Answers struct {
 	// Languages are ids, in recipe order.
 	Languages []string
 	// Commands are Feedback commands by name; only those that are set.
-	Commands    map[string]string
-	ComposeFile string
-	Services    []Service
-	// Kind goes into the team's config. A person's own Unsandboxed choice
-	// doesn't change it.
-	Kind          string
-	Unsandboxed   bool
+	Commands      map[string]string
+	ComposeFile   string
+	Services      []Service
 	Standards     string
 	ProtectClaude bool
+	// TokenKey is the key the Tracker's token is stored under in the
+	// credentials file, for the example in config.toml.
+	TokenKey string
 }
 
 // Asker puts questions to a person, one line per answer.
@@ -105,13 +104,26 @@ func (a Asker) required(question, suggestion string) (string, error) {
 // secret asks until it has a secret, hidden from a terminal.
 func (a Asker) secret(question string) (string, error) {
 	for {
-		_, _ = fmt.Fprint(a.out, question+" (input is hidden): ")
-		answer, err := a.hiddenLine()
+		answer, err := a.hidden(question)
 		if err != nil || answer != "" {
 			return answer, err
 		}
 		a.say("  This one needs an answer.")
 	}
+}
+
+// hidden asks for a secret once, hidden from a terminal; Enter leaves it
+// empty.
+func (a Asker) hidden(question string) (string, error) {
+	_, _ = fmt.Fprint(a.out, question+" (input is hidden): ")
+	return a.hiddenLine()
+}
+
+// wait asks for Enter and waits for it. Input that has ended counts as one.
+func (a Asker) wait(question string) {
+	_, _ = fmt.Fprint(a.out, question+": ")
+	_, _ = a.in.ReadString('\n')
+	a.say("")
 }
 
 // hiddenLine reads one line without echoing it, if there is an echo to stop.
@@ -198,9 +210,6 @@ func Ask(root string, a Asker, f Facts, questions []tracker.Question) (Answers, 
 		return ans, err
 	}
 	if ans.Services, err = services(root, ans.ComposeFile); err != nil {
-		return ans, err
-	}
-	if err = a.sandbox(&ans); err != nil {
 		return ans, err
 	}
 	if ans.Standards, err = a.file(root, "Which file holds your Coding standards? Only the review Step reads it", f.Standards); err != nil {
@@ -307,8 +316,9 @@ func (a Asker) file(root, question, suggestion string) (string, error) {
 	}
 }
 
-// sandbox asks for the Sandbox kind, and a second time before none.
-func (a Asker) sandbox(ans *Answers) error {
+// sandbox asks where the agent runs, a second time before none, and then
+// for the container engine wherever something runs in one.
+func (a Asker) sandbox(in PersonalInput, p *Personal) error {
 	kind, err := a.pick("Where should the agent run?", []option{
 		{kindContainer, "In a container (recommended). Needs Docker or Podman. The agent sees only the project."},
 		{kindNative, "Directly on this machine, fenced in by the operating system. Linux, macOS, WSL2."},
@@ -317,20 +327,44 @@ func (a Asker) sandbox(ans *Answers) error {
 	if err != nil {
 		return err
 	}
-	ans.Kind = kind
-	if kind != kindNone {
-		return nil
+	if kind == kindNone {
+		sure, err := a.yes("With no Sandbox the agent can delete your files, read your SSH keys and send them anywhere. Run it that way on this machine?", false)
+		if err != nil {
+			return err
+		}
+		if sure {
+			p.unsandboxed = true
+			a.say("  Only for you: that goes into config.local.toml, never into the team's config.toml.")
+		} else {
+			kind = kindContainer
+			a.say("  Staying with the container Sandbox.")
+		}
 	}
-	ans.Kind = kindContainer // a committed file may never disarm the team
-	sure, err := a.yes("With no Sandbox the agent can delete your files, read your SSH keys and send them anywhere. Run it that way on this machine?", false)
-	if err != nil {
-		return err
+	p.kind = kind
+	question := "Which container engine?"
+	if kind != kindContainer {
+		if !in.HasServices {
+			return nil
+		}
+		question = "Your Services run in containers. Which container engine?"
 	}
-	ans.Unsandboxed = sure
-	if sure {
-		a.say("  Only for you: that goes into config.local.toml. The team's config.toml keeps the container Sandbox.")
-	} else {
-		a.say("  Staying with the container Sandbox.")
+	p.engine, err = a.pick(question, []option{
+		{engineDocker, "Docker (recommended)" + installedNote(in, engineDocker)},
+		{enginePodman, "Podman" + installedNote(in, enginePodman)},
+	})
+	return err
+}
+
+// Container engines.
+const (
+	engineDocker = "docker"
+	enginePodman = "podman"
+)
+
+// installedNote says whether an engine is on this machine.
+func installedNote(in PersonalInput, engine string) string {
+	if in.Installed != nil && in.Installed(engine) {
+		return ", installed"
 	}
-	return nil
+	return ", not installed: `fliesswerk check` names the command that installs it"
 }

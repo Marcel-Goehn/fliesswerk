@@ -1,4 +1,4 @@
-# kraftwerk
+# fliesswerk
 
 A software factory that implements a spec's tickets with AFK agents, replacing the implement step of the grill → spec → tickets → implement → review → PR workflow.
 
@@ -6,7 +6,7 @@ A software factory that implements a spec's tickets with AFK agents, replacing t
 
 **Factory**:
 The tool as a whole: the thing that takes a spec's ready tickets and turns them into commits on a feature branch without a human in the loop.
-_Avoid_: Kraftwerk (when the concept is meant; Kraftwerk is the product name), Ralph loop (as a name for the tool), software factory (in prose, fine; in code, use Factory)
+_Avoid_: Fliesswerk (when the concept is meant; Fliesswerk is the product name), Ralph loop (as a name for the tool), software factory (in prose, fine; in code, use Factory)
 
 **Sandbox**:
 The isolated environment in which a Step runs, walling the agent off from everything it doesn't need. It comes in two kinds: a **container Sandbox** (the Step runs in a container) and a **native Sandbox** (the Step runs directly on the user's machine, fenced in by the operating system).
@@ -33,7 +33,7 @@ One whole execution of the Factory, from the moment it is started until it stops
 _Avoid_: Session, job, loop (as a noun for the execution)
 
 **Claim**:
-The mark that a Spec (or a standalone Ticket) is being worked by someone's Runs: the in-progress label, with the claimer as assignee. A Run sets it the first time it takes a Ticket from the Spec. It lasts across Runs until the Spec's last Ticket closes or `kraftwerk release` drops it, and everyone else's Runs skip the Spec meanwhile. A Run works its own claimed Specs first ("finish what's started").
+The mark that a Spec (or a standalone Ticket) is being worked by someone's Runs: the in-progress label, with the claimer as assignee. A Run sets it the first time it takes a Ticket from the Spec. It lasts across Runs until the Spec's last Ticket closes or `fliesswerk release` drops it, and everyone else's Runs skip the Spec meanwhile. A Run works its own claimed Specs first ("finish what's started").
 _Avoid_: Lock, lease, reservation
 
 **Blocker**:
@@ -67,6 +67,10 @@ _Avoid_: Style guide, conventions (when the file is meant)
 **Hook**:
 A shell command the Factory runs at a named moment of a Run (e.g. when a Sandbox is created), either on the host or inside the Sandbox.
 _Avoid_: Callback, lifecycle script
+
+**Project secret**:
+A secret value the project's own commands need (e.g. a payment provider's test key), resolved by the Factory on the user's machine. Hooks get it. The agent and the Factory's own Feedback-command runs get it only if the user explicitly chooses so.
+_Avoid_: Credential (that is the Harness's own sign-in), env var (when the secret is meant)
 
 **Service**:
 A supporting program the Factory starts from the project's compose file (e.g. a database). Each Sandbox gets its own copy with its own data, unless the project marks the Service as shared, in which case one copy serves the whole Run. A Sandbox can reach its Services, while all other network access stays denied.

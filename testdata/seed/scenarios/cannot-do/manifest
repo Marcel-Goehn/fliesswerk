@@ -1,0 +1,13 @@
+# A Spec with a Ticket that can only be finished with a credential for an
+# outside service the project doesn't have. The agent should hand it back.
+#
+# issue <key> <parent> <blocked-by> <labels> <title>
+issue spec  -     -  -                Spec: E-mail digests
+issue a     spec  -  ready-for-agent  Send the weekly digest through SendGrid
+exit 0
+
+dry-run:
+Iteration 1 would take 1 Ticket (max_parallel = 1):
+  {{a}}  Send the weekly digest through SendGrid  (Spec {{spec}})
+
+Dry run: nothing was written and nothing was started.

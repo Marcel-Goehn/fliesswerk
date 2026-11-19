@@ -28,9 +28,6 @@ type Step struct {
 	Effort string
 	// ReportSchema is the JSON Schema of the report, owned by the core.
 	ReportSchema string
-	// ScrubCredentials keeps credentials out of the env of the commands
-	// the agent runs. On unless `scrub_credentials = false`.
-	ScrubCredentials bool
 	// CredentialCommand is the shell command that prints the credential
 	// the Factory keeps in a file, "" for none.
 	CredentialCommand string

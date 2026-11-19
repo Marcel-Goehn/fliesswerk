@@ -6,21 +6,20 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"net/http"
 	"os"
 	"slices"
 	"strings"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/bedrock"
-	"github.com/Marcel-Goehn/kraftwerk/internal/credentials"
-	"github.com/Marcel-Goehn/kraftwerk/internal/git"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness/claudecode"
-	"github.com/Marcel-Goehn/kraftwerk/internal/hook"
-	"github.com/Marcel-Goehn/kraftwerk/internal/redact"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/github"
+	"github.com/Marcel-Goehn/fliesswerk/internal/bedrock"
+	"github.com/Marcel-Goehn/fliesswerk/internal/credentials"
+	"github.com/Marcel-Goehn/fliesswerk/internal/git"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness/claudecode"
+	"github.com/Marcel-Goehn/fliesswerk/internal/hook"
+	"github.com/Marcel-Goehn/fliesswerk/internal/redact"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/github"
 )
 
 // harnesses are the Harnesses compiled in, by config name.
@@ -34,7 +33,8 @@ const defaultHarness = "claude_code"
 // is the only one, so every Step uses it.
 var theHarness = harnesses[defaultHarness]
 
-// testCallTimeout bounds a credential's free test call.
+// testCallTimeout bounds the free test call of the AWS credentials the host
+// mints the Sandbox's from.
 const testCallTimeout = 30 * time.Second
 
 // secrets are everything secret a Run (or `check`) uses, resolved on the
@@ -63,7 +63,7 @@ type secrets struct {
 	credentialFile string
 }
 
-// resolveSecrets checks that .kraftwerk/.env is git-ignored and that the
+// resolveSecrets checks that .fliesswerk/.env is git-ignored and that the
 // Harness's auth config fits the methods it declares, then resolves every
 // secret the config references. An error is for a person to fix before
 // anything can start; it names the fix and never holds a secret.
@@ -136,7 +136,7 @@ func trackerToken(ctx context.Context, r credentials.Resolver, values map[string
 	}
 	src, ok := credentials.ParseSource(v)
 	if !ok {
-		return "", errors.New("tracker.token: must say where the token comes from, e.g. `{ stored = \"github\" }`")
+		return "", errors.New("tracker.token: must say where the token comes from, e.g. `{ env = \"GH_TOKEN\" }`")
 	}
 	token, err := r.Resolve(ctx, src)
 	if err != nil {
@@ -145,15 +145,35 @@ func trackerToken(ctx context.Context, r credentials.Resolver, values map[string
 	return token, nil
 }
 
-// testHarnessCredential makes the Harness credential's free test call.
-// With no credential configured there is nothing to test.
+// testHarnessCredential proves the credential the host uses itself: the AWS
+// credentials it mints the Sandbox's from. Any other credential only the
+// Harness sends, so a bad one shows at the first Step (see
+// authRejectedFix).
 func (s *secrets) testHarnessCredential(ctx context.Context) error {
 	if s.auth == nil {
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, testCallTimeout)
 	defer cancel()
-	return s.auth.Test(ctx, http.DefaultClient)
+	return s.auth.Test(ctx)
+}
+
+// authRejectedFix is what a person does when the Harness rejects its
+// credential at a Step.
+func (s *secrets) authRejectedFix() string {
+	if s.auth == nil {
+		return theHarness.Describe().LoginFix
+	}
+	return s.auth.RejectedFix()
+}
+
+// costBasis is what the Harness's reported cost means for this Run. With
+// the Harness's own login the Factory can't tell, and shows it as billed.
+func (s *secrets) costBasis() harness.CostBasis {
+	if s.auth == nil {
+		return harness.Billed
+	}
+	return s.auth.CostBasis
 }
 
 // usesBedrock reports whether the Run signs in to AWS on the host, and so
@@ -204,16 +224,25 @@ func (s *secrets) authWarnings(ctx context.Context) []string {
 	return s.auth.Bedrock.Warnings(ctx, time.Now())
 }
 
+// secretWarnings warns, for check and for every Run, that the agent gets the
+// project secrets when they aren't withheld.
+func (s *secrets) secretWarnings(values map[string]any) []string {
+	if len(s.project) == 0 || boolAt(values, true, "sandbox", "withhold_secrets") {
+		return nil
+	}
+	return []string{"sandbox.withhold_secrets is false: the agent and verify get the project secrets ([sandbox.secrets]), and the agent can read them"}
+}
+
 // stepEnv is what each Step's env gets: the Harness's credential, and the
-// project secrets only when scrubbing is off, the user having chosen to
-// let the agent's own commands see credentials. unset are the variables
-// of the Factory's own env a Step must not inherit: every host-only one,
-// and the Harness's credential variables when a configured credential
-// must win over the user's own.
-func (s *secrets) stepEnv(scrub bool) (env map[string]string, unset []string) {
+// project secrets only unless they are withheld, the user having chosen
+// to let the agent see them. unset are the variables of the Factory's own
+// env a Step must not inherit: every host-only one, and the Harness's
+// credential variables when a configured credential must win over the
+// user's own.
+func (s *secrets) stepEnv(withhold bool) (env map[string]string, unset []string) {
 	env = map[string]string{}
 	unset = append(unset, s.hostOnly...)
-	if !scrub {
+	if !withhold {
 		for k, v := range s.project {
 			env[k] = v
 		}
@@ -235,12 +264,12 @@ func (s *secrets) stepEnv(scrub bool) (env map[string]string, unset []string) {
 
 // commandEnv is the env of the Feedback commands the Factory runs itself.
 // They run the agent's code, so they get no more than the agent's own
-// commands: the Factory's env without host-only variables, the project
-// secrets only when scrubbing is off, and never a Harness credential,
-// not even one from the Factory's own env while scrubbing is on.
-func (s *secrets) commandEnv(scrub bool) []string {
+// commands: the Factory's env without host-only variables, and the project
+// secrets unless they are withheld. While they are, the Factory's own env
+// loses any Harness credential too.
+func (s *secrets) commandEnv(withhold bool) []string {
 	unset := slices.Clone(s.hostOnly)
-	if scrub {
+	if withhold {
 		unset = append(unset, s.harnessEnv...)
 	}
 	env := slices.DeleteFunc(os.Environ(), func(kv string) bool {
@@ -248,7 +277,7 @@ func (s *secrets) commandEnv(scrub bool) []string {
 		return slices.ContainsFunc(unset, func(u string) bool { return strings.EqualFold(u, name) })
 	})
 	env = append(env, git.NonInteractiveEnv...)
-	if !scrub {
+	if !withhold {
 		for k, v := range s.project {
 			env = append(env, k+"="+v)
 		}
@@ -268,9 +297,9 @@ func (s *secrets) hookEnv(where string, names []string) []string {
 }
 
 // sandboxCommandEnv is commandEnv for a command in a Sandbox, where nothing of the host's env goes in.
-func (s *secrets) sandboxCommandEnv(scrub bool) []string {
+func (s *secrets) sandboxCommandEnv(withhold bool) []string {
 	env := slices.Clone(git.NonInteractiveEnv)
-	if !scrub {
+	if !withhold {
 		for k, v := range s.project {
 			env = append(env, k+"="+v)
 		}

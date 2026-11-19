@@ -14,7 +14,7 @@ import (
 )
 
 // Dir holds a project's prompt files, relative to the project root.
-const Dir = ".kraftwerk/prompts"
+const Dir = ".fliesswerk/prompts"
 
 // The built-in editable parts: builtin/<step>.md is the latest, and
 // builtin/history/<step>.v<N>.md each one before it. Changing a built-in
@@ -92,11 +92,11 @@ func (p Part) Improved() bool {
 // markerLine is the first line of a prompt file `init` writes. It names
 // the Step and the built-in version the file starts from, and isn't sent
 // to the agent.
-var markerLine = regexp.MustCompile(`^<!-- kraftwerk: based on the built-in ([a-z]+) prompt v([0-9]+)\b.*-->[ \t]*(\r?\n|$)`)
+var markerLine = regexp.MustCompile(`^<!-- fliesswerk: based on the built-in ([a-z]+) prompt v([0-9]+)\b.*-->[ \t]*(\r?\n|$)`)
 
 // Marker is the marker line of a file based on step's latest built-in.
 func Marker(step string) string {
-	return fmt.Sprintf("<!-- kraftwerk: based on the built-in %s prompt v%d; this line isn't sent to the agent -->", step, Latest(step))
+	return fmt.Sprintf("<!-- fliesswerk: based on the built-in %s prompt v%d; this line isn't sent to the agent -->", step, Latest(step))
 }
 
 // Load reads every Step's part from the project at root.

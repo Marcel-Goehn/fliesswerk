@@ -10,13 +10,13 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
-	"github.com/Marcel-Goehn/kraftwerk/internal/redact"
-	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
-	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
+	"github.com/Marcel-Goehn/fliesswerk/internal/factory"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/redact"
+	"github.com/Marcel-Goehn/fliesswerk/internal/runlog"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/fake"
+	"github.com/Marcel-Goehn/fliesswerk/internal/verify"
 )
 
 const investigate = "needs-investigation"
@@ -57,7 +57,7 @@ func handedBack(t *testing.T, tr *fake.Tracker, n int, want ...string) string {
 		t.Fatalf("#%d has %d comments, want one", n, len(i.Comments))
 	}
 	c := i.Comments[0].Body
-	for _, w := range append(want, "2026-11-07T14-03-12", ".kraftwerk/logs/2026-11-07T14-03-12") {
+	for _, w := range append(want, "2026-11-07T14-03-12", ".fliesswerk/logs/2026-11-07T14-03-12") {
 		if !strings.Contains(c, w) {
 			t.Errorf("#%d's comment lacks %q:\n%s", n, w, c)
 		}
@@ -95,7 +95,7 @@ func TestCannotDoHandsTheTicketBackAndTheSpecCarriesOn(t *testing.T) {
 	if len(res.Failed) != 1 || res.Stopped != nil {
 		t.Errorf("result = %+v, want #2 failed and the Run not stopped", res)
 	}
-	if gitOK(f.work, "rev-parse", "--verify", "-q", "refs/heads/kraftwerk/ticket-2") {
+	if gitOK(f.work, "rev-parse", "--verify", "-q", "refs/heads/fliesswerk/ticket-2") {
 		t.Error("the work of #2 wasn't discarded: its Ticket branch is left")
 	}
 }
@@ -258,7 +258,7 @@ func TestACommitTouchingAProtectedPathHandsTheTicketBackWithoutARetry(t *testing
 		files map[string]string
 		want  []string
 	}{
-		"the Factory's own directory": {map[string]string{".kraftwerk/config.toml": "version = 1\n", "cart.go": "package cart\n"}, []string{".kraftwerk/config.toml"}},
+		"the Factory's own directory": {map[string]string{".fliesswerk/config.toml": "version = 1\n", "cart.go": "package cart\n"}, []string{".fliesswerk/config.toml"}},
 		"a configured directory":      {map[string]string{".claude/settings.json": "{}\n"}, []string{".claude/settings.json"}},
 		"a configured file":           {map[string]string{"compose.yaml": "services: {}\n"}, []string{"compose.yaml"}},
 		"a configured glob":           {map[string]string{"db/migrations/001.sql": "--\n"}, []string{"db/migrations/001.sql"}},
@@ -283,7 +283,7 @@ func TestACommitTouchingAProtectedPathHandsTheTicketBackWithoutARetry(t *testing
 				t.Fatalf("result = %+v, want #2 failed", res)
 			}
 			handedBack(t, tr, 2, append(tc.want, "Protected")...)
-			if got := f.remoteRef(t, "kraftwerk/spec-1-spec-shopping-cart"); got != "" {
+			if got := f.remoteRef(t, "fliesswerk/spec-1-spec-shopping-cart"); got != "" {
 				t.Errorf("the Spec branch was pushed: %s", got)
 			}
 		})
@@ -294,8 +294,8 @@ func TestAProtectedPathChangedAndChangedBackIsStillCaught(t *testing.T) {
 	f := newFixture(t)
 	tr := fake.New(ready, cartSpec()...)
 	implement := func(ctx context.Context, s factory.Step) harness.Outcome {
-		commits(map[string]string{".kraftwerk/.gitignore": "*\n"}, "")(ctx, s)
-		return commits(map[string]string{".kraftwerk/.gitignore": "state/\nconfig.local.toml\n", "cart.go": "package cart\n"}, "Done.")(ctx, s)
+		commits(map[string]string{".fliesswerk/.gitignore": "*\n"}, "")(ctx, s)
+		return commits(map[string]string{".fliesswerk/.gitignore": "state/\nconfig.local.toml\n", "cart.go": "package cart\n"}, "Done.")(ctx, s)
 	}
 
 	res := factory.Run(context.Background(), failOptions(f, tr, implement))
@@ -303,7 +303,7 @@ func TestAProtectedPathChangedAndChangedBackIsStillCaught(t *testing.T) {
 	if len(res.Failed) != 1 {
 		t.Fatalf("result = %+v, want #2 failed", res)
 	}
-	handedBack(t, tr, 2, ".kraftwerk/.gitignore")
+	handedBack(t, tr, 2, ".fliesswerk/.gitignore")
 }
 
 func TestReviewTouchingAProtectedPathHandsTheTicketBack(t *testing.T) {
@@ -501,7 +501,7 @@ func TestTheImplementPromptListsTheCannotDoCasesAndTheProtectedPaths(t *testing.
 	p := steps.seen[0].Prompt
 	for _, want := range []string{
 		"cannot_do", "ambiguous", "Protected path", "credential", "tests fail", "already done",
-		"nobody will answer questions", "`.kraftwerk/`", "`compose.yaml`",
+		"nobody will answer questions", "`.fliesswerk/`", "`compose.yaml`",
 	} {
 		if !strings.Contains(p, want) {
 			t.Errorf("the implement prompt lacks %q:\n%s", want, p)

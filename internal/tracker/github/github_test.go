@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/github"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/github"
 )
 
-const repo = "Marcel-Goehn/kraftwerk"
+const repo = "Marcel-Goehn/fliesswerk"
 
 // call is one recorded gh invocation.
 type call struct {
@@ -133,7 +133,7 @@ func TestSnapshotFromRecordedIssueList(t *testing.T) {
 	if !ok {
 		t.Fatalf("no Spec for key %q", tk.Parent.Key)
 	}
-	if s.Title != "Spec: Factory v1 (Kraftwerk)" || !strings.HasPrefix(s.Body, "## Problem Statement") {
+	if s.Title != "Spec: Factory v1 (Fliesswerk)" || !strings.HasPrefix(s.Body, "## Problem Statement") {
 		t.Errorf("spec = %q, %.30q…", s.Title, s.Body)
 	}
 	if len(s.Tickets) != 34 {

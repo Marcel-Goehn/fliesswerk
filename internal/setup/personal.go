@@ -14,10 +14,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/config"
-	"github.com/Marcel-Goehn/kraftwerk/internal/credentials"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
+	"github.com/Marcel-Goehn/fliesswerk/internal/config"
+	"github.com/Marcel-Goehn/fliesswerk/internal/credentials"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
 )
 
 // PersonalInput is what the personal questions are asked from.
@@ -28,6 +28,9 @@ type PersonalInput struct {
 	Repo string
 	// Store is the user-level credentials file.
 	Store string
+	// Root is the project root, whose .fliesswerk/.env a secret may be
+	// kept in.
+	Root string
 	// Home is the user's home directory, "" if unknown.
 	Home string
 	// FindInterception reports what a Sandbox wouldn't trust at host, nil
@@ -36,6 +39,11 @@ type PersonalInput struct {
 	// TeamCACerts are the team's `ca_certs`. They stay on the list this
 	// person's own replaces.
 	TeamCACerts []string
+	// HasServices reports that the project has Services, which run in a
+	// container engine whatever the Sandbox kind.
+	HasServices bool
+	// Installed reports whether a container engine is on this machine.
+	Installed func(engine string) bool
 }
 
 // Interception is a TLS endpoint a Sandbox wouldn't trust while this machine
@@ -48,13 +56,19 @@ type Interception struct {
 
 // Personal are one person's answers. Nothing is saved until Save.
 type Personal struct {
-	harness string
+	// kind is the Sandbox kind, engine the container engine ("" for none),
+	// and unsandboxed the acknowledgement of kind none.
+	kind, engine string
+	unsandboxed  bool
+	harness      string
 	// auth are the lines of the Harness's table, tracker its token's source
 	// ("" for the Tracker's own login), both rendered as TOML.
 	auth    []string
 	tracker string
 	store   string
 	secrets map[string]string
+	// dotenv are the keys to add to .fliesswerk/.env, in the order asked.
+	dotenv []dotenvLine
 	// endpoint is where the Harness talks TLS, "" if it doesn't or it's unknown.
 	endpoint string
 	// caCerts are this person's `ca_certs`, nil to leave the team's alone.
@@ -64,11 +78,14 @@ type Personal struct {
 	caFile string
 }
 
-// AskPersonal puts the personal questions: how this person signs in to the
-// Harness and reaches the Tracker.
+// AskPersonal puts the personal questions: where the agent runs on this
+// machine, how this person signs in to the Harness and reaches the Tracker.
 func AskPersonal(ctx context.Context, a Asker, in PersonalInput) (Personal, error) {
 	a.say("\nNow your own settings. They stay on this machine.\n")
 	p := Personal{harness: in.Harness.Name, store: in.Store, secrets: map[string]string{}}
+	if err := a.sandbox(in, &p); err != nil {
+		return p, err
+	}
 	if err := a.signIn(ctx, in, &p); err != nil {
 		return p, err
 	}
@@ -81,6 +98,9 @@ func AskPersonal(ctx context.Context, a Asker, in PersonalInput) (Personal, erro
 	a.say("")
 	return p, nil
 }
+
+// Kind is the Sandbox kind this person chose.
+func (p Personal) Kind() string { return p.kind }
 
 // Save puts the typed secrets in the user-level credentials file and exports
 // the root next to it.
@@ -108,10 +128,61 @@ func (p Personal) Save() error {
 	return errors.Join(werr, out.Close())
 }
 
+// dotenvLine is one line `init` adds to .fliesswerk/.env.
+type dotenvLine struct {
+	name string
+	// value is the secret, "" for a line the person fills in themselves.
+	value string
+	// what the secret is ("the token"), and hint where to get it.
+	what, hint string
+}
+
+// FillDotenv adds the keys this person keeps in .fliesswerk/.env below root,
+// once the files that git-ignore it are written. A key with a value goes in
+// with it. A secret `init` may not take gets an empty line, and `init` waits
+// while the person pastes it in. A line already there is never changed.
+func (p Personal) FillDotenv(ctx context.Context, a Asker, root string) error {
+	if len(p.dotenv) == 0 {
+		return nil
+	}
+	if err := credentials.CheckDotenvIgnored(ctx, root); err != nil {
+		a.say("Wrote nothing to %s: %v.", credentials.DotenvFile, err)
+		return nil
+	}
+	file := credentials.DotenvPath(root)
+	for _, k := range p.dotenv {
+		added, err := credentials.AppendDotenv(ctx, root, k.name, k.value)
+		if err != nil {
+			return err
+		}
+		if added {
+			a.say("  + %s (%s)", credentials.DotenvFile, k.name)
+		}
+	}
+	for _, k := range p.dotenv {
+		if k.value != "" {
+			continue
+		}
+		a.say("\nPut %s in %s yourself, after the = of the line %s=, and save the file.", k.what, file, k.name)
+		if k.hint != "" {
+			a.say("  %s", k.hint)
+		}
+		a.wait("Press Enter when it's there")
+	}
+	return nil
+}
+
 // LocalFile is this person's config.local.toml.
-func LocalFile(p Personal, unsandboxed bool) File {
+func LocalFile(p Personal) File {
 	var b strings.Builder
 	b.WriteString("# Your own settings for this project. Never committed.\n")
+	b.WriteString("\n[sandbox]\n# Where the agent runs on this machine: container, native or none.\nkind = " + quote(p.kind) + "\n")
+	if p.engine != "" {
+		b.WriteString("# The container engine: docker or podman.\nengine = " + quote(p.engine) + "\n")
+	}
+	if p.unsandboxed {
+		b.WriteString("i_accept_unsandboxed_risk = true\n")
+	}
 	if len(p.auth) > 0 {
 		fmt.Fprintf(&b, "\n[harnesses.%s]\n%s\n", tomlKey(p.harness), strings.Join(p.auth, "\n"))
 	}
@@ -120,9 +191,6 @@ func LocalFile(p Personal, unsandboxed bool) File {
 	}
 	if len(p.caCerts) > 0 {
 		fmt.Fprintf(&b, "\n[network]\nca_certs = %s\n", quoteList(p.caCerts))
-	}
-	if unsandboxed {
-		b.WriteString("\n[sandbox]\nkind = \"none\"\ni_accept_unsandboxed_risk = true\n")
 	}
 	return File{config.LocalFile, b.String()}
 }
@@ -142,7 +210,7 @@ func (a Asker) signIn(ctx context.Context, in PersonalInput, p *Personal) error 
 			continue
 		}
 		if f.Secret {
-			if sources[f.Key], err = a.keep(ctx, in, f.Prompt, f.StoreKey, p); err != nil {
+			if sources[f.Key], err = a.keep(ctx, in, f, m.Hint, p); err != nil {
 				return err
 			}
 			continue
@@ -239,32 +307,42 @@ func (a Asker) reachTracker(ctx context.Context, in PersonalInput, p *Personal) 
 	}
 	a.say("%s", access.Walkthrough(in.Repo))
 	var err error
-	p.tracker, err = a.keep(ctx, in, "the token", access.TokenKey(in.Repo), p)
+	f := harness.AuthField{Prompt: "the token", StoreKey: access.TokenKey(in.Repo), SuggestEnv: access.TokenEnv, FilledByHand: true}
+	p.tracker, err = a.keep(ctx, in, f, "", p) // the walkthrough above is its hint
 	return err
 }
 
-// keep asks where the secret called what is kept, and for the secret itself
-// when it is to be stored under key. It returns the Source as TOML.
-func (a Asker) keep(ctx context.Context, in PersonalInput, what, key string, p *Personal) (string, error) {
-	where, err := a.pick("Where is "+what+" kept?", []option{
+// keep asks where the secret f is kept, and for the secret itself when it is
+// to be stored under f.StoreKey or kept in .fliesswerk/.env. A NotStored
+// secret is never asked for: it only says where the secret is. hint says
+// where to get it. It returns the Source as TOML.
+func (a Asker) keep(ctx context.Context, in PersonalInput, f harness.AuthField, hint string, p *Personal) (string, error) {
+	options := []option{
 		{credentials.Stored, "In your own credentials file, outside every repo (recommended)"},
 		{credentials.Env, "In an environment variable"},
 		{credentials.Command, "A command prints it (a password manager, say)"},
 		{credentials.Dotenv, "In " + credentials.DotenvFile},
-	})
+	}
+	if f.NotStored != "" {
+		options = slices.DeleteFunc(options, func(o option) bool { return o.value == credentials.Stored })
+		a.say("  Not in your credentials file: %s.", f.NotStored)
+	}
+	where, err := a.pick("Where is "+f.Prompt+" kept?", options)
 	if err != nil {
 		return "", err
 	}
-	ref := key
+	ref := f.StoreKey
 	switch where {
 	case credentials.Env:
-		ref, err = a.required("Which variable holds it?", "")
+		ref, err = a.required("Which variable holds it?", f.SuggestEnv)
 	case credentials.Command:
 		ref, err = a.required("Which command prints it?", "")
 	case credentials.Dotenv:
-		ref, err = a.required("Under which name is it in "+credentials.DotenvFile+"?", "")
+		if ref, err = a.required("Under which name is it in "+credentials.DotenvFile+"?", f.SuggestEnv); err == nil {
+			err = a.dotenvSecret(in, f, ref, hint, p)
+		}
 	default:
-		err = a.storeSecret(ctx, in, what, key, p)
+		err = a.storeSecret(ctx, in, f.Prompt, f.StoreKey, p)
 	}
 	if err != nil {
 		return "", err
@@ -286,5 +364,37 @@ func (a Asker) storeSecret(ctx context.Context, in PersonalInput, what, key stri
 		return err
 	}
 	p.secrets[key] = secret
+	return nil
+}
+
+// dotenvSecret settles what goes into .fliesswerk/.env under key: nothing if
+// it has a value there already, the secret itself if `init` may take it, and
+// otherwise an empty line for the person to fill in.
+func (a Asker) dotenvSecret(in PersonalInput, f harness.AuthField, key, hint string, p *Personal) error {
+	if slices.ContainsFunc(p.dotenv, func(k dotenvLine) bool { return k.name == key }) {
+		return nil
+	}
+	values, err := credentials.DotenvValues(in.Root)
+	if err != nil {
+		return err
+	}
+	value, inFile := values[key]
+	if value != "" {
+		a.say("  %s has %s already. init uses the value there.", credentials.DotenvFile, key)
+		return nil
+	}
+	k := dotenvLine{name: key, what: f.Prompt, hint: hint}
+	// An empty line already there is never changed: the person fills it in,
+	// as for a secret `init` may not take or is to leave to them.
+	if f.NotStored == "" && !f.FilledByHand && !inFile {
+		if k.value, err = a.hidden("Paste " + f.Prompt + ", Enter to put it in yourself later"); err != nil {
+			return err
+		}
+		if k.value == "" {
+			a.say("  Then add %s=… to %s before you run the Factory.", key, credentials.DotenvFile)
+			return nil
+		}
+	}
+	p.dotenv = append(p.dotenv, k)
 	return nil
 }

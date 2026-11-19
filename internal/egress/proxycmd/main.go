@@ -12,8 +12,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/egress"
-	"github.com/Marcel-Goehn/kraftwerk/internal/forward"
+	"github.com/Marcel-Goehn/fliesswerk/internal/egress"
+	"github.com/Marcel-Goehn/fliesswerk/internal/forward"
 )
 
 func main() {

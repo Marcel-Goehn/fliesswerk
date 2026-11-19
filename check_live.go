@@ -6,19 +6,23 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/egress"
-	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
-	"github.com/Marcel-Goehn/kraftwerk/internal/git"
-	"github.com/Marcel-Goehn/kraftwerk/internal/hook"
-	"github.com/Marcel-Goehn/kraftwerk/internal/runlock"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
-	"github.com/Marcel-Goehn/kraftwerk/internal/step"
-	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
+	"github.com/Marcel-Goehn/fliesswerk/internal/egress"
+	"github.com/Marcel-Goehn/fliesswerk/internal/factory"
+	"github.com/Marcel-Goehn/fliesswerk/internal/git"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/hook"
+	"github.com/Marcel-Goehn/fliesswerk/internal/runlock"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/shell"
+	"github.com/Marcel-Goehn/fliesswerk/internal/step"
+	"github.com/Marcel-Goehn/fliesswerk/internal/verify"
 )
 
 const (
@@ -27,6 +31,10 @@ const (
 	// failedOutputLines is how much of a failed command `check` shows.
 	failedOutputLines = 20
 )
+
+// harnessStartTimeout bounds starting the Harness without a credential.
+// Test builds shorten it.
+var harnessStartTimeout = 30 * time.Second
 
 // liveCheck is one `check` going beyond what can be read off the machine.
 type liveCheck struct {
@@ -37,7 +45,7 @@ type liveCheck struct {
 }
 
 func (c liveCheck) say(format string, a ...any) {
-	_, _ = fmt.Fprintf(c.stdout, "kraftwerk check: "+format+"\n", a...)
+	_, _ = fmt.Fprintf(c.stdout, "fliesswerk check: "+format+"\n", a...)
 }
 
 func (c liveCheck) warn(format string, a ...any) {
@@ -72,7 +80,7 @@ func checkLive(ctx context.Context, values map[string]any, root string, s *secre
 	var held *runlock.HeldError
 	if errors.As(err, &held) {
 		if commands {
-			return fmt.Errorf("%w; run `kraftwerk check --commands` once it has finished", err)
+			return fmt.Errorf("%w; run `fliesswerk check --commands` once it has finished", err)
 		}
 		c.warn("a Run is in progress, so no Sandbox was started to probe its network or trust")
 		return nil
@@ -196,36 +204,121 @@ func allowedHost(values map[string]any, s *secrets) string {
 // checkHarness verifies the Harness at its minimum version, where its Steps
 // will run: in sb, or on the host in dir when sb is nil.
 func (c liveCheck) checkHarness(ctx context.Context, sb sandbox.Sandbox, dir string) error {
-	ctx, cancel := context.WithTimeout(ctx, harnessVersionTimeout)
-	defer cancel()
 	desc := theHarness.Describe()
 	line := strings.Join(append([]string{desc.Binary}, desc.VersionArgs...), " ")
-	out, err := sandbox.Shell(ctx, sb, dir, line, nil).CombinedOutput()
+	vctx, cancel := context.WithTimeout(ctx, harnessVersionTimeout)
+	out, err := sandbox.Shell(vctx, sb, dir, line, nil).CombinedOutput()
+	cancel()
 	if err == nil {
 		err = desc.CheckVersion(string(out))
 	} else {
 		err = fmt.Errorf("%s doesn't run where Steps run (`%s`: %w)", desc.Binary, line, err)
 	}
 	if err != nil {
-		return fmt.Errorf("%w. %s", err, c.harnessFix(desc.ContainerInstall, desc.HostInstallHint))
+		return fmt.Errorf("%w. %s", err, c.installFix(desc.ContainerInstall, desc.HostInstallHint))
 	}
 	c.say("%s ok", desc.Binary)
+	return c.checkStart(ctx, desc, sb, dir)
+}
+
+// harnessFix says how to install something for the configured kind.
+func (c liveCheck) installFix(containerfile string, host map[string]string) string {
+	if stringAt(c.values, defaultSandbox, "sandbox", "kind") == "container" {
+		return "Install it in .fliesswerk/Containerfile:\n\n" + containerfile
+	}
+	if hint := host[runtime.GOOS]; hint != "" {
+		return "Install it: " + hint
+	}
+	return "Install it where Steps run."
+}
+
+// checkStart starts the Harness where its Steps run, in sb or on the host in
+// dir, with the env a Step's invocation carries but no credential. One that
+// can't start fails `check`; output it doesn't recognise only warns, so a
+// changed message from the Harness doesn't block every `check`.
+func (c liveCheck) checkStart(ctx context.Context, desc harness.Description, sb sandbox.Sandbox, dir string) error {
+	sc := desc.StartCheck
+	if sc == nil {
+		return nil
+	}
+	if why := sc.SkipOnHost[runtime.GOOS]; sb == nil && why != "" {
+		c.say("%s isn't started on the host to see that it starts: %s", desc.Binary, why)
+		return nil
+	}
+	st := sc.Step
+	st.CredentialCommand = ""
+	out, timedOut, err := c.startHarness(ctx, desc, sb, dir, theHarness.Command(st))
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	switch start := sc.Read(out); {
+	case timedOut:
+		c.warn("%s didn't finish starting where Steps run within %s, so a Step may fail the same way. It printed:\n%s", desc.Binary, harnessStartTimeout, tail(out))
+	case start == harness.Started:
+		c.say("%s starts where Steps run", desc.Binary)
+	case start == harness.NotStarted:
+		return fmt.Errorf("%s can't start where Steps run, so every Step would fail. It said:\n%s", desc.Binary, tail(out))
+	default:
+		how := ""
+		if err != nil {
+			how = fmt.Sprintf(" (%v)", err)
+		}
+		c.warn("can't tell whether %s starts where Steps run, so a Step may fail%s. It printed:\n%s", desc.Binary, how, tail(out))
+	}
 	return nil
 }
 
-// harnessFix says how to get a suitable Harness for the configured kind.
-func (c liveCheck) harnessFix(containerfile string, host map[string]string) string {
-	if stringAt(c.values, defaultSandbox, "sandbox", "kind") == "container" {
-		return "Install it in .kraftwerk/Containerfile:\n\n" + containerfile
+// startHarness runs inv where Steps run with no credential and returns what
+// it printed. On the host the Harness gets a fresh home, and none of the
+// Factory's own env that holds a credential or points at a login.
+func (c liveCheck) startHarness(ctx context.Context, desc harness.Description, sb sandbox.Sandbox, dir string, inv harness.Invocation) (out string, timedOut bool, err error) {
+	ctx, cancel := context.WithTimeout(ctx, harnessStartTimeout)
+	defer cancel()
+	stepEnv := step.Env(inv, nil)
+	argv, env := inv.Argv, []string(nil)
+	if sb != nil {
+		argv, env = sb.Exec(inv.Argv, stepEnv)
+		dir = ""
+		defer withCleanupDeadline(ctx, func(ctx context.Context) { _ = sb.KillAll(ctx) })
+	} else {
+		home, err := os.MkdirTemp("", "fliesswerk-start-")
+		if err != nil {
+			return "", false, err
+		}
+		defer func() { _ = os.RemoveAll(home) }()
+		for _, f := range desc.HomeSeed {
+			path := filepath.Join(home, filepath.FromSlash(f.Path))
+			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+				return "", false, err
+			}
+			if err := os.WriteFile(path, []byte(f.Content), 0o600); err != nil {
+				return "", false, err
+			}
+		}
+		unset := slices.Concat(c.s.credentialEnv(), desc.StartCheck.LoginEnv, []string{"HOME", "USERPROFILE"})
+		env = slices.DeleteFunc(os.Environ(), func(kv string) bool {
+			name, _, _ := strings.Cut(kv, "=")
+			return slices.ContainsFunc(unset, func(u string) bool { return strings.EqualFold(u, name) })
+		})
+		env = append(append(env, "HOME="+home, "USERPROFILE="+home), stepEnv...)
 	}
-	return "Install it: " + host[runtime.GOOS]
+	argv, err = step.Resolve(argv)
+	if err != nil {
+		return "", false, err
+	}
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...) //nolint:gosec // the Harness adapter builds the argv
+	shell.Isolate(cmd)
+	cmd.Dir, cmd.Env, cmd.Stdin = dir, env, strings.NewReader(inv.Stdin)
+	cmd.WaitDelay = time.Second
+	data, err := cmd.CombinedOutput()
+	return string(data), errors.Is(ctx.Err(), context.DeadlineExceeded), err
 }
 
 // runCommands runs sandbox_created and then every Feedback command once, on
 // the base branch. A red command doesn't stop the others: the point is to see
 // them all before a Run trips over them.
 func (c liveCheck) runCommands(ctx context.Context, sb sandbox.Sandbox, project, base string) error {
-	setting := hook.Setting{HostDir: c.root, SandboxDir: project, Sandbox: sb, Env: []string{"KRAFTWERK_SANDBOX=probe"}}
+	setting := hook.Setting{HostDir: c.root, SandboxDir: project, Sandbox: sb, Env: []string{"FLIESSWERK_SANDBOX=probe"}}
 	failed := hook.Run(ctx, setting, hookEntries(c.values, "sandbox_created", c.s), func(o hook.Output) {
 		if o.Err == nil {
 			c.say("sandbox_created: `%s` worked", o.Command)

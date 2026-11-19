@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
 )
 
 // Options shape a Plan.

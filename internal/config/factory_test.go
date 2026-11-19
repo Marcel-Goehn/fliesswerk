@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/config"
+	"github.com/Marcel-Goehn/fliesswerk/internal/config"
 )
 
 func TestFactoryPinAcceptsAVersionItsRangeAllows(t *testing.T) {
@@ -38,12 +38,12 @@ func TestFactoryPinNamesTheCommandThatFixesAMismatch(t *testing.T) {
 		want               []string
 		dontWant           string
 	}{
-		{name: "older within the major", pin: "^1.5", version: "1.2.0", want: []string{"1.2.0", "`kraftwerk update`"}},
-		{name: "older major", pin: "2", version: "1.9.0", want: []string{"`kraftwerk update --major`"}},
-		{name: "several ranges, the nearest is in the major", pin: "1.8 || 2", version: "1.2.0", want: []string{"`kraftwerk update`"}},
-		{name: "newer", pin: "~1.2", version: "1.5.0", want: []string{"KRAFTWERK_VERSION", "v1.2.0"}, dontWant: "update --major"},
-		{name: "newer with no lower bound", pin: "<1.4", version: "1.5.0", want: []string{"KRAFTWERK_VERSION", "a release that matches"}, dontWant: "v0.0.0"},
-		{name: "caret on zero stops at the minor", pin: "^0.2", version: "0.3.0", want: []string{"KRAFTWERK_VERSION", "v0.2.0"}},
+		{name: "older within the major", pin: "^1.5", version: "1.2.0", want: []string{"1.2.0", "`fliesswerk update`"}},
+		{name: "older major", pin: "2", version: "1.9.0", want: []string{"`fliesswerk update --major`"}},
+		{name: "several ranges, the nearest is in the major", pin: "1.8 || 2", version: "1.2.0", want: []string{"`fliesswerk update`"}},
+		{name: "newer", pin: "~1.2", version: "1.5.0", want: []string{"FLIESSWERK_VERSION", "v1.2.0"}, dontWant: "update --major"},
+		{name: "newer with no lower bound", pin: "<1.4", version: "1.5.0", want: []string{"FLIESSWERK_VERSION", "a release that matches"}, dontWant: "v0.0.0"},
+		{name: "caret on zero stops at the minor", pin: "^0.2", version: "0.3.0", want: []string{"FLIESSWERK_VERSION", "v0.2.0"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

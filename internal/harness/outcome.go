@@ -44,6 +44,10 @@ type Outcome struct {
 	Usage   Usage
 	// ContextWindow is the input tokens of the Step's last model call.
 	ContextWindow int64
+	// NoSession says the Harness's session never got going: it ended by
+	// itself without giving a single event, as one that can't start does.
+	// One killed for lack of memory got going far enough to need it.
+	NoSession bool
 }
 
 // Resolve decides a Step's Outcome from all its events and its exit code.
@@ -56,6 +60,7 @@ type Outcome struct {
 func Resolve(events []Event, exitCode int) Outcome {
 	out := resolve(events, exitCode)
 	out.Usage, out.ContextWindow = stepUsage(events), contextWindow(events)
+	out.NoSession = len(events) == 0 && out.Class != OutOfMemory
 	return out
 }
 

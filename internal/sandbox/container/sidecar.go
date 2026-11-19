@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/proxyimage"
+	"github.com/Marcel-Goehn/fliesswerk/internal/proxyimage"
 )
 
 // sidecarPort is where the proxy listens in the sidecar.
@@ -66,11 +66,11 @@ func (p *Provider) ensureProxyImage(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	p.proxyImage = "kraftwerk-proxy:" + proxyTag(p.opts.Version, rootfs)
+	p.proxyImage = "fliesswerk-proxy:" + proxyTag(p.opts.Version, rootfs)
 	if _, err := p.engine.run(ctx, "image", "inspect", p.proxyImage); err == nil {
 		return nil
 	}
-	file, err := os.CreateTemp("", "kraftwerk-proxy-*.tar.gz")
+	file, err := os.CreateTemp("", "fliesswerk-proxy-*.tar.gz")
 	if err != nil {
 		return err
 	}
@@ -98,7 +98,7 @@ func (p *Provider) startSidecar(ctx context.Context) error {
 	if err := p.ensureProxyImage(ctx); err != nil {
 		return err
 	}
-	name := unsafeName.ReplaceAllString("kraftwerk-"+p.opts.RunID+"-egress", "-")
+	name := unsafeName.ReplaceAllString("fliesswerk-"+p.opts.RunID+"-egress", "-")
 	p.sidecar = name
 	if _, err := p.engine.run(ctx, append(append([]string{"network", "create"}, p.labels()...), name)...); err != nil {
 		return fmt.Errorf("creating the proxy sidecar's network: %w", err)

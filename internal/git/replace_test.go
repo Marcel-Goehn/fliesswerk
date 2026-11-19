@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/git"
+	"github.com/Marcel-Goehn/fliesswerk/internal/git"
 )
 
 func TestAReplaceRefCannotHideWhatACommitTouched(t *testing.T) {

@@ -12,15 +12,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/factory"
-	"github.com/Marcel-Goehn/kraftwerk/internal/harness"
-	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
-	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
+	"github.com/Marcel-Goehn/fliesswerk/internal/factory"
+	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
+	"github.com/Marcel-Goehn/fliesswerk/internal/runlog"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/fake"
+	"github.com/Marcel-Goehn/fliesswerk/internal/verify"
 )
 
-const specBranch = "kraftwerk/spec-1-spec-shopping-cart"
+const specBranch = "fliesswerk/spec-1-spec-shopping-cart"
 
 // meeting lets n Tickets wait for each other. It proves they overlap:
 // Tickets that run one after the other never all arrive, however often
@@ -87,7 +87,7 @@ func commitFile(name, content string) func(context.Context, factory.Step) harnes
 // noWorkLeft checks that no Ticket branch or Factory worktree is left.
 func noWorkLeft(t *testing.T, f fixture) {
 	t.Helper()
-	if got := git(t, f.work, "branch", "--list", "kraftwerk/ticket-*"); got != "" {
+	if got := git(t, f.work, "branch", "--list", "fliesswerk/ticket-*"); got != "" {
 		t.Errorf("Ticket branches are left: %s", got)
 	}
 	if got := git(t, f.work, "worktree", "list", "--porcelain"); strings.Count(got, "worktree ") != 1 {
@@ -392,7 +392,7 @@ func TestTicketsOfTwoSpecsLandOnTheirOwnBranches(t *testing.T) {
 	if res.Stopped != nil || len(res.Failed) != 0 || len(res.Closed) != 2 {
 		t.Fatalf("result = %+v, want both closed", res)
 	}
-	for branch, want := range map[string]string{"kraftwerk/spec-1-spec-one": "a.go", "kraftwerk/spec-10-spec-two": "b.go"} {
+	for branch, want := range map[string]string{"fliesswerk/spec-1-spec-one": "a.go", "fliesswerk/spec-10-spec-two": "b.go"} {
 		files := strings.Fields(git(t, f.remote, "ls-tree", "--name-only", f.remoteRef(t, branch)))
 		if !slices.Contains(files, want) || slices.Contains(files, map[string]string{"a.go": "b.go", "b.go": "a.go"}[want]) {
 			t.Errorf("%s holds %v, want %s and not the other Spec's file", branch, files, want)
@@ -460,7 +460,7 @@ func TestARejectedPushKillsThatSpecsTicketsInFlightAndOtherSpecsCarryOn(t *testi
 	if !issue(t, tr, 11).Closed {
 		t.Error("#11 wasn't closed: the other Spec should carry on")
 	}
-	if gitOK(f.work, "rev-parse", "--verify", "-q", "refs/heads/kraftwerk/ticket-3") {
+	if gitOK(f.work, "rev-parse", "--verify", "-q", "refs/heads/fliesswerk/ticket-3") {
 		t.Error("#3's work wasn't discarded")
 	}
 }

@@ -22,7 +22,7 @@ func initProject(t *testing.T, files map[string]string) *runProject {
 	p := &runProject{
 		remote: filepath.Join(dir, "remote.git"), work: filepath.Join(dir, "work"),
 		trackerPath: filepath.Join(dir, "tracker.json"), scriptPath: filepath.Join(dir, "script.json"),
-		bin: buildTestKraftwerk(t),
+		bin: buildTestFliesswerk(t),
 	}
 	gitIn(t, dir, "init", "-q", "--bare", "-b", "main", p.remote)
 	gitIn(t, dir, "clone", "-q", p.remote, p.work)
@@ -41,24 +41,28 @@ func initProject(t *testing.T, files map[string]string) *runProject {
 
 // initEnv is what `init` runs with: the fake Tracker, the fake Harness and
 // git, with no container engine and none of the user's tools. Each of bins
-// is added as a tool that succeeds silently.
+// is added as a tool that succeeds silently: a batch file on Windows, where
+// PATH lookups find only names with an extension from PATHEXT.
 func (p *runProject) initEnv(t *testing.T, bins ...string) []string {
 	t.Helper()
 	tools := t.TempDir()
 	for _, name := range bins {
-		if err := os.WriteFile(filepath.Join(tools, name), []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil { //nolint:gosec // an executable the test runs
+		file, script := name, "#!/bin/sh\nexit 0\n"
+		if runtime.GOOS == "windows" {
+			file, script = name+".bat", "@exit /b 0\r\n"
+		}
+		if err := os.WriteFile(filepath.Join(tools, file), []byte(script), 0o700); err != nil { //nolint:gosec // an executable the test runs
 			t.Fatal(err)
 		}
 	}
 	path := strings.Join([]string{tools, fakeClaudeBinDir(t), gitBinDir(t)}, string(os.PathListSeparator))
 	env := append(baseEnv(path), gitIdentity()...)
-	env = append(env, "KRAFTWERK_ENGINE=") // CI picks one, and these have neither
 	p.home = t.TempDir()
-	return append(env, "KWK_FAKE_TRACKER="+p.trackerPath, "KWK_FAKE_HARNESS_SCRIPT="+p.scriptPath,
+	return append(env, "FWK_FAKE_TRACKER="+p.trackerPath, "FWK_FAKE_HARNESS_SCRIPT="+p.scriptPath,
 		"HOME="+p.home, "USERPROFILE="+p.home, "XDG_CONFIG_HOME="+filepath.Join(p.home, ".config"), "AppData="+filepath.Join(p.home, "AppData"))
 }
 
-// init runs `kraftwerk init` in env, typing one line per answer.
+// init runs `fliesswerk init` in env, typing one line per answer.
 func (p *runProject) init(t *testing.T, env []string, answers ...string) int {
 	t.Helper()
 	return p.initWith(t, env, nil, answers...)
@@ -84,17 +88,34 @@ func (p *runProject) initWith(t *testing.T, env, args []string, answers ...strin
 	return 0
 }
 
-// thenSignIn are the project's answers, then the personal ones: a gateway
-// that accepts the token, and a token for GitHub.
-func (p *runProject) thenSignIn(t *testing.T, project []string) []string {
-	t.Helper()
-	srv, _ := fakeGateway(t, gatewaySecret)
-	return append(slices.Clone(project), viaGateway(srv)...)
+// containerOnDocker are the first personal answers: the container Sandbox,
+// then Docker, both the suggestions.
+var containerOnDocker = []string{"", ""}
+
+// mine are the personal answers after where the agent runs, which is in a
+// container on Docker.
+func mine(answers ...string) []string {
+	return slices.Concat(containerOnDocker, answers)
 }
 
-func (p *runProject) kraftwerkFile(t *testing.T, name string) string {
+// thenSignIn are the project's answers, then the personal ones: the
+// container Sandbox on Docker, a gateway that accepts the token, and a token
+// for GitHub.
+func (p *runProject) thenSignIn(t *testing.T, project []string) []string {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(p.work, ".kraftwerk", filepath.FromSlash(name)))
+	return p.thenSandbox(t, project, containerOnDocker...)
+}
+
+// thenSandbox is thenSignIn with other answers to where the agent runs.
+func (p *runProject) thenSandbox(t *testing.T, project []string, sandbox ...string) []string {
+	t.Helper()
+	srv := fakeGateway(t)
+	return slices.Concat(project, sandbox, viaGateway(srv))
+}
+
+func (p *runProject) fliesswerkFile(t *testing.T, name string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(p.work, ".fliesswerk", filepath.FromSlash(name)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +125,7 @@ func (p *runProject) kraftwerkFile(t *testing.T, name string) string {
 func (p *runProject) config(t *testing.T) map[string]any {
 	t.Helper()
 	var values map[string]any
-	if err := toml.Unmarshal([]byte(p.kraftwerkFile(t, "config.toml")), &values); err != nil {
+	if err := toml.Unmarshal([]byte(p.fliesswerkFile(t, "config.toml")), &values); err != nil {
 		t.Fatalf("config.toml isn't TOML: %v", err)
 	}
 	return values
@@ -130,7 +151,7 @@ var acceptAll = []string{
 	"", "acme/shop", "", "", // tracker, repo, base branch, ready label
 	"",             // languages
 	"", "", "", "", // test, typecheck, lint, format
-	"", "", "", "", // Services, Sandbox kind, standards file, protect .claude/
+	"", "", "", // Services, standards file, protect .claude/
 }
 
 func TestInitNodePostgresWritesATeamConfigFromTheRepo(t *testing.T) {
@@ -138,7 +159,7 @@ func TestInitNodePostgresWritesATeamConfigFromTheRepo(t *testing.T) {
 
 	code := p.init(t, p.initEnv(t), p.thenSignIn(t, acceptAll)...)
 
-	if code != exitConfigError { // no container engine in the test's PATH
+	if code != exitConfigError { // no docker in the test's PATH
 		t.Fatalf("exit code = %d, want %d\nstdout: %s\nstderr: %s", code, exitConfigError, p.stdout, p.stderr)
 	}
 	values := p.config(t)
@@ -150,9 +171,6 @@ func TestInitNodePostgresWritesATeamConfigFromTheRepo(t *testing.T) {
 	}
 	if got := valueAt(values, "harness"); got != "claude_code" {
 		t.Errorf("harness = %v", got)
-	}
-	if got := valueAt(values, "sandbox", "kind"); got != "container" {
-		t.Errorf("sandbox.kind = %v", got)
 	}
 	if got := stringsOf(valueAt(values, "sandbox", "network", "allow")); len(got) != 1 || got[0] != "registry.npmjs.org" {
 		t.Errorf("allow = %v", got)
@@ -174,7 +192,7 @@ func TestInitNodePostgresWritesATeamConfigFromTheRepo(t *testing.T) {
 	if got := valueAt(values, "services", "postgres", "shared"); got != false {
 		t.Errorf("services.postgres.shared = %v", got)
 	}
-	mustContain(t, "config.toml", p.kraftwerkFile(t, "config.toml"),
+	mustContain(t, "config.toml", p.fliesswerkFile(t, "config.toml"),
 		`# env = { DATABASE_URL = "postgres://app:app@{host}:{port}/app" }`)
 
 	hooks, _ := valueAt(values, "hooks", "sandbox_created").([]any)
@@ -186,7 +204,7 @@ func TestInitNodePostgresWritesATeamConfigFromTheRepo(t *testing.T) {
 		t.Errorf("hook = %v", hook)
 	}
 
-	mustContain(t, "stderr", p.stderr, "Docker or Podman", "fix the lines above")
+	mustContain(t, "stderr", p.stderr, "`docker` isn't on PATH", "apt install docker.io", "fix the lines above")
 	if strings.Contains(p.stdout, "Ready:") {
 		t.Errorf("said Ready after a failed check:\n%s", p.stdout)
 	}
@@ -196,9 +214,9 @@ func TestInitWritesEveryDefaultWithAOneLineComment(t *testing.T) {
 	p := initProject(t, nodePostgres())
 	p.init(t, p.initEnv(t), p.thenSignIn(t, acceptAll)...)
 
-	text := p.kraftwerkFile(t, "config.toml")
+	text := p.fliesswerkFile(t, "config.toml")
 	mustContain(t, "config.toml", text, "max_parallel", "max_iterations", "in_progress_label", "cannot_do_label",
-		"prefix", "run_args", "read_only_paths", "writable_paths", "scrub_credentials", "ca_certs", "upstream_proxy",
+		"prefix", "run_args", "read_only_paths", "writable_paths", "withhold_secrets", "ca_certs", "upstream_proxy",
 		"keep_days", "idle_timeout", "[sandbox.env]", "[sandbox.secrets]", "[steps.review]", "[steps.implement]", "[steps.merge]")
 
 	key := regexp.MustCompile(`^[a-z_]+\s*=`)
@@ -224,10 +242,10 @@ func TestInitContainerfileIsBuiltInOrderAtThePinnedVersion(t *testing.T) {
 	p := initProject(t, nodePostgres())
 	p.init(t, p.initEnv(t), p.thenSignIn(t, acceptAll)...)
 
-	file := p.kraftwerkFile(t, "Containerfile")
+	file := p.fliesswerkFile(t, "Containerfile")
 	mustContain(t, "Containerfile", file, "node:22.11.0-bookworm-slim", "corepack enable pnpm", "(from .nvmrc)")
 	last := -1
-	for _, want := range []string{"debian:bookworm-slim", "git ca-certificates curl ripgrep", "id=kraftwerk-ca", "node:22.11.0", "system packages", "useradd", "USER agent", "claude.ai/install.sh"} {
+	for _, want := range []string{"debian:bookworm-slim", "git ca-certificates curl ripgrep", "id=fliesswerk-ca", "node:22.11.0", "system packages", "useradd", "USER agent", "claude.ai/install.sh"} {
 		at := strings.Index(file, want)
 		if at < 0 || at < last {
 			t.Fatalf("%q is missing or out of order:\n%s", want, file)
@@ -237,7 +255,7 @@ func TestInitContainerfileIsBuiltInOrderAtThePinnedVersion(t *testing.T) {
 	if regexp.MustCompile(`(?m)^[^#].*\bgh\b`).MatchString(file) {
 		t.Errorf("the agent's image installs gh:\n%s", file)
 	}
-	if strings.Contains(file, "TODO(kraftwerk)") {
+	if strings.Contains(file, "TODO(fliesswerk)") {
 		t.Errorf("a known language left a TODO:\n%s", file)
 	}
 }
@@ -248,9 +266,9 @@ func TestInitWritesThePromptsAndItsOwnGitignoreOnly(t *testing.T) {
 	p.init(t, p.initEnv(t), p.thenSignIn(t, acceptAll)...)
 
 	for _, step := range []string{"implement", "review", "merge"} {
-		mustContain(t, step, p.kraftwerkFile(t, "prompts/"+step+".md"), "kraftwerk: based on the built-in "+step+" prompt v")
+		mustContain(t, step, p.fliesswerkFile(t, "prompts/"+step+".md"), "fliesswerk: based on the built-in "+step+" prompt v")
 	}
-	mustContain(t, ".gitignore", p.kraftwerkFile(t, ".gitignore"), "config.local.toml", ".env", "logs/", "state/")
+	mustContain(t, ".gitignore", p.fliesswerkFile(t, ".gitignore"), "config.local.toml", ".env", "logs/", "state/")
 	root, err := os.ReadFile(filepath.Join(p.work, ".gitignore"))
 	if err != nil || string(root) != "node_modules\n" {
 		t.Errorf("the root .gitignore changed: %q, %v", root, err)
@@ -263,7 +281,8 @@ func TestInitAsksTheProjectQuestionsInOrder(t *testing.T) {
 
 	last := -1
 	for _, q := range []string{"Where do your Tickets live?", "Which GitHub repository", "Which branch should", "Which label marks",
-		"What does your project use?", "Which commands tell", "Which compose file", "Where should the agent run?", "Coding standards", "Stop agents from changing .claude/"} {
+		"What does your project use?", "Which commands tell", "Which compose file", "Coding standards", "Stop agents from changing .claude/",
+		"Now your own settings", "Where should the agent run?", "Which container engine?", "How do you sign in"} {
 		at := strings.Index(p.stdout, q)
 		if at < 0 || at < last {
 			t.Fatalf("%q is missing or out of order:\n%s", q, p.stdout)
@@ -288,7 +307,7 @@ func TestInitNodeGoMonorepoInstallsBothInParallel(t *testing.T) {
 	gitIn(t, p.work, "config", "remote.origin.url", "git@github.com:acme/platform.git")
 	gitIn(t, p.work, "config", "url."+p.remote+".insteadOf", "git@github.com:acme/platform.git")
 
-	p.init(t, p.initEnv(t), p.thenSignIn(t, []string{"", "", "", "", "", "", "", "", "", "", "", ""})...)
+	p.init(t, p.initEnv(t), p.thenSignIn(t, []string{"", "", "", "", "", "", "", "", "", "", ""})...)
 
 	values := p.config(t)
 	if got := valueAt(values, "tracker", "repo"); got != "acme/platform" {
@@ -317,7 +336,7 @@ func TestInitNodeGoMonorepoInstallsBothInParallel(t *testing.T) {
 	if got := strings.Join(stringsOf(valueAt(values, "sandbox", "network", "allow")), ","); got != "proxy.golang.org,registry.npmjs.org,sum.golang.org" {
 		t.Errorf("allow = %v", got)
 	}
-	file := p.kraftwerkFile(t, "Containerfile")
+	file := p.fliesswerkFile(t, "Containerfile")
 	mustContain(t, "Containerfile", file, "node:20-bookworm-slim", "(from package.json engines)", "golang:1.23-bookworm", "(from go.mod)")
 	if strings.Contains(file, "corepack") {
 		t.Errorf("npm needs no corepack:\n%s", file)
@@ -334,9 +353,9 @@ func TestInitPythonAndRustGetTheirRecipes(t *testing.T) {
 		"rust-toolchain.toml": "[toolchain]\nchannel = \"1.82.0\"\n",
 	})
 
-	p.init(t, p.initEnv(t), p.thenSignIn(t, []string{"", "acme/etl", "", "", "", "", "", "", "", "", "", ""})...)
+	p.init(t, p.initEnv(t), p.thenSignIn(t, []string{"", "acme/etl", "", "", "", "", "", "", "", "", ""})...)
 
-	file := p.kraftwerkFile(t, "Containerfile")
+	file := p.fliesswerkFile(t, "Containerfile")
 	mustContain(t, "Containerfile", file, "uv python install 3.12", "--default-toolchain 1.82.0")
 	values := p.config(t)
 	hooks, _ := valueAt(values, "hooks", "sandbox_created").([]any)
@@ -355,13 +374,13 @@ func TestInitPythonAndRustGetTheirRecipes(t *testing.T) {
 func TestInitUnknownLanguageLeavesATodoThatCheckRefuses(t *testing.T) {
 	p := initProject(t, map[string]string{"Gemfile": "source 'https://rubygems.org'\n", "compose.yml": "services:\n  db:\n    image: postgres:17\n"})
 
-	code := p.init(t, p.initEnv(t), p.thenSignIn(t, []string{"", "acme/legacy", "", "", "", "", "", "", "", "", "", ""})...)
+	code := p.init(t, p.initEnv(t), p.thenSignIn(t, []string{"", "acme/legacy", "", "", "", "", "", "", "", "", ""})...)
 
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d\nstderr: %s", code, exitConfigError, p.stderr)
 	}
-	mustContain(t, "Containerfile", p.kraftwerkFile(t, "Containerfile"), "TODO(kraftwerk)", "Gemfile")
-	mustContain(t, "stderr", p.stderr, ".kraftwerk/Containerfile:", "TODO(kraftwerk)", "fix the lines above")
+	mustContain(t, "Containerfile", p.fliesswerkFile(t, "Containerfile"), "TODO(fliesswerk)", "Gemfile")
+	mustContain(t, "stderr", p.stderr, ".fliesswerk/Containerfile:", "TODO(fliesswerk)", "fix the lines above")
 	if strings.Contains(p.stdout, "Ready:") {
 		t.Errorf("said Ready with a TODO left:\n%s", p.stdout)
 	}
@@ -372,55 +391,94 @@ func TestInitNoSandboxAsksAgainAndStaysOutOfTheTeamConfig(t *testing.T) {
 		t.Skip("the fake pnpm is a shell script")
 	}
 	p := initProject(t, nodePostgres())
-	answers := slices.Clone(acceptAll)
-	answers = slices.Insert(answers, 10, "3", "y") // kind, then the second asking
-	answers = slices.Delete(answers, 12, 13)
 
-	code := p.init(t, p.initEnv(t, "pnpm"), p.thenSignIn(t, answers)...)
+	// kind, the second asking, then the engine the Services need
+	code := p.init(t, p.initEnv(t, "pnpm"), p.thenSandbox(t, acceptAll, "3", "y", "")...)
 
 	if code != exitOK {
 		t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
 	}
-	mustContain(t, "stdout", p.stdout, "SSH keys", "`test` passes on main", "Ready: commit `.kraftwerk/`, label a Ticket, run `kraftwerk run`")
-	if got := valueAt(p.config(t), "sandbox", "kind"); got != "container" {
-		t.Errorf("config.toml says kind = %v", got)
+	mustContain(t, "stdout", p.stdout, "SSH keys", "`test` passes on main", "Ready: commit `.fliesswerk/`, label a Ticket, run `fliesswerk run`")
+	if text := p.fliesswerkFile(t, "config.toml"); strings.Contains(text, "i_accept") || valueAt(p.config(t), "sandbox", "kind") != nil {
+		t.Errorf("config.toml holds the kind or the acknowledgement:\n%s", text)
 	}
-	if strings.Contains(p.kraftwerkFile(t, "config.toml"), "i_accept") {
-		t.Error("the acknowledgement is in config.toml")
+	mustContain(t, "config.local.toml", p.fliesswerkFile(t, "config.local.toml"), `kind = "none"`, "i_accept_unsandboxed_risk = true", `engine = "docker"`, `method = "gateway"`)
+	if p.hasFliesswerkFile("Containerfile") {
+		t.Error("no Sandbox got a Containerfile")
 	}
-	mustContain(t, "config.local.toml", p.kraftwerkFile(t, "config.local.toml"), `kind = "none"`, "i_accept_unsandboxed_risk = true", `method = "gateway"`)
 }
 
 func TestInitDecliningNoSandboxKeepsTheContainerSandbox(t *testing.T) {
 	p := initProject(t, nodePostgres())
-	answers := slices.Clone(acceptAll)
-	answers = slices.Insert(answers, 10, "none", "n")
-	answers = slices.Delete(answers, 12, 13)
 
-	p.init(t, p.initEnv(t), p.thenSignIn(t, answers)...)
+	p.init(t, p.initEnv(t), p.thenSandbox(t, acceptAll, "none", "n", "")...)
 
-	if got := valueAt(p.config(t), "sandbox", "kind"); got != "container" {
+	local := p.localConfig(t)
+	if got := valueAt(local, "sandbox", "kind"); got != "container" {
 		t.Errorf("kind = %v", got)
 	}
-	if strings.Contains(p.kraftwerkFile(t, "config.local.toml"), "i_accept_unsandboxed_risk") {
-		t.Errorf("config.local.toml accepts the risk:\n%s", p.kraftwerkFile(t, "config.local.toml"))
+	if got := valueAt(local, "sandbox", "i_accept_unsandboxed_risk"); got != nil {
+		t.Errorf("config.local.toml accepts the risk:\n%s", p.fliesswerkFile(t, "config.local.toml"))
 	}
 }
 
-func TestInitNativeSandboxGetsNoContainerfile(t *testing.T) {
+func TestInitContainerOnPodmanKeepsBothInConfigLocal(t *testing.T) {
 	p := initProject(t, nodePostgres())
-	answers := slices.Clone(acceptAll)
-	answers[10] = "7" // not an option: asked again
-	answers = slices.Insert(answers, 11, "2")
 
-	p.init(t, p.initEnv(t), p.thenSignIn(t, answers)...)
+	p.init(t, p.initEnv(t, "podman"), p.thenSandbox(t, acceptAll, "container", "2")...)
 
-	mustContain(t, "stdout", p.stdout, "Type a number from 1 to 3")
-	if got := valueAt(p.config(t), "sandbox", "kind"); got != "native" {
+	mustContain(t, "stdout", p.stdout, "Which container engine?", "Docker (recommended), not installed: `fliesswerk check` names the command that installs it", "Podman, installed")
+	local := p.localConfig(t)
+	if got := valueAt(local, "sandbox", "kind"); got != "container" {
 		t.Errorf("kind = %v", got)
 	}
-	if _, err := os.Stat(filepath.Join(p.work, ".kraftwerk", "Containerfile")); !os.IsNotExist(err) {
-		t.Errorf("a native project got a Containerfile: %v", err)
+	if got := valueAt(local, "sandbox", "engine"); got != "podman" {
+		t.Errorf("engine = %v", got)
+	}
+	team := p.config(t)
+	if valueAt(team, "sandbox", "kind") != nil || valueAt(team, "sandbox", "engine") != nil {
+		t.Errorf("config.toml holds a personal setting:\n%s", p.fliesswerkFile(t, "config.toml"))
+	}
+	mustContain(t, "Containerfile", p.fliesswerkFile(t, "Containerfile"), "USER agent")
+}
+
+func TestInitNativeSandboxWithServicesAsksForTheEngineButGetsNoContainerfile(t *testing.T) {
+	p := initProject(t, nodePostgres())
+
+	p.init(t, p.initEnv(t), p.thenSandbox(t, acceptAll, "7", "2", "")...) // 7 isn't an option: asked again
+
+	mustContain(t, "stdout", p.stdout, "Type a number from 1 to 3", "Your Services run in containers. Which container engine?")
+	local := p.localConfig(t)
+	if got := valueAt(local, "sandbox", "kind"); got != "native" {
+		t.Errorf("kind = %v", got)
+	}
+	if got := valueAt(local, "sandbox", "engine"); got != "docker" {
+		t.Errorf("engine = %v", got)
+	}
+	if p.hasFliesswerkFile("Containerfile") {
+		t.Error("a native project got a Containerfile")
+	}
+}
+
+func TestInitNativeSandboxWithoutServicesIsNotAskedForAnEngine(t *testing.T) {
+	p := initProject(t, nodePostgres())
+	answers := slices.Clone(acceptAll)
+	answers[9] = "-" // no compose file
+
+	p.init(t, p.initEnv(t), p.thenSandbox(t, answers, "native")...)
+
+	if strings.Contains(p.stdout, "container engine?") {
+		t.Errorf("asked for an engine:\n%s", p.stdout)
+	}
+	local := p.localConfig(t)
+	if got := valueAt(local, "sandbox", "kind"); got != "native" {
+		t.Errorf("kind = %v", got)
+	}
+	if got := valueAt(local, "sandbox", "engine"); got != nil {
+		t.Errorf("engine = %v", got)
+	}
+	if p.hasFliesswerkFile("Containerfile") {
+		t.Error("a native project got a Containerfile")
 	}
 }
 
@@ -433,21 +491,21 @@ func TestInitWritesNothingUntilEveryQuestionIsAnswered(t *testing.T) {
 		t.Fatalf("exit code = %d, want %d", code, exitConfigError)
 	}
 	mustContain(t, "stderr", p.stderr, "nothing was written")
-	if _, err := os.Stat(filepath.Join(p.work, ".kraftwerk")); !os.IsNotExist(err) {
-		t.Errorf(".kraftwerk was created: %v", err)
+	if _, err := os.Stat(filepath.Join(p.work, ".fliesswerk")); !os.IsNotExist(err) {
+		t.Errorf(".fliesswerk was created: %v", err)
 	}
 }
 
 func TestInitNeverOverwritesAFile(t *testing.T) {
 	p := initProject(t, nodePostgres())
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", ".gitignore"), "mine\n.env\nconfig.local.toml\n")
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", ".gitignore"), "mine\n.env\nconfig.local.toml\n")
 
 	p.init(t, p.initEnv(t), p.thenSignIn(t, acceptAll)...)
 
-	if got := p.kraftwerkFile(t, ".gitignore"); got != "mine\n.env\nconfig.local.toml\n" {
+	if got := p.fliesswerkFile(t, ".gitignore"); got != "mine\n.env\nconfig.local.toml\n" {
 		t.Errorf(".gitignore = %q", got)
 	}
-	mustContain(t, "stdout", p.stdout, ".kraftwerk/.gitignore (already there")
+	mustContain(t, "stdout", p.stdout, ".fliesswerk/.gitignore (already there")
 }
 
 func TestInitNeedsAGitRepository(t *testing.T) {
@@ -465,7 +523,7 @@ func TestInitYarnProjectsMayReachYarnsRegistry(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			p := initProject(t, map[string]string{"package.json": `{"scripts": {}}`, "yarn.lock": lock})
 
-			p.init(t, p.initEnv(t), p.thenSignIn(t, []string{"", "acme/shop", "", "", "", "", "", "", "", "", "", ""})...)
+			p.init(t, p.initEnv(t), p.thenSignIn(t, []string{"", "acme/shop", "", "", "", "", "", "", "", "", ""})...)
 
 			if got := stringsOf(valueAt(p.config(t), "sandbox", "network", "allow")); !slices.Contains(got, "registry.yarnpkg.com") {
 				t.Errorf("allow = %v", got)
@@ -478,6 +536,34 @@ func TestInitPointsAtTheSettingsThatAreNotTheTeams(t *testing.T) {
 	p := initProject(t, nodePostgres())
 	p.init(t, p.initEnv(t), p.thenSignIn(t, acceptAll)...)
 
-	mustContain(t, "config.toml", p.kraftwerkFile(t, "config.toml"),
-		"# token = { stored", "# [harnesses.claude_code]", "# effort = ", "# factory = ")
+	mustContain(t, "config.toml", p.fliesswerkFile(t, "config.toml"),
+		`# token = { stored = "github.acme.shop" }`, "# [harnesses.claude_code]", "# effort = ", "# factory = ", `# model = "claude-opus-5-5"`)
+	if m := valueAt(p.config(t), "model"); m != nil {
+		t.Errorf("model = %v, want it unset so the Harness's own default is used", m)
+	}
+}
+
+func TestInitPinsTheInstalledMajorInItsExampleAndCheckAcceptsIt(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake pnpm is a shell script")
+	}
+	p := initProject(t, nodePostgres())
+	p.bin = ownCopy(t, builtFliesswerk(t, "fwkfake", "-X main.version=0.3.1"))
+	// CI keeps the update notice from asking GitHub for releases.
+	env := append(p.initEnv(t, "pnpm"), "CI=true")
+
+	if code := p.init(t, env, p.thenSandbox(t, acceptAll, "3", "y", "")...); code != exitOK {
+		t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+	}
+	text := p.fliesswerkFile(t, "config.toml")
+	mustContain(t, "config.toml", text, `# factory = "0"`)
+
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.toml"), strings.Replace(text, `# factory = "0"`, `factory = "0"`, 1))
+	stdout, stderr, code := runEnv(t, p.bin, p.work, env, "check")
+	if code != exitOK {
+		t.Fatalf("check: exit code = %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	if strings.Contains(stdout+stderr, "factory") {
+		t.Errorf("check has a finding about the pin:\nstdout: %s\nstderr: %s", stdout, stderr)
+	}
 }

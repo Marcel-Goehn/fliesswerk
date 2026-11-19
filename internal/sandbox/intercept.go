@@ -101,8 +101,8 @@ func interceptionError(host string, verified []*x509.Certificate) error {
 	lead := fmt.Sprintf("the Sandbox doesn't trust the certificate of %s, but this machine does: something on the way, such as a corporate proxy, is inspecting TLS.\n", host)
 	root := verified[len(verified)-1]
 	if !IsRoot(root) {
-		return fmt.Errorf("%sThis machine didn't say which root it trusts. Export your organisation's root certificate from its trust store as a PEM file and add it to .kraftwerk/config.toml:\n\n%s", lead, fix)
+		return fmt.Errorf("%sThis machine didn't say which root it trusts. Export your organisation's root certificate from its trust store as a PEM file and add it to .fliesswerk/config.toml:\n\n%s", lead, fix)
 	}
 	sum := sha256.Sum256(root.Raw)
-	return fmt.Errorf("%sThis machine verified it against the root %q (SHA-256 %x). Export that root as a PEM file and add it to .kraftwerk/config.toml:\n\n%s", lead, root.Subject.String(), sum, fix)
+	return fmt.Errorf("%sThis machine verified it against the root %q (SHA-256 %x). Export that root as a PEM file and add it to .fliesswerk/config.toml:\n\n%s", lead, root.Subject.String(), sum, fix)
 }

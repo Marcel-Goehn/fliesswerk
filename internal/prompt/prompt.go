@@ -1,6 +1,6 @@
 // Package prompt assembles each Step's prompt: the Factory's fixed
 // contract, which code fills in with everything the agent needs, wrapped
-// around the project's editable part from .kraftwerk/prompts/<step>.md.
+// around the project's editable part from .fliesswerk/prompts/<step>.md.
 // The agent never fetches context itself.
 package prompt
 
@@ -8,10 +8,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/git"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
-	"github.com/Marcel-Goehn/kraftwerk/internal/verify"
+	"github.com/Marcel-Goehn/fliesswerk/internal/git"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
+	"github.com/Marcel-Goehn/fliesswerk/internal/verify"
 )
 
 // Context is what every Step of a Ticket is told: one snapshot, taken
@@ -260,7 +260,7 @@ func services(b *strings.Builder, c Context) {
 		}
 		fmt.Fprintf(b, "- %s: %s\n", s.Name, strings.Join(quoted, ", "))
 	}
-	b.WriteString("\nEach one's host and first port are also in `KRAFTWERK_SERVICE_<NAME>_HOST` and `KRAFTWERK_SERVICE_<NAME>_PORT`.\n\n")
+	b.WriteString("\nEach one's host and first port are also in `FLIESSWERK_SERVICE_<NAME>_HOST` and `FLIESSWERK_SERVICE_<NAME>_PORT`.\n\n")
 }
 
 // bottom writes the fixed bottom's reminder and Rules; closes says when

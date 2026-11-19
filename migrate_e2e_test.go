@@ -8,14 +8,14 @@ import (
 	"testing"
 )
 
-// The deprecated keys these tests use exist only in the kwkfake build; see
+// The deprecated keys these tests use exist only in the fwkfake build; see
 // internal/config/fakedeprecations.go.
 
 const noSandboxLocal = "[sandbox]\nkind = \"none\"\ni_accept_unsandboxed_risk = true\n"
 
 func readConfig(t *testing.T, root, name string) string {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(root, ".kraftwerk", name))
+	data, err := os.ReadFile(filepath.Join(root, ".fliesswerk", name))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,7 +23,7 @@ func readConfig(t *testing.T, root, name string) string {
 }
 
 func TestFactoryPinMismatchFailsValidationAndNamesTheFix(t *testing.T) {
-	bin := buildKraftwerk(t, "-X main.version=1.2.0")
+	bin := buildFliesswerk(t, "-X main.version=1.2.0")
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\nfactory = \"2\"\n"})
 
 	stdout, stderr, code := runIn(t, bin, root, checkNoSandbox...)
@@ -31,11 +31,11 @@ func TestFactoryPinMismatchFailsValidationAndNamesTheFix(t *testing.T) {
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d\nstdout: %s\nstderr: %s", code, exitConfigError, stdout, stderr)
 	}
-	mustContain(t, "stderr", stderr, "factory", "1.2.0", "`kraftwerk update --major`")
+	mustContain(t, "stderr", stderr, "factory", "1.2.0", "`fliesswerk update --major`")
 }
 
 func TestARenamedKeyKeepsWorkingWithADeprecationWarning(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	root := projectDir(t, map[string]string{
 		"config.toml":       "version = 1\n",
 		"config.local.toml": "[sandbox]\ntype = \"none\"\ni_accept_unsandboxed_risk = true\n",
@@ -47,11 +47,11 @@ func TestARenamedKeyKeepsWorkingWithADeprecationWarning(t *testing.T) {
 		t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
 	mustContain(t, "stdout", stdout, "no Sandbox to probe")
-	mustContain(t, "stderr", stderr, "warning: .kraftwerk/config.local.toml: sandbox.type", "`sandbox.kind`", "`kraftwerk migrate`")
+	mustContain(t, "stderr", stderr, "warning: .fliesswerk/config.local.toml: sandbox.type", "`sandbox.kind`", "`fliesswerk migrate`")
 }
 
 func TestARemovedKeyIsIgnoredWithADeprecationWarning(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\nlegacy_flag = true\n", "config.local.toml": noSandboxLocal})
 
 	stdout, stderr, code := runIn(t, bin, root, "check")
@@ -59,11 +59,11 @@ func TestARemovedKeyIsIgnoredWithADeprecationWarning(t *testing.T) {
 	if code != exitOK {
 		t.Fatalf("exit code = %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	mustContain(t, "stderr", stderr, "warning: .kraftwerk/config.toml: legacy_flag", "it has done nothing since 1.1", "`kraftwerk migrate`")
+	mustContain(t, "stderr", stderr, "warning: .fliesswerk/config.toml: legacy_flag", "it has done nothing since 1.1", "`fliesswerk migrate`")
 }
 
 func TestARenamedKeySetAlongsideItsNewNameLosesToIt(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\n", "config.local.toml": "[sandbox]\nkind = \"none\"\ntype = \"native\"\ni_accept_unsandboxed_risk = true\n"})
 
 	stdout, stderr, code := runIn(t, bin, root, "check")
@@ -76,7 +76,7 @@ func TestARenamedKeySetAlongsideItsNewNameLosesToIt(t *testing.T) {
 }
 
 func TestMigrateRewritesTheFileKeepingCommentsAndReportsWhatChanged(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	root := projectDir(t, map[string]string{
 		"config.toml": `# The team's config.
 version = 1
@@ -136,17 +136,17 @@ effort = "high"
 		t.Errorf("config.local.toml:\n%s\nwant:\n%s", got, want)
 	}
 	mustContain(t, "stdout", stdout,
-		".kraftwerk/config.toml: renamed `implement_model` to `steps.implement.model`",
-		".kraftwerk/config.toml: renamed `sandbox.type` to `sandbox.kind`",
-		".kraftwerk/config.toml: renamed `auth` to `harnesses.claude_code`",
-		".kraftwerk/config.toml: removed `legacy_flag` (it has done nothing since 1.1)",
-		".kraftwerk/config.local.toml: renamed `sandbox.type` to `sandbox.kind`")
+		".fliesswerk/config.toml: renamed `implement_model` to `steps.implement.model`",
+		".fliesswerk/config.toml: renamed `sandbox.type` to `sandbox.kind`",
+		".fliesswerk/config.toml: renamed `auth` to `harnesses.claude_code`",
+		".fliesswerk/config.toml: removed `legacy_flag` (it has done nothing since 1.1)",
+		".fliesswerk/config.local.toml: renamed `sandbox.type` to `sandbox.kind`")
 
 	stdout, stderr, code = runIn(t, bin, root, "migrate")
 	if code != exitOK || strings.Contains(stdout, "renamed") {
 		t.Fatalf("second migrate: exit code = %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	mustContain(t, "stdout", stdout, ".kraftwerk/config.toml: nothing to change")
+	mustContain(t, "stdout", stdout, ".fliesswerk/config.toml: nothing to change")
 }
 
 func TestMigrateHandlesTheOtherWaysToWriteAKey(t *testing.T) {
@@ -160,7 +160,7 @@ func TestMigrateHandlesTheOtherWaysToWriteAKey(t *testing.T) {
 		{"a look-alike inside a string stays", "version = 1\n[commands]\nlegacy_flag = \"legacy_flag = true\"\n", "version = 1\n[commands]\nlegacy_flag = \"legacy_flag = true\"\n"},
 		{"a look-alike in a list of tables stays", "version = 1\n[[hooks.run_start]]\nrun = \"legacy_flag = true\"\n", "version = 1\n[[hooks.run_start]]\nrun = \"legacy_flag = true\"\n"},
 	}
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			root := projectDir(t, map[string]string{"config.toml": c.before})
@@ -178,7 +178,7 @@ func TestMigrateHandlesTheOtherWaysToWriteAKey(t *testing.T) {
 }
 
 func TestMigrateLeavesEveryFileAloneWhenOneCantBeRewritten(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	project := "version = 1\nlegacy_flag = true\n"
 	local := "sandbox = { type = \"none\", i_accept_unsandboxed_risk = true }\n"
 	root := projectDir(t, map[string]string{"config.toml": project, "config.local.toml": local})
@@ -188,7 +188,7 @@ func TestMigrateLeavesEveryFileAloneWhenOneCantBeRewritten(t *testing.T) {
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d\nstdout: %s\nstderr: %s", code, exitConfigError, stdout, stderr)
 	}
-	mustContain(t, "stderr", stderr, ".kraftwerk/config.local.toml", "`sandbox.type`", "by hand")
+	mustContain(t, "stderr", stderr, ".fliesswerk/config.local.toml", "`sandbox.type`", "by hand")
 	if got := readConfig(t, root, "config.toml"); got != project {
 		t.Errorf("config.toml changed:\n%s", got)
 	}
@@ -201,10 +201,10 @@ func TestMigrateSaysWhatItChangedWhenALaterFileCantBeWritten(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("a directory's mode doesn't stop writes on Windows")
 	}
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	root := projectDir(t, map[string]string{"config.toml": "version = 1\nlegacy_flag = true\n", "config.local.toml": "legacy_flag = true\n"})
 	// A directory in the way of the second file's temporary name.
-	if err := os.Mkdir(filepath.Join(root, ".kraftwerk", "config.local.toml.migrating"), 0o700); err != nil {
+	if err := os.Mkdir(filepath.Join(root, ".fliesswerk", "config.local.toml.migrating"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 
@@ -213,7 +213,7 @@ func TestMigrateSaysWhatItChangedWhenALaterFileCantBeWritten(t *testing.T) {
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d\nstdout: %s\nstderr: %s", code, exitConfigError, stdout, stderr)
 	}
-	mustContain(t, "stdout", stdout, ".kraftwerk/config.toml: removed `legacy_flag`")
+	mustContain(t, "stdout", stdout, ".fliesswerk/config.toml: removed `legacy_flag`")
 	mustContain(t, "stderr", stderr, "config.local.toml", "can't be written")
 	if strings.Contains(stderr, "nothing was changed") {
 		t.Errorf("stderr claims nothing changed, but config.toml did: %s", stderr)
@@ -221,9 +221,9 @@ func TestMigrateSaysWhatItChangedWhenALaterFileCantBeWritten(t *testing.T) {
 }
 
 func TestMigrateRefusesANewerConfigVersionAndABrokenFile(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	cases := []struct{ name, config, want string }{
-		{"newer version", "version = 99\nlegacy_flag = true\n", "`kraftwerk update --major`"},
+		{"newer version", "version = 99\nlegacy_flag = true\n", "`fliesswerk update --major`"},
 		{"broken TOML", "version = = 1\n", "line 1"},
 	}
 	for _, c := range cases {
@@ -244,12 +244,12 @@ func TestMigrateRefusesANewerConfigVersionAndABrokenFile(t *testing.T) {
 }
 
 func TestMigrateWithoutAProjectSaysToRunInit(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 
 	_, stderr, code := runIn(t, bin, t.TempDir(), "migrate")
 
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d; stderr: %s", code, exitConfigError, stderr)
 	}
-	mustContain(t, "stderr", stderr, "`kraftwerk init`")
+	mustContain(t, "stderr", stderr, "`fliesswerk init`")
 }

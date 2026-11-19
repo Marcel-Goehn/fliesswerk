@@ -15,14 +15,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/git"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/github"
+	"github.com/Marcel-Goehn/fliesswerk/internal/git"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/github"
 )
 
 // The live tests run the adapter and the Factory's push against a real
-// GitHub repository that exists only for them: KRAFTWERK_LIVE_REPO
-// (owner/name), reached with KRAFTWERK_LIVE_TOKEN, a fine-grained token
+// GitHub repository that exists only for them: FLIESSWERK_LIVE_REPO
+// (owner/name), reached with FLIESSWERK_LIVE_TOKEN, a fine-grained token
 // that can access only that repository (Issues and Contents read/write).
 // Only `-tags live` builds them, so PRs never run them; the nightly
 // workflow does, and then resets the repository.
@@ -30,7 +30,7 @@ import (
 const (
 	liveReady = "ready-for-agent"
 	// liveSwapped is the label SetLabels swaps the ready label for.
-	liveSwapped = "kraftwerk-live"
+	liveSwapped = "fliesswerk-live"
 )
 
 type live struct {
@@ -40,9 +40,9 @@ type live struct {
 
 func newLive(t *testing.T) live {
 	t.Helper()
-	l := live{repo: os.Getenv("KRAFTWERK_LIVE_REPO"), token: os.Getenv("KRAFTWERK_LIVE_TOKEN")}
+	l := live{repo: os.Getenv("FLIESSWERK_LIVE_REPO"), token: os.Getenv("FLIESSWERK_LIVE_TOKEN")}
 	if l.repo == "" || l.token == "" {
-		t.Fatal("KRAFTWERK_LIVE_REPO and KRAFTWERK_LIVE_TOKEN must both be set")
+		t.Fatal("FLIESSWERK_LIVE_REPO and FLIESSWERK_LIVE_TOKEN must both be set")
 	}
 	l.gh = github.ExecRunner{Token: l.token}
 	// Only this test's gh config: no login or host of the machine's.
@@ -212,10 +212,10 @@ func TestLivePush(t *testing.T) {
 		"GIT_CONFIG_COUNT":    "1",
 		"GIT_CONFIG_KEY_0":    "http.https://github.com/.extraheader",
 		"GIT_CONFIG_VALUE_0":  "AUTHORIZATION: basic " + auth,
-		"GIT_AUTHOR_NAME":     "kraftwerk live test",
-		"GIT_AUTHOR_EMAIL":    "live@kraftwerk.invalid",
-		"GIT_COMMITTER_NAME":  "kraftwerk live test",
-		"GIT_COMMITTER_EMAIL": "live@kraftwerk.invalid",
+		"GIT_AUTHOR_NAME":     "fliesswerk live test",
+		"GIT_AUTHOR_EMAIL":    "live@fliesswerk.invalid",
+		"GIT_COMMITTER_NAME":  "fliesswerk live test",
+		"GIT_COMMITTER_EMAIL": "live@fliesswerk.invalid",
 	} {
 		t.Setenv(k, v)
 	}
@@ -224,7 +224,7 @@ func TestLivePush(t *testing.T) {
 	if err := os.Mkdir(r.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	branch := "kraftwerk-live/" + l.tag
+	branch := "fliesswerk-live/" + l.tag
 	gitRun := func(args ...string) string {
 		t.Helper()
 		out, err := r.Run(ctx, args...)

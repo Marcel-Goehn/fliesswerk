@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker/fake"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/fake"
 )
 
 // The Hooks' command lines are portable between sh and cmd.exe, whose echo
@@ -19,7 +19,7 @@ import (
 // withHooks makes hooks, TOML tables, part of the project's config.
 func (p *runProject) withHooks(t *testing.T, hooks string) {
 	t.Helper()
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", "config.local.toml"), noSandbox+hooks)
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", "config.local.toml"), noSandbox+hooks)
 }
 
 // wordsIn is the whitespace-separated words of the file, none if it
@@ -37,7 +37,7 @@ func wordsIn(t *testing.T, path string) []string {
 }
 
 func TestHooksRunInDeclaredOrderAndTheFirstFailureStopsTheRunButNotRunEnd(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": []}`)
 	p.withHooks(t, `
 [[hooks.run_start]]
@@ -70,9 +70,9 @@ run = 'echo end>>order.txt'
 }
 
 func TestRunStartWaitsForTheProjectToBeSetUpButRunEndStillRuns(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": []}`)
-	writeFile(t, filepath.Join(p.work, ".kraftwerk", ".gitignore"), "config.local.toml\nlogs/\n.env\n")
+	writeFile(t, filepath.Join(p.work, ".fliesswerk", ".gitignore"), "config.local.toml\nlogs/\n.env\n")
 	p.withHooks(t, `
 [[hooks.run_start]]
 run = 'echo start>>order.txt'
@@ -114,7 +114,7 @@ func afterChildWouldHaveWritten(start time.Time) {
 }
 
 func TestAParallelGroupStopsItsSiblingsOnTheFirstFailureAndReportsEveryOutput(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": []}`)
 	p.withHooks(t, `
 [[hooks.run_start]]
@@ -145,7 +145,7 @@ parallel = [
 }
 
 func TestAHookStillRunningAtItsTimeoutIsStopped(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": []}`)
 	p.withHooks(t, `
 [[hooks.run_start]]
@@ -172,7 +172,7 @@ timeout = "1s"
 }
 
 func TestSandboxCreatedRunsInTheTicketsWorktreeBeforeImplementAndHostEntriesInTheProjectRoot(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, {"match": "Implement Ticket #2", "actions": [
 		{"run": ["git", "add", "from-hook.txt"]},
 		{"run": ["git", "commit", "-q", "-m", "Commit what the Hook made"]}
@@ -200,11 +200,11 @@ where = "host"
 }
 
 func TestAFailedSandboxCreatedGetsOneFreshRetry(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, `+implementsCart("Implement Ticket #2", `package cart\n`)+`]}`)
 	p.withHooks(t, `
 [[hooks.sandbox_created]]
-run = 'git config --get kwk.tried || (git config kwk.tried 1 && git --no-such-flag)'
+run = 'git config --get fwk.tried || (git config fwk.tried 1 && git --no-such-flag)'
 `)
 
 	if code := p.run(t); code != 0 {
@@ -216,14 +216,14 @@ run = 'git config --get kwk.tried || (git config kwk.tried 1 && git --no-such-fl
 }
 
 func TestSandboxCreatedFailingAgainHandsTheTicketBackWithoutRunningAStep(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": []}`)
 	p.withHooks(t, `
 [[hooks.sandbox_created]]
 run = 'git --no-such-flag'
 `)
 	logPath := filepath.Join(t.TempDir(), "harness.jsonl")
-	p.extraEnv = []string{"KWK_FAKE_HARNESS_LOG=" + logPath}
+	p.extraEnv = []string{"FWK_FAKE_HARNESS_LOG=" + logPath}
 
 	if code := p.run(t); code != 1 {
 		t.Fatalf("exit code = %d, want 1\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
@@ -243,7 +243,7 @@ func envRef(name string) string {
 }
 
 func TestSpecFinishedRunsOnceAfterTheSpecsLastTicketOnTheSpecBranch(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	issues := append(cartIssues(), fake.Issue{Number: 3, Title: "Cart totals", Labels: []string{"ready-for-agent"}, Parent: 1, BlockedBy: []int{2}})
 	p := newRunProject(t, bin, issues, `{"sessions": [`+approves+`, `+
 		implementsCart("Implement Ticket #2", `package cart\n`)+`, `+
@@ -251,26 +251,26 @@ func TestSpecFinishedRunsOnceAfterTheSpecsLastTicketOnTheSpecBranch(t *testing.T
 	out := filepath.Join(t.TempDir(), "out.txt")
 	p.withHooks(t, `
 [[hooks.spec_finished]]
-run = 'echo `+envRef("KRAFTWERK_SPEC")+` `+envRef("KRAFTWERK_BRANCH")+`>>`+out+`&& git rev-parse --abbrev-ref HEAD>>`+out+`'
+run = 'echo `+envRef("FLIESSWERK_SPEC")+` `+envRef("FLIESSWERK_BRANCH")+`>>`+out+`&& git rev-parse --abbrev-ref HEAD>>`+out+`'
 `)
 
 	if code := p.run(t); code != 0 {
 		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
 	}
-	branch := "kraftwerk/spec-1-spec-shopping-cart"
+	branch := "fliesswerk/spec-1-spec-shopping-cart"
 	if got, want := wordsIn(t, out), []string{"#1", branch, branch}; !slices.Equal(got, want) {
 		t.Errorf("the Hook saw %v, want %v", got, want)
 	}
 }
 
 func TestSpecFinishedAndRunEndOnlyWarnWhenTheyFailAndAStandaloneTicketFinishes(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	issues := []fake.Issue{{Number: 5, Title: "Fix the typo", Labels: []string{"ready-for-agent"}}}
 	p := newRunProject(t, bin, issues, `{"sessions": [`+approves+`, `+implementsCart("Implement Ticket #5", `package cart\n`)+`]}`)
 	out := filepath.Join(t.TempDir(), "out.txt")
 	p.withHooks(t, `
 [[hooks.spec_finished]]
-run = 'echo `+envRef("KRAFTWERK_SPEC")+` `+envRef("KRAFTWERK_BRANCH")+`>>`+out+`'
+run = 'echo `+envRef("FLIESSWERK_SPEC")+` `+envRef("FLIESSWERK_BRANCH")+`>>`+out+`'
 [[hooks.spec_finished]]
 run = 'git --no-such-flag'
 [[hooks.spec_finished]]
@@ -282,7 +282,7 @@ run = 'git --no-such-flag'
 	if code := p.run(t); code != 0 {
 		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
 	}
-	if got, want := wordsIn(t, out), []string{"#5", "kraftwerk/ticket-5-fix-the-typo"}; !slices.Equal(got, want) {
+	if got, want := wordsIn(t, out), []string{"#5", "fliesswerk/ticket-5-fix-the-typo"}; !slices.Equal(got, want) {
 		t.Errorf("the Hook saw %v, want %v", got, want)
 	}
 	for _, want := range []string{"warning: the spec_finished Hook failed", "warning: the run_end Hook failed"} {
@@ -293,12 +293,12 @@ run = 'git --no-such-flag'
 }
 
 func TestHookOutputIsRedactedAndHostHooksGetOnlyTheSecretsTheyName(t *testing.T) {
-	bin := buildTestKraftwerk(t)
+	bin := buildTestFliesswerk(t)
 	p := newRunProject(t, bin, cartIssues(), `{"sessions": [`+approves+`, `+implementsCart("Implement Ticket #2", `package cart\n`)+`]}`)
 	p.withHooks(t, `
 [sandbox.secrets]
-NAMED = { env = "KWK_TEST_NAMED" }
-OTHER = { env = "KWK_TEST_OTHER" }
+NAMED = { env = "FWK_TEST_NAMED" }
+OTHER = { env = "FWK_TEST_OTHER" }
 
 [[hooks.run_start]]
 run = 'echo host-named=[`+envRef("NAMED")+`] host-other=[`+envRef("OTHER")+`]'
@@ -307,7 +307,7 @@ secrets = ["NAMED"]
 [[hooks.sandbox_created]]
 run = 'echo sandbox-other=[`+envRef("OTHER")+`]'
 `)
-	p.extraEnv = []string{"KWK_TEST_NAMED=hunter2-named", "KWK_TEST_OTHER=hunter2-other"}
+	p.extraEnv = []string{"FWK_TEST_NAMED=hunter2-named", "FWK_TEST_OTHER=hunter2-other"}
 
 	if code := p.run(t); code != 0 {
 		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)

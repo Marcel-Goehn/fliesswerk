@@ -8,12 +8,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/git"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/git"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
 )
 
 // factoryDir is the Factory's own directory, always a Protected path.
-const factoryDir = ".kraftwerk/"
+const factoryDir = ".fliesswerk/"
 
 // protectedPaths are every Protected path.
 func (r *run) protectedPaths() []string {

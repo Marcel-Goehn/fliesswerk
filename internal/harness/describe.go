@@ -3,7 +3,7 @@ package harness
 import (
 	"fmt"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/version"
+	"github.com/Marcel-Goehn/fliesswerk/internal/version"
 )
 
 // Description is what a Harness declares about itself. It is static data:
@@ -34,12 +34,15 @@ type Description struct {
 	// `init` offers them. `check` rejects any other.
 	AuthMethods []AuthMethod
 
+	// LoginFix is what to do when the Harness rejects its own login, with
+	// no `[harnesses.<name>]` table set.
+	LoginFix string
+
 	// ImportAuth finds an auth setup the Harness already has in the user's
 	// home, for `init` to offer. Nil, or nil from it, means there is none.
 	ImportAuth func(home string) *ImportedAuth
 
-	// FixedEnv are env flags Command always sets, by name. Values may
-	// depend on the Step (EnvScrub is left out when scrubbing is off).
+	// FixedEnv are env flags Command always sets, by name.
 	FixedEnv []string
 	// RedactEnv are the env names whose values are credentials, redacted
 	// from every output.
@@ -56,8 +59,42 @@ type Description struct {
 	// the Harness must be able to write.
 	HomeWritable []string
 
+	// StartCheck is how `check` starts the Harness where Steps run, nil if
+	// it doesn't.
+	StartCheck *StartCheck
+
 	Capabilities Capabilities
 }
+
+// StartCheck is how `check` starts the Harness once with a Step's env but
+// no credential, to see that it starts where Steps run. It spends no tokens
+// and sends no credential anywhere: with none, the Harness stops at saying
+// it isn't logged in.
+type StartCheck struct {
+	// Step is what Command gets. The core never sets a CredentialCommand.
+	Step Step
+	// Read tells from what the Harness printed whether it started.
+	Read func(output string) Start
+	// SkipOnHost says, by GOOS, why the Harness isn't started on the host
+	// there: where its own login is somewhere a fresh home doesn't hide,
+	// it would be logged in and spend tokens.
+	SkipOnHost map[string]string
+	// LoginEnv are variables that point the Harness at a login of its own
+	// or switch on a provider that signs in by itself, left out on the host.
+	LoginEnv []string
+}
+
+// Start is what a StartCheck read from the Harness.
+type Start int
+
+const (
+	// StartUnclear is output the Harness doesn't recognise.
+	StartUnclear Start = iota
+	// Started is the Harness starting, and stopping at the missing login.
+	Started
+	// NotStarted is the Harness saying it can't start.
+	NotStarted
+)
 
 // CheckVersion reports what's wrong with the output of the version command.
 func (d Description) CheckVersion(output string) error {
@@ -87,9 +124,21 @@ type AuthMethod struct {
 	// Endpoints are the hosts the egress allowlist gains for this method,
 	// given the method's resolved field values.
 	Endpoints func(fields map[string]string) []string
-	// TestCall is the free request that proves the credential works,
-	// given the resolved field values.
-	TestCall func(fields map[string]string) Request
+	// CostBasis is what the cost the Harness reports means with this
+	// method; empty is Billed. Read it with Basis.
+	CostBasis CostBasis
+	// RejectedFix is what to do when the Harness rejects the credential
+	// at a Step. The Factory never tests a credential the Harness sends
+	// itself (docs/adr/0007-only-the-harness-sends-its-credential.md), so a Step is where a bad one shows.
+	RejectedFix string
+}
+
+// Basis is what the cost the Harness reports means with the method.
+func (m AuthMethod) Basis() CostBasis {
+	if m.CostBasis == "" {
+		return Billed
+	}
+	return m.CostBasis
 }
 
 // ImportedAuth is an auth setup found on the user's machine.
@@ -109,7 +158,19 @@ type AuthField struct {
 	// call it ("the API key"). A field with none is never asked for.
 	Prompt string
 	// StoreKey is the name a Secret gets in the user-level credentials file.
+	// With NotStored, it is the name `fliesswerk auth set` refuses.
 	StoreKey string
+	// NotStored, if set, says why the Secret is never kept in the user-level
+	// credentials file: `stored` is refused for it, `init` doesn't offer it,
+	// and `fliesswerk auth set` won't take StoreKey.
+	NotStored string
+	// SuggestEnv is the environment variable `init` suggests a Secret comes
+	// from, "" for none.
+	SuggestEnv string
+	// FilledByHand keeps `init` from taking the Secret when it is kept in
+	// .fliesswerk/.env: `init` adds the empty line and waits while the
+	// person puts it in, as for a NotStored one.
+	FilledByHand bool
 	// UnlessSet names a field that, once answered, makes this one
 	// unnecessary, so `init` doesn't ask for it.
 	UnlessSet string
@@ -120,13 +181,6 @@ type AuthField struct {
 	// when set.
 	Flag     bool
 	Optional bool
-}
-
-// Request is an HTTP request described as data.
-type Request struct {
-	Method string
-	URL    string
-	Header map[string]string
 }
 
 // CredentialFile is how a Harness reads a credential from a file.

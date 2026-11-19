@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/credentials"
+	"github.com/Marcel-Goehn/fliesswerk/internal/credentials"
 )
 
 func TestProjectSecretsUseTheSameSources(t *testing.T) {

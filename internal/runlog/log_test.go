@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/redact"
-	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
+	"github.com/Marcel-Goehn/fliesswerk/internal/redact"
+	"github.com/Marcel-Goehn/fliesswerk/internal/runlog"
 )
 
 var start = time.Date(2026, 11, 7, 14, 3, 12, 0, time.Local)
@@ -53,7 +53,7 @@ func TestARunDirectoryIsNamedAfterTheStartTime(t *testing.T) {
 	if first.ID() != "2026-11-07T14-03-12" {
 		t.Errorf("ID = %q", first.ID())
 	}
-	if want := filepath.Join(root, ".kraftwerk", "logs", first.ID()); first.Dir() != want {
+	if want := filepath.Join(root, ".fliesswerk", "logs", first.ID()); first.Dir() != want {
 		t.Errorf("Dir = %q, want %q", first.Dir(), want)
 	}
 	if first.Dir() == second.Dir() {

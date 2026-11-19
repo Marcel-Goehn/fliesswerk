@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/memory"
+	"github.com/Marcel-Goehn/fliesswerk/internal/memory"
 )
 
 // statsFormat prints a container's name and "<used> / <limit>".

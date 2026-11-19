@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/memory"
-	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
-	"github.com/Marcel-Goehn/kraftwerk/internal/sandbox"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
+	"github.com/Marcel-Goehn/fliesswerk/internal/memory"
+	"github.com/Marcel-Goehn/fliesswerk/internal/runlog"
+	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
 )
 
 // DefaultMemoryPoll is how often memory is looked at while a Sandbox waits,

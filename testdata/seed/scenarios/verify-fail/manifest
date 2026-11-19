@@ -1,0 +1,15 @@
+# A Spec with a Ticket that adds a guard test asserting CLAUDECODE=1. The
+# agent's own test runs pass, because Claude Code sets it for its commands;
+# the Factory's verify doesn't, so verify fails, the retry gets the failing
+# output in implement-2.prompt.md, and verify fails again.
+#
+# issue <key> <parent> <blocked-by> <labels> <title>
+issue spec  -     -  -                Spec: Headline case
+issue a     spec  -  ready-for-agent  Capitalise every word in title_case
+exit 0
+
+dry-run:
+Iteration 1 would take 1 Ticket (max_parallel = 1):
+  {{a}}  Capitalise every word in title_case  (Spec {{spec}})
+
+Dry run: nothing was written and nothing was started.

@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/git"
+	"github.com/Marcel-Goehn/fliesswerk/internal/git"
 )
 
 // GitDirs are the directories git keeps a worktree's state in.

@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/hook"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
+	"github.com/Marcel-Goehn/fliesswerk/internal/hook"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
 )
 
 // Hooks are the project's Hooks, by the moment they run at.
@@ -63,7 +63,7 @@ func (r *run) runEnd(ctx context.Context) {
 // worktree. After that a build hands the Ticket back to a person, and a
 // merge re-queues it.
 func (r *run) sandboxCreated(ctx context.Context, b build) *failure {
-	m := hook.Setting{HostDir: r.opts.Root, SandboxDir: b.dir, Sandbox: b.sandbox, Env: []string{"KRAFTWERK_SANDBOX=" + b.sandboxName}}
+	m := hook.Setting{HostDir: r.opts.Root, SandboxDir: b.dir, Sandbox: b.sandbox, Env: []string{"FLIESSWERK_SANDBOX=" + b.sandboxName}}
 	log := func(line string) { r.tlogf(b.tk, "%s", line) }
 	for fresh := 0; ; fresh++ {
 		f := r.runHooks(ctx, "sandbox_created", m, r.opts.Hooks.SandboxCreated, log)
@@ -83,7 +83,7 @@ func (r *run) sandboxCreated(ctx context.Context, b build) *failure {
 func (r *run) specFinished(ctx context.Context, id tracker.ID, branch, specDir string) {
 	m := hook.Setting{
 		HostDir: filepath.Join(specDir, r.rel),
-		Env:     []string{"KRAFTWERK_SPEC=" + id.Display, "KRAFTWERK_BRANCH=" + branch},
+		Env:     []string{"FLIESSWERK_SPEC=" + id.Display, "FLIESSWERK_BRANCH=" + branch},
 	}
 	if f := r.runHooks(ctx, "spec_finished", m, r.opts.Hooks.SpecFinished, r.logLine); f != nil {
 		r.warnf("%s: warning: the spec_finished Hook failed: %v", id, f)

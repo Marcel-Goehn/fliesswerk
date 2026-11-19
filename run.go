@@ -7,9 +7,9 @@ import (
 	"io"
 	"os"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/frontier"
-	"github.com/Marcel-Goehn/kraftwerk/internal/runlog"
-	"github.com/Marcel-Goehn/kraftwerk/internal/tracker"
+	"github.com/Marcel-Goehn/fliesswerk/internal/frontier"
+	"github.com/Marcel-Goehn/fliesswerk/internal/runlog"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
 )
 
 // runRun starts a Run, over one Spec or standalone Ticket if an argument
@@ -19,7 +19,7 @@ import (
 func runRun(args []string, stdout, stderr io.Writer) int {
 	var dryRun bool
 	var view runView
-	values, root, rest, code, ok := loadConfig("kraftwerk run", args, 1, stderr, func(fs *flag.FlagSet) {
+	values, root, rest, code, ok := loadConfig("fliesswerk run", args, 1, stderr, func(fs *flag.FlagSet) {
 		fs.BoolVar(&dryRun, "dry-run", false, "show Iteration 1 and every skipped Ticket, writing nothing")
 		fs.BoolVar(&view.json, "json", false, "print the Run's summary as JSON to stdout, and the live lines to stderr")
 		fs.BoolVar(&view.verbose, "verbose", false, "show the agent's text too")
@@ -42,18 +42,18 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	stdout, stderr = s.redacted(stdout, stderr)
 	tr, err := newTracker(values, s.trackerToken)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk run: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "fliesswerk run: %v\n", err)
 		return exitConfigError
 	}
 	ctx := context.Background()
 	user, err := tr.User(ctx)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk run: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "fliesswerk run: %v\n", err)
 		return exitStopped
 	}
 	snap, err := tr.Snapshot(ctx)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk run: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "fliesswerk run: %v\n", err)
 		return exitStopped
 	}
 	limit := maxParallel(values)
@@ -110,17 +110,17 @@ func printPlan(stdout, stderr io.Writer, p frontier.Plan, limit int) {
 // config: the logs matter most when something is broken.
 func runLogs(args []string, stdout, stderr io.Writer) int {
 	if len(args) > 0 {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk logs: unexpected argument %q\n", args[0])
+		_, _ = fmt.Fprintf(stderr, "fliesswerk logs: unexpected argument %q\n", args[0])
 		return exitConfigError
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "kraftwerk logs: can't find the current directory: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "fliesswerk logs: can't find the current directory: %v\n", err)
 		return exitConfigError
 	}
 	dir, ok := runlog.Latest(projectRoot(cwd))
 	if !ok {
-		_, _ = fmt.Fprintln(stderr, "kraftwerk logs: no Run has left logs here yet")
+		_, _ = fmt.Fprintln(stderr, "fliesswerk logs: no Run has left logs here yet")
 		return exitFailures
 	}
 	_, _ = fmt.Fprintln(stdout, dir)

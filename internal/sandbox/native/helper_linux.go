@@ -15,7 +15,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/Marcel-Goehn/kraftwerk/internal/forward"
+	"github.com/Marcel-Goehn/fliesswerk/internal/forward"
 	"golang.org/x/sys/unix"
 )
 
@@ -32,7 +32,7 @@ func RunHelper(args []string) (code int, ok bool) {
 		code, err = runInit(args[1:])
 	}
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "kraftwerk: the native Sandbox: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "fliesswerk: the native Sandbox: %v\n", err)
 		return helperFailed, true
 	}
 	return code, true
@@ -84,7 +84,7 @@ func recordRoot(dir string) error {
 // optionsFile is a file descriptor bwrap inherits, holding opts in the
 // NUL-separated form of its --args.
 func optionsFile(opts []string) (int, error) {
-	fd, err := unix.MemfdCreate("kraftwerk-sandbox", 0)
+	fd, err := unix.MemfdCreate("fliesswerk-sandbox", 0)
 	if err != nil {
 		return 0, fmt.Errorf("memfd_create: %w", err)
 	}
