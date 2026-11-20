@@ -38,6 +38,7 @@ const usage = `Usage:
   fliesswerk update                install the newest release of this major version
   fliesswerk update --major        move to the newest major version; run fliesswerk migrate after it
   fliesswerk --version             print the version
+  fliesswerk --help                print this help
 `
 
 // Exit codes, as fixed by the Spec (#31). A usage error counts as a config
@@ -53,6 +54,10 @@ const (
 func runCLI(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 1 && args[0] == "--version" {
 		_, _ = fmt.Fprintf(stdout, "fliesswerk %s\n", versionString())
+		return exitOK
+	}
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h" || args[0] == "help") {
+		_, _ = fmt.Fprint(stdout, usage)
 		return exitOK
 	}
 	if len(args) > 0 && args[0] == "init" {

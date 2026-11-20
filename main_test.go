@@ -105,6 +105,26 @@ func TestVersionOfDevBuildSaysDev(t *testing.T) {
 	}
 }
 
+func TestHelpPrintsUsageToStdout(t *testing.T) {
+	bin := buildFliesswerk(t, "")
+
+	for _, arg := range []string{"--help", "-h", "help"} {
+		t.Run(arg, func(t *testing.T) {
+			stdout, stderr, code := runFliesswerk(t, bin, arg)
+
+			if code != 0 {
+				t.Fatalf("exit code = %d, want 0; stderr: %s", code, stderr)
+			}
+			if stderr != "" {
+				t.Fatalf("stderr = %q, want it empty", stderr)
+			}
+			if !strings.HasPrefix(stdout, "Usage:") || !strings.Contains(stdout, "fliesswerk update") {
+				t.Fatalf("stdout = %q, want the usage", stdout)
+			}
+		})
+	}
+}
+
 func TestUnknownArgumentFailsWithUsage(t *testing.T) {
 	bin := buildFliesswerk(t, "")
 
