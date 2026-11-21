@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -81,13 +80,6 @@ func publicRoots() *x509.CertPool {
 // probeDir is the worktree of the Sandbox that a probe starts.
 func probeDir(root string) string { return filepath.Join(root, factory.StateDir, "probe") }
 
-// removeProbeWorktree removes the worktree at dir, and whatever is left of it.
-func removeProbeWorktree(ctx context.Context, repo git.Repo, dir string) {
-	_ = repo.RemoveWorktree(ctx, dir)
-	_ = os.RemoveAll(dir)
-	_ = repo.PruneWorktrees(ctx)
-}
-
 // withCleanupDeadline runs f on a fresh deadline, for cleaning up after work
 // of any length, even when ctx has ended.
 func withCleanupDeadline(ctx context.Context, f func(context.Context)) {
@@ -106,11 +98,11 @@ func probeInterception(ctx context.Context, sandboxes sandboxProvider, values ma
 	}
 	repo := git.Repo{Dir: root}
 	dir := probeDir(root)
-	removeProbeWorktree(ctx, repo, dir) // what a crashed Run left
+	_ = repo.RemoveWorktree(ctx, dir) // what a crashed Run left
 	if err := repo.AddEmptyWorktree(ctx, dir, "HEAD"); err != nil {
 		return fmt.Sprintf("whether the Sandbox trusts %s wasn't checked: %v", host, err), nil
 	}
-	defer withCleanupDeadline(ctx, func(ctx context.Context) { removeProbeWorktree(ctx, repo, dir) })
+	defer withCleanupDeadline(ctx, func(ctx context.Context) { _ = repo.RemoveWorktree(ctx, dir) })
 	sb, err := sandboxes.Create(ctx, sandbox.Request{Name: "probe", Worktree: dir, NoServices: true})
 	if err != nil {
 		return "", err

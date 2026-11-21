@@ -195,9 +195,7 @@ func TestATicketOfASpecIsImplementedPushedAndClosed(t *testing.T) {
 	if gitOK(f.work, "rev-parse", "--verify", "-q", "refs/heads/fliesswerk/ticket-2") {
 		t.Error("the Ticket branch was kept after success")
 	}
-	if got := git(t, f.work, "worktree", "list", "--porcelain"); strings.Count(got, "worktree ") != 1 {
-		t.Errorf("Factory worktrees are left:\n%s", got)
-	}
+	noFactoryWorktreesLeft(t, f)
 }
 
 func TestDoneWithoutCommitsHandsTheTicketBackWithoutARetry(t *testing.T) {
@@ -221,9 +219,7 @@ func TestDoneWithoutCommitsHandsTheTicketBackWithoutARetry(t *testing.T) {
 	if gitOK(f.work, "rev-parse", "--verify", "-q", "refs/heads/fliesswerk/ticket-2") {
 		t.Error("the Ticket branch was kept after the Ticket was handed back")
 	}
-	if got := git(t, f.work, "worktree", "list", "--porcelain"); strings.Count(got, "worktree ") != 1 {
-		t.Errorf("Factory worktrees are left:\n%s", got)
-	}
+	noFactoryWorktreesLeft(t, f)
 	if got := f.remoteRef(t, "fliesswerk/spec-1-spec-shopping-cart"); got != "" {
 		t.Errorf("the Spec branch was pushed without any work: %s", got)
 	}
@@ -764,4 +760,20 @@ func ticketWrites(tr *fake.Tracker) []fake.Write {
 		}
 	}
 	return out
+}
+
+// noFactoryWorktreesLeft fails t if git still knows a Factory worktree, or
+// one's folder is left, which git may no longer know about.
+func noFactoryWorktreesLeft(t *testing.T, f fixture) {
+	t.Helper()
+	if got := git(t, f.work, "worktree", "list", "--porcelain"); strings.Count(got, "worktree ") != 1 {
+		t.Errorf("Factory worktrees are left:\n%s", got)
+	}
+	entries, err := os.ReadDir(filepath.Join(f.work, factory.StateDir, "worktrees"))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		t.Errorf("the worktree folder %s is left", e.Name())
+	}
 }

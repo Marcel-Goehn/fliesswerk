@@ -120,11 +120,11 @@ func (c liveCheck) checkInSandbox(ctx context.Context, commands bool) error {
 		return err
 	}
 	dir := probeDir(c.root)
-	removeProbeWorktree(ctx, repo, dir) // what a crashed `check` left
+	_ = repo.RemoveWorktree(ctx, dir) // what a crashed `check` left
 	if err := repo.AddDetachedWorktree(ctx, dir, remote+"/"+base); err != nil {
 		return fmt.Errorf("checking out the base branch %s: %w", base, err)
 	}
-	defer withCleanupDeadline(ctx, func(ctx context.Context) { removeProbeWorktree(ctx, repo, dir) })
+	defer withCleanupDeadline(ctx, func(ctx context.Context) { _ = repo.RemoveWorktree(ctx, dir) })
 
 	project := filepath.Join(dir, rel)
 	var sb sandbox.Sandbox
