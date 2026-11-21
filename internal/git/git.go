@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -27,6 +28,23 @@ var NonInteractiveEnv = []string{"GIT_TERMINAL_PROMPT=0", "GIT_EDITOR=true", "GI
 // contains, hiding from the Factory that it touched a Protected path.
 func hostEnv() []string {
 	return append(append(os.Environ(), NonInteractiveEnv...), "GIT_NO_REPLACE_OBJECTS=1")
+}
+
+// sameBytes makes the Factory's git check files out byte for byte as the
+// repository holds them, as the git in a Sandbox does. A host that converts
+// line endings (Git for Windows sets core.autocrlf) would otherwise leave
+// every text file looking modified to the Sandbox, and an agent's
+// `git add -A` would commit all of them. Given on the command line, it
+// changes neither the user's git config nor their checkout.
+var sameBytes = []string{"-c", "core.autocrlf=false", "-c", "core.eol=lf"}
+
+// hostCommand is git with args, run on the host in dir.
+func hostCommand(ctx context.Context, dir string, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "git", append(slices.Clone(sameBytes), args...)...) //nolint:gosec // git is the tool this package exists to run
+	shell.Isolate(cmd)
+	cmd.Dir = dir
+	cmd.Env = hostEnv()
+	return cmd
 }
 
 // Repo is a git repository, worked on through the directory Dir (the
@@ -47,10 +65,7 @@ func (r Repo) Run(ctx context.Context, args ...string) (string, error) {
 
 // output runs git in r.Dir and returns its stdout, also when it fails.
 func (r Repo) output(ctx context.Context, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", args...) //nolint:gosec // git is the tool this package exists to run
-	shell.Isolate(cmd)
-	cmd.Dir = r.Dir
-	cmd.Env = hostEnv()
+	cmd := hostCommand(ctx, r.Dir, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
@@ -85,11 +100,7 @@ func (r Repo) Prefix(ctx context.Context) (string, error) {
 
 // IsIgnored reports whether git ignores path, relative to r.Dir.
 func (r Repo) IsIgnored(ctx context.Context, path string) (bool, error) {
-	cmd := exec.CommandContext(ctx, "git", "check-ignore", "-q", "--", path) //nolint:gosec // path is a fixed path in the runtime state
-	shell.Isolate(cmd)
-	cmd.Dir = r.Dir
-	cmd.Env = hostEnv()
-	err := cmd.Run()
+	err := hostCommand(ctx, r.Dir, "check-ignore", "-q", "--", path).Run()
 	var exit *exec.ExitError
 	switch {
 	case err == nil:
