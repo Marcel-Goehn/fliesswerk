@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -334,6 +336,59 @@ func TestFilesOutsideTheProtectedPathsPass(t *testing.T) {
 
 	if len(res.Closed) != 1 {
 		t.Fatalf("result = %+v, want #2 closed", res)
+	}
+}
+
+func TestAnAgentStagingEverythingPassesWhenTheHostGitConvertsLineEndings(t *testing.T) {
+	f := newFixture(t)
+	// The host's git converts line endings on checkout, as Git for Windows
+	// does by default; the git in a Linux Sandbox doesn't.
+	hostConfig := os.Getenv("GIT_CONFIG_GLOBAL")
+	const hostSettings = "[core]\n\tautocrlf = true\n"
+	if err := os.WriteFile(hostConfig, []byte(hostSettings), 0o600); err != nil { //nolint:gosec // the test's own git config, set by isolateGit
+		t.Fatal(err)
+	}
+	repoConfig, err := os.ReadFile(filepath.Join(f.work, ".git", "config"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sandboxConfig := filepath.Join(t.TempDir(), "gitconfig")
+	write(t, sandboxConfig, "")
+	sandboxGit := func(dir string, args ...string) (string, error) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+sandboxConfig)
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	var status string
+	implement := func(_ context.Context, s factory.Step) harness.Outcome {
+		status, _ = sandboxGit(s.Dir, "status", "--porcelain")
+		write(t, filepath.Join(s.Dir, "cart.go"), "package cart\n")
+		for _, args := range [][]string{{"add", "-A"}, {"commit", "-q", "-m", "Add the cart"}} {
+			if out, err := sandboxGit(s.Dir, args...); err != nil {
+				return harness.Outcome{Kind: harness.Failed, Class: harness.Other, Message: out}
+			}
+		}
+		return harness.Outcome{Kind: harness.Reported, Report: harness.Report{Outcome: harness.Done, Summary: "Done."}}
+	}
+
+	res := factory.Run(context.Background(), failOptions(f, fake.New(ready, cartSpec()...), implement))
+
+	if status != "" {
+		t.Errorf("the Sandbox's git sees changes in a fresh worktree:\n%s", status)
+	}
+	if len(res.Closed) != 1 {
+		t.Fatalf("result = %+v, want #2 closed", res)
+	}
+	if got, err := os.ReadFile(hostConfig); err != nil || string(got) != hostSettings { //nolint:gosec // the test's own git config
+		t.Errorf("the host's git config is now %q (%v), want it unchanged", got, err)
+	}
+	if got, err := os.ReadFile(filepath.Join(f.work, ".git", "config")); err != nil || string(got) != string(repoConfig) {
+		t.Errorf("the user's repository config is now %q (%v), want it unchanged:\n%s", got, err, repoConfig)
+	}
+	if got := git(t, f.work, "status", "--porcelain"); got != "" {
+		t.Errorf("the user's checkout changed:\n%s", got)
 	}
 }
 

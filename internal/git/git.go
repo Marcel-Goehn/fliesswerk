@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -27,6 +28,23 @@ var NonInteractiveEnv = []string{"GIT_TERMINAL_PROMPT=0", "GIT_EDITOR=true", "GI
 // contains, hiding from the Factory that it touched a Protected path.
 func hostEnv() []string {
 	return append(append(os.Environ(), NonInteractiveEnv...), "GIT_NO_REPLACE_OBJECTS=1")
+}
+
+// sameBytes makes the Factory's git check files out byte for byte as the
+// repository holds them, as the git in a Sandbox does. A host that converts
+// line endings (Git for Windows sets core.autocrlf) would otherwise leave
+// every text file looking modified to the Sandbox, and an agent's
+// `git add -A` would commit all of them. Given on the command line, it
+// changes neither the user's git config nor their checkout.
+var sameBytes = []string{"-c", "core.autocrlf=false", "-c", "core.eol=lf"}
+
+// hostCommand is git with args, run on the host in dir.
+func hostCommand(ctx context.Context, dir string, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "git", append(slices.Clone(sameBytes), args...)...) //nolint:gosec // git is the tool this package exists to run
+	shell.Isolate(cmd)
+	cmd.Dir = dir
+	cmd.Env = hostEnv()
+	return cmd
 }
 
 // Repo is a git repository, worked on through the directory Dir (the
@@ -47,10 +65,7 @@ func (r Repo) Run(ctx context.Context, args ...string) (string, error) {
 
 // output runs git in r.Dir and returns its stdout, also when it fails.
 func (r Repo) output(ctx context.Context, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", args...) //nolint:gosec // git is the tool this package exists to run
-	shell.Isolate(cmd)
-	cmd.Dir = r.Dir
-	cmd.Env = hostEnv()
+	cmd := hostCommand(ctx, r.Dir, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
@@ -85,11 +100,7 @@ func (r Repo) Prefix(ctx context.Context) (string, error) {
 
 // IsIgnored reports whether git ignores path, relative to r.Dir.
 func (r Repo) IsIgnored(ctx context.Context, path string) (bool, error) {
-	cmd := exec.CommandContext(ctx, "git", "check-ignore", "-q", "--", path) //nolint:gosec // path is a fixed path in the runtime state
-	shell.Isolate(cmd)
-	cmd.Dir = r.Dir
-	cmd.Env = hostEnv()
-	err := cmd.Run()
+	err := hostCommand(ctx, r.Dir, "check-ignore", "-q", "--", path).Run()
 	var exit *exec.ExitError
 	switch {
 	case err == nil:
@@ -212,9 +223,62 @@ func (r Repo) AddEmptyWorktree(ctx context.Context, path, rev string) error {
 }
 
 // RemoveWorktree removes the worktree at path, with whatever it holds.
+// What git can't remove itself is deleted from here: on Windows a container
+// leaves Linux symlinks in a bind-mounted worktree, which Git for Windows
+// can't delete and Go can. The repository's main checkout is never
+// deleted. The error names what is left, and where.
 func (r Repo) RemoveWorktree(ctx context.Context, path string) error {
-	_, err := r.Run(ctx, "worktree", "remove", "--force", path)
-	return err
+	_, gitErr := r.Run(ctx, "worktree", "remove", "--force", path)
+	if gitErr == nil {
+		return nil
+	}
+	if main, err := r.isMainCheckout(ctx, path); err != nil || main {
+		return gitErr
+	}
+	if err := os.RemoveAll(path); err != nil {
+		return fmt.Errorf("%w; the folder %s is left behind: %w", gitErr, path, err)
+	}
+	return r.pruneWorktrees(ctx)
+}
+
+// isMainCheckout reports whether path is this repository's main checkout,
+// with a .git directory or file of its own, rather than a linked worktree,
+// a leftover git no longer knows, or another repository.
+func (r Repo) isMainCheckout(ctx context.Context, path string) (bool, error) {
+	gitDir, common, found := gitDirsAt(ctx, path)
+	if !found || !sameFile(gitDir, common) {
+		return false, nil
+	}
+	own, err := r.Run(ctx, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil {
+		return false, err
+	}
+	return sameFile(common, own), nil
+}
+
+// gitDirsAt are the git directory and common directory of the checkout at
+// dir itself: git looks no further up, so a folder without a .git of its
+// own is found in no repository.
+func gitDirsAt(ctx context.Context, dir string) (gitDir, common string, found bool) {
+	cmd := hostCommand(ctx, dir, "rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir")
+	cmd.Env = append(cmd.Env, "GIT_CEILING_DIRECTORIES="+filepath.Dir(dir))
+	out, err := cmd.Output()
+	if err != nil {
+		return "", "", false
+	}
+	gitDir, common, found = strings.Cut(strings.TrimSpace(string(out)), "\n")
+	return gitDir, strings.TrimSpace(common), found
+}
+
+// sameFile reports whether a and b are the same existing file, however
+// each is spelled.
+func sameFile(a, b string) bool {
+	ai, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	bi, err := os.Stat(b)
+	return err == nil && os.SameFile(ai, bi)
 }
 
 // Rev is the SHA a revision names.
@@ -421,8 +485,8 @@ func pushRefused(porcelain string) bool {
 	return false
 }
 
-// PruneWorktrees forgets worktrees whose directory is gone.
-func (r Repo) PruneWorktrees(ctx context.Context) error {
+// pruneWorktrees forgets worktrees whose directory is gone.
+func (r Repo) pruneWorktrees(ctx context.Context) error {
 	_, err := r.Run(ctx, "worktree", "prune")
 	return err
 }

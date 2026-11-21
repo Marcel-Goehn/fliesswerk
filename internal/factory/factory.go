@@ -1262,11 +1262,7 @@ func (r *run) clearWorktree(ctx context.Context, dir string) error {
 	if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
-	_ = r.repo.RemoveWorktree(ctx, dir)
-	if err := os.RemoveAll(dir); err != nil {
-		return err
-	}
-	return r.repo.PruneWorktrees(ctx)
+	return r.repo.RemoveWorktree(ctx, dir)
 }
 
 // removeSpecWorktrees removes every Spec worktree at the end of the Run.
