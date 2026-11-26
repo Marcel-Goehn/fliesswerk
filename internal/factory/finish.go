@@ -3,6 +3,7 @@ package factory
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
@@ -19,6 +20,8 @@ type PullRequestSetting struct {
 	// InReviewLabel replaces the Claim of a Spec whose pull request is
 	// open.
 	InReviewLabel string
+	// NoPRLabel opts a Spec or standalone Ticket out of its pull request.
+	NoPRLabel string
 }
 
 // wasLast reports whether the Ticket that just closed was its Spec's last;
@@ -36,9 +39,26 @@ func (r *run) wasLast(tk tracker.Ticket, spec *tracker.Spec) bool {
 }
 
 // opensPullRequest reports whether w's Spec (or standalone Ticket) gets a
-// pull request when it finishes.
+// pull request when it finishes: unless it carries the no-pr label.
 func (r *run) opensPullRequest(w *ticketWork) bool {
-	return r.opts.PullRequest.Open
+	return r.opts.PullRequest.Open && !OptsOutOfPullRequest(r.opts.PullRequest.NoPRLabel, w.tk, w.spec)
+}
+
+// OptsOutOfPullRequest reports whether tk's Spec, or tk if it stands
+// alone, carries the no-pr label, and so gets no pull request. With no
+// label, nothing opts out.
+func OptsOutOfPullRequest(label string, tk tracker.Ticket, spec *tracker.Spec) bool {
+	if label == "" {
+		return false
+	}
+	labels := tk.Labels
+	if tk.Parent != nil {
+		if spec == nil {
+			return false
+		}
+		labels = spec.Labels
+	}
+	return slices.Contains(labels, label)
 }
 
 // staysInReview reports whether w, which is landing, stays open until its

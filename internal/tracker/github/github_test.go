@@ -136,6 +136,9 @@ func TestSnapshotFromRecordedIssueList(t *testing.T) {
 	if s.Title != "Spec: Factory v1 (Fliesswerk)" || !strings.HasPrefix(s.Body, "## Problem Statement") {
 		t.Errorf("spec = %q, %.30q…", s.Title, s.Body)
 	}
+	if !slices.Equal(s.Labels, []string{"ready-for-agent", "no-pr"}) {
+		t.Errorf("spec labels = %v, want ready-for-agent and no-pr", s.Labels)
+	}
 	if len(s.Tickets) != 34 {
 		t.Fatalf("spec has %d Tickets, want 34", len(s.Tickets))
 	}

@@ -91,7 +91,11 @@ func plannedPullRequests(ctx context.Context, tr tracker.Tracker, values map[str
 	base := stringAt(values, defaultBaseBranch, "branches", "base_branch")
 	prefix := stringAt(values, defaultPrefix, "branches", "prefix")
 	var lines []string
+	noPR := noPRLabel(values)
 	for _, f := range finishing {
+		if factory.OptsOutOfPullRequest(noPR, f.Ticket, f.Spec) {
+			continue
+		}
 		branch, err := factory.PlannedBranch(ctx, root, remote, prefix, f.Ticket, f.Spec)
 		if err != nil {
 			return nil, err

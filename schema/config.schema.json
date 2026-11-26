@@ -721,6 +721,10 @@
           ],
           "type": "string"
         },
+        "no_pr_label": {
+          "description": "The label that opts a Spec or standalone Ticket out of its pull request, with [pull_request] open = true. Default \"no-pr\".",
+          "type": "string"
+        },
         "ready_label": {
           "description": "The label that marks a Ticket Ready for agent.",
           "type": "string"

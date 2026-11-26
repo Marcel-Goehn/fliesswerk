@@ -412,6 +412,7 @@ func factoryOptions(values map[string]any, root, only string, tr tracker.Tracker
 			Open:          pullRequestsOpen(values),
 			Draft:         boolAt(values, false, "pull_request", "draft"),
 			InReviewLabel: inReviewLabel(values),
+			NoPRLabel:     noPRLabel(values),
 		},
 	}
 }

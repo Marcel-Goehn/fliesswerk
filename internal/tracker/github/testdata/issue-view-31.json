@@ -1,5 +1,19 @@
 {
   "body": "## Problem Statement\n\nOur workflow is `grill-with-docs / wayfinder → to-spec → to-tickets → implement → /code-review → /pr`. Once a Spec has been broken into Ready-for-agent Tickets, the implement ste\n\n[body cut for the fixture]",
+  "labels": [
+    {
+      "id": "LA_kwDOVgZxAM8AAAACfwlTnA",
+      "name": "ready-for-agent",
+      "description": "",
+      "color": "0e8a16"
+    },
+    {
+      "id": "LA_kwDOVgZxAM8AAAACfwlUbQ",
+      "name": "no-pr",
+      "description": "Fliesswerk opens no pull request for it",
+      "color": "ededed"
+    }
+  ],
   "number": 31,
   "state": "OPEN",
   "subIssues": {

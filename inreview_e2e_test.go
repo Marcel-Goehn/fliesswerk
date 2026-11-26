@@ -150,7 +150,7 @@ func TestARunWithPullRequestsAndNoInReviewLabelStopsBeforeClaimingAnything(t *te
 func TestInitCreatesTheInReviewLabelByItsConfiguredName(t *testing.T) {
 	config := teamConfig + "in_review_label = \"waiting\"\n\n[pull_request]\nopen = true\n"
 	p := teamProject(t, map[string]string{"config.toml": config, "config.local.toml": myDocker})
-	p.withLabels(t, "ready-for-agent", "in-progress", "needs-investigation")
+	p.withLabels(t, "ready-for-agent", "in-progress", "needs-investigation", "no-pr")
 
 	p.init(t, p.initEnv(t))
 

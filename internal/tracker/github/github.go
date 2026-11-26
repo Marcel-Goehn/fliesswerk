@@ -191,6 +191,9 @@ func (t *Tracker) spec(ctx context.Context, home string, id tracker.ID) (tracker
 		return tracker.Spec{}, err
 	}
 	s := tracker.Spec{ID: id, Title: i.Title, Body: i.Body, Claim: c}
+	for _, l := range i.Labels {
+		s.Labels = append(s.Labels, l.Name)
+	}
 	for _, c := range i.SubIssues.Nodes {
 		s.Tickets = append(s.Tickets, tracker.SpecTicket{ID: idFor(home, c.URL, c.Number), Title: c.Title, State: stateOf(c.State)})
 	}

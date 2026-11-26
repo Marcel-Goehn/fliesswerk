@@ -111,6 +111,8 @@ type Spec struct {
 	ID    ID
 	Title string
 	Body  string
+	// Labels are the Spec's own labels.
+	Labels []string
 	// Tickets is the Spec's full list of sub-issues, in the Tracker's
 	// order.
 	Tickets []SpecTicket

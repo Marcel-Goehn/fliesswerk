@@ -74,10 +74,12 @@ draft = false  # true opens it as a draft
 
 The pull request goes from the Spec branch into `base_branch`. Its title is the Spec's (or the standalone Ticket's), and its body says `Closes #<N>` and lists each closed Ticket with its number, title and summary. If a pull request is already open for the branch, say after a follow-up Ticket, it is reused as it is: its title and body aren't changed. A branch whose earlier pull requests were all merged or closed gets a new one. Its link is printed as a live line, and shown next to the finished Spec in the summary and in `summary.json`. The `spec_finished` Hook runs after the pull request was opened or found, so it can look it up on `$FLIESSWERK_BRANCH`. With `open = false`, the default, the Factory opens no pull requests.
 
+To skip the pull request for one Spec or standalone Ticket, say a quick fix you merge yourself, give that Spec (or the standalone Ticket) the `no_pr_label` (default `no-pr`). It then finishes as it does with `open = false`: its branch is pushed, no pull request is looked up or opened, it gets no In review label, and `spec_finished` still runs. The label goes on the Spec, not on its Tickets. With `open = false` the label has no effect.
+
 When a standalone Ticket closes depends on this setting:
 
 - With `open = true`, a standalone Ticket stays open when it lands. It loses the ready label, so no Run takes it again, and gets the comment it would have got on close (the summary, the commits and the branch) with the pull request's link. The `Closes #<N>` in the pull request closes it when the pull request is merged. Tickets it blocks wait until then, so they start from code that has its work in it.
-- With `open = false`, a standalone Ticket closes when it lands, as soon as its code is pushed to its own branch.
+- With `open = false`, or with the `no_pr_label` on the Ticket, a standalone Ticket closes when it lands, as soon as its code is pushed to its own branch.
 
 A Spec's Tickets close when they land either way, so the next ones can start on the Spec branch.
 

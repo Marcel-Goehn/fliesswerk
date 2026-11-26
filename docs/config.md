@@ -111,6 +111,10 @@ The label that replaces the ready label on a Ticket the Factory hands back to a 
 
 The label that replaces the in-progress label on a finished Spec or standalone Ticket whose pull request is open, and that a new Claim removes again. Default `"in-review"`. With [`pull_request.open`](#pull_requestopen) on, the label must exist in the repository; `init` creates it. Otherwise it is never used.
 
+### `tracker.no_pr_label`
+
+The label that opts a single Spec or standalone Ticket out of its pull request, for a quick fix you merge yourself. A Spec or standalone Ticket that carries it finishes as with [`pull_request.open`](#pull_requestopen) off: no pull request, no In review label, and a standalone Ticket closes when it lands. Put it on the Spec, not on its Tickets. Default `"no-pr"`. With `pull_request.open` on, the label must exist in the repository; `init` creates it. Otherwise it has no effect.
+
 ### `tracker.token`
 
 Where the GitHub token comes from, as a [secret source](#secret-sources). Local only. Unset, `gh` uses its own login. The token is used on your machine only and never reaches the agent. See the [setup guide](setup.md#creating-a-fine-grained-token) for a token that reaches one repository.

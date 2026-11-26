@@ -179,7 +179,7 @@ func (t *Tracker) children(parent int) []int {
 func (t *Tracker) spec(n int) tracker.Spec {
 	s := tracker.Spec{ID: ID(n)}
 	if p := t.issues[n]; p != nil {
-		s.Title, s.Body, s.Claim = p.Title, p.Body, t.claim(p)
+		s.Title, s.Body, s.Labels, s.Claim = p.Title, p.Body, slices.Clone(p.Labels), t.claim(p)
 	}
 	for _, c := range t.children(n) {
 		i := t.issues[c]

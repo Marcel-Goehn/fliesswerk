@@ -12,6 +12,7 @@ const (
 	defaultReadyLabel      = "ready-for-agent"
 	defaultInProgressLabel = "in-progress"
 	defaultInReviewLabel   = "in-review"
+	defaultNoPRLabel       = "no-pr"
 	defaultMaxParallel     = 1
 )
 
@@ -55,6 +56,15 @@ func inReviewLabel(values map[string]any) string {
 		return ""
 	}
 	return stringAt(values, defaultInReviewLabel, "tracker", "in_review_label")
+}
+
+// noPRLabel is the label that opts a Spec or standalone Ticket out of its
+// pull request, "" when the Factory opens none.
+func noPRLabel(values map[string]any) string {
+	if !pullRequestsOpen(values) {
+		return ""
+	}
+	return stringAt(values, defaultNoPRLabel, "tracker", "no_pr_label")
 }
 
 func maxParallel(values map[string]any) int {
