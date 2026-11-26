@@ -48,7 +48,7 @@ That is "finish what's started": a Spec gets finished before the next one starts
 3. **implement**: the agent writes the code, commits, and reports `done` or `cannot_do`
 4. **review**, in a fresh session, if `[steps.review] enabled` and implement made commits: it either approves or commits fixes
 5. **verify**: the Factory runs the Feedback commands in `verify` itself, after the last Step that changed code
-6. The Spec's merge queue: merged into the Spec branch by code, or by the **merge** Step on a real conflict, then pushed, then the Ticket is closed with a comment that names the summary, the commits and the branch
+6. The Spec's merge queue: merged into the Spec branch by code, or by the **merge** Step on a real conflict, then pushed, then the Ticket is closed with a comment that names the summary, the commits and the branch (a standalone Ticket that gets a pull request stays open, see below)
 
 After every committing Step, the Factory checks that no Protected path was changed. When every Ticket in the Iteration has finished, the Factory reads the Tracker again and the next Iteration takes the Tickets that are ready now. A Run ends when nothing is ready, after `max_iterations` (default 10), or when it is stopped.
 
@@ -60,16 +60,28 @@ After every committing Step, the Factory checks that no Protected path was chang
 | Standalone Ticket's branch | `fliesswerk/ticket-<N>-<slug>` | Always |
 | Ticket branch inside a Spec | `fliesswerk/ticket-<N>` | Until the Ticket lands. It is never pushed |
 
-`fliesswerk` is `[branches] prefix`. A Spec branch is cut from the remote `base_branch` the first time, and pushed after every Ticket that lands. Closed always means the code is on GitHub. An existing Spec branch, local or remote, is found by its number and continued, so a Spec can be handed over or moved to another machine.
+`fliesswerk` is `[branches] prefix`. A Spec branch is cut from the remote `base_branch` the first time, and pushed after every Ticket that lands. Closed always means the code is on GitHub (and, for a standalone Ticket that got a pull request, in `base_branch`). An existing Spec branch, local or remote, is found by its number and continued, so a Spec can be handed over or moved to another machine.
 
 All the Factory's work happens in its own worktrees under `.fliesswerk/state/`. Your checkout is never touched: keep working on any branch, even with uncommitted changes. The Factory never rebases a Spec branch, never merges `base_branch` into it, never force-pushes and never pushes `base_branch`.
 
-The Factory doesn't open pull requests. Open one when a Spec is finished, or have a `spec_finished` Hook do it. Host Hooks run with your own `gh` login:
+To have the Factory open the pull request when a Spec's last Ticket lands, or a standalone Ticket lands, turn it on in `config.toml`:
 
 ```toml
-[[hooks.spec_finished]]
-run = 'gh pr create --fill --head "$FLIESSWERK_BRANCH"'
+[pull_request]
+open  = true
+draft = false  # true opens it as a draft
 ```
+
+The pull request goes from the Spec branch into `base_branch`. Its title is the Spec's (or the standalone Ticket's), and its body says `Closes #<N>` and lists each closed Ticket with its number, title and summary. If a pull request is already open for the branch, say after a follow-up Ticket, it is reused as it is: its title and body aren't changed. A branch whose earlier pull requests were all merged or closed gets a new one. Its link is printed as a live line, and shown next to the finished Spec in the summary and in `summary.json`. The `spec_finished` Hook runs after the pull request was opened or found, so it can look it up on `$FLIESSWERK_BRANCH`. With `open = false`, the default, the Factory opens no pull requests.
+
+To skip the pull request for one Spec or standalone Ticket, say a quick fix you merge yourself, give that Spec (or the standalone Ticket) the `no_pr_label` (default `no-pr`). It then finishes as it does with `open = false`: its branch is pushed, no pull request is looked up or opened, it gets no In review label, and `spec_finished` still runs. The label goes on the Spec, not on its Tickets. With `open = false` the label has no effect.
+
+When a standalone Ticket closes depends on this setting:
+
+- With `open = true`, a standalone Ticket stays open when it lands. It loses the ready label, so no Run takes it again, and gets the comment it would have got on close (the summary, the commits and the branch) with the pull request's link. The `Closes #<N>` in the pull request closes it when the pull request is merged. Tickets it blocks wait until then, so they start from code that has its work in it.
+- With `open = false`, or with the `no_pr_label` on the Ticket, a standalone Ticket closes when it lands, as soon as its code is pushed to its own branch.
+
+A Spec's Tickets close when they land either way, so the next ones can start on the Spec branch.
 
 ### When a Ticket fails
 
@@ -82,6 +94,7 @@ run = 'gh pr create --fill --head "$FLIESSWERK_BRANCH"'
 | The merge failed, or `verify` failed on the merged result | Discards the work and re-implements the Ticket fresh from the updated Spec branch in the next Iteration. A second failure hands it back |
 | A transient error, such as an outage | Retries the Step 3 times with backoff, then stops the Run and leaves the Ticket untouched |
 | An authentication error | Stops the Run at once, with no retry and once for the whole Run, says how to fix the credential, and leaves the Ticket untouched. Claude Code's credential is first checked here, at the first Step |
+| With `[pull_request] open = true`, looking up or opening the pull request of a finished Spec or standalone Ticket failed (a missing permission, say) | Keeps the pushed code, comments on the Spec or standalone Ticket with the reason, adds no In review label, still releases the Claim and runs `spec_finished`, and lists the Spec under Failed with kind `pull_request`. A standalone Ticket stays open without its ready label. No later Run retries the pull request by itself: it is tried again the next time that Spec or Ticket finishes, or you open it by hand |
 
 A handed-back Ticket's comment ends with the last 30 lines of its log in a collapsed **details** block, or the failing command's last 30 lines after a failed `verify`, plus the Run id and the local log path. The Tickets it blocks stay blocked, and the rest of the Spec goes on. To try again, fix the cause, then swap `needs-investigation` back for `ready-for-agent`.
 
@@ -100,6 +113,7 @@ The dry run checks the config, reads the Tracker and prints:
 - the Tickets that are ready, but for a later Iteration
 - every skipped Ticket with the reason and, where there is one, the fix
 - the Specs other people have claimed
+- with `[pull_request] open = true`, each Spec or standalone Ticket the Run would finish if its Tickets land, and whether its pull request would be opened or the open one (by its link) reused
 
 It writes nothing and starts nothing: no Sandbox, no branch, no label and no token spent. It exits with 1 if a skipped Ticket needs a fix, otherwise 0.
 
@@ -115,7 +129,7 @@ Either way the `run_end` Hook runs and the summary is written. The next Run clea
 | Code | Meaning |
 | --- | --- |
 | 0 | Nothing is left that needs a person: nothing more was ready and nothing failed, or the Run reached `max_iterations` |
-| 1 | Some Tickets failed, were handed back with `cannot_do`, or were skipped and need a fix |
+| 1 | Some Tickets failed, were handed back with `cannot_do`, or were skipped and need a fix, or a finished Spec's pull request couldn't be opened |
 | 2 | The Run was stopped: an authentication error, a transient error that outlasted its retries, a failed `run_start` Hook, Ctrl-C, an unreadable Tracker, or another Run holding the checkout's Run lock |
 | 3 | The config is invalid, `check` failed, or the project isn't set up for a Run |
 
@@ -142,7 +156,7 @@ Local-only settings can also come from flags, which override both config files f
 
 ### The summary
 
-When a Run ends it prints a summary, leaving out empty sections: the duration, Iterations and exit code, then the Tickets closed (with commits, largest context window and cost), failed (with the reason), stopped and skipped (with the fix), how many Tickets were still ready at the limit, the Specs finished, memory, writes queued for replay, the tokens and cost per Ticket and for the Run, and the log directory.
+When a Run ends it prints a summary, leaving out empty sections: the duration, Iterations and exit code, then the Tickets closed (with commits, largest context window and cost), the standalone Tickets that landed but stay open until their pull request is merged (likewise), failed (with the reason), stopped and skipped (with the fix), how many Tickets were still ready at the limit, the Specs finished, memory, writes queued for replay, the tokens and cost per Ticket and for the Run, and the log directory.
 
 Cost is shown in the unit the Harness reports and never converted. Mixed units are summed separately, such as `$3.10 + 12 credits (2 Steps reported no cost)`. A cost the Harness doesn't report is never made up.
 
@@ -182,11 +196,12 @@ Only directories named like Run ids are removed. Anything else in `.fliesswerk/l
 | `run_id`, `started_at`, `duration_seconds`, `iterations` | The Run |
 | `exit_code`, `exit_meaning` | How it ended |
 | `closed` | `id`, `title`, `spec` (empty for a standalone Ticket), `commits`, `largest_context_window`, `cost_display` |
+| `landed` | The same fields, for each standalone Ticket that landed but stays open until its pull request is merged (with `[pull_request] open = true`). It is not in `closed` |
 | `failed` | `id`, `title`, `reason`, `kind`, `largest_context_window` |
 | `stopped` | `reason` (empty unless the whole Run stopped) and `specs`: `id`, `branch` and `fix` for each Spec a rejected push stopped |
 | `skipped` | `text_only_blockers` (`id`, `title`, `reason`, `fix`), `claimed_by_others` (`id`, `title`, `by`, `at`) and `outside_blockers` |
 | `still_ready` | How many Tickets were still ready when the Run reached `max_iterations` |
-| `specs_finished` | `id`, `title`, `branch` |
+| `specs_finished` | `id`, `title`, `branch` and `pull_request`, the URL of its pull request (empty for none) |
 | `memory` | `peak_estimate_mb`, `waits`, or `null` when nothing was measured |
 | `queued_writes` | Tracker writes waiting to be replayed |
 | `tickets` | `id` and `usage` for each Ticket that ran a Step |
@@ -194,11 +209,13 @@ Only directories named like Run ids are removed. Anything else in `.fliesswerk/l
 | `usage` | The Run's `input`, `output`, `cache_read`, `cache_write`, `cost` (by unit), `steps_without_cost` and `cost_display` |
 | `log_dir` | The Run's log directory |
 
-A failure's `kind` is one of `cannot_do`, `no_changes`, `no_report`, `harness_error`, `verify`, `merge`, `protected_path`, `sandbox_created`, `push_rejected`, `out_of_memory` or `factory`.
+A failure's `kind` is one of `cannot_do`, `no_changes`, `no_report`, `harness_error`, `verify`, `merge`, `protected_path`, `sandbox_created`, `push_rejected`, `out_of_memory`, `pull_request` (a finished Spec or standalone Ticket, under its own id, whose pull request couldn't be looked up or opened) or `factory`.
 
 ## Claims and `release`
 
-The first time a Run takes a Ticket from a Spec, it claims the Spec: it adds the `in_progress_label` and assigns the Spec to the user of the GitHub token. A standalone Ticket is claimed itself. The Claim lasts across Runs until the Spec's last Ticket closes.
+The first time a Run takes a Ticket from a Spec, it claims the Spec: it adds the `in_progress_label` and assigns the Spec to the user of the GitHub token. A standalone Ticket is claimed itself. The Claim lasts across Runs until the Spec's last Ticket lands.
+
+With [`pull_request.open`](config.md#pull_requestopen) on, a finished Spec or standalone Ticket whose pull request is open goes **In review**: the Factory releases its Claim and adds the `in_review_label` (default `in-review`), so GitHub shows which work waits in a pull request. The issue closes when the pull request is merged. If a Spec in review gets a new ready Ticket, or a standalone Ticket in review gets its ready label back, the next Run claims it again, and the Claim removes the In review label. The Factory doesn't watch the pull request: if you close it without merging, remove the label yourself. Remove it yourself too after turning `open` off: from then on a Claim leaves the label alone, since it may not exist in the repository.
 
 Everyone else's Runs skip a claimed Spec. `check`, the dry run and the summary list it with the claimer and the date. Your own Runs take your claimed Specs first.
 

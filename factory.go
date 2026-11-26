@@ -364,7 +364,13 @@ func preflight(ctx context.Context, tr tracker.Tracker, values map[string]any, s
 			return fmt.Errorf("%s: %w", c.Name, err)
 		}
 	}
-	return checkLabels(ctx, tr, values)
+	if err := checkLabels(ctx, tr, values); err != nil {
+		return err
+	}
+	if pullRequestsOpen(values) {
+		return checkPullRequests(ctx, tr)
+	}
+	return nil
 }
 
 // factoryOptions are the Options of a Run with this config.
@@ -401,6 +407,12 @@ func factoryOptions(values map[string]any, root, only string, tr tracker.Tracker
 			SandboxCreated: hookEntries(values, "sandbox_created", s),
 			SpecFinished:   hookEntries(values, "spec_finished", s),
 			RunEnd:         hookEntries(values, "run_end", s),
+		},
+		PullRequest: factory.PullRequestSetting{
+			Open:          pullRequestsOpen(values),
+			Draft:         boolAt(values, false, "pull_request", "draft"),
+			InReviewLabel: inReviewLabel(values),
+			NoPRLabel:     noPRLabel(values),
 		},
 	}
 }

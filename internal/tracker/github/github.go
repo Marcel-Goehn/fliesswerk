@@ -39,7 +39,10 @@ type Options struct {
 	ReadyLabel string
 	// InProgressLabel marks a claimed Spec or standalone Ticket.
 	InProgressLabel string
-	Runner          Runner
+	// InReviewLabel marks a Spec or standalone Ticket whose work waits in
+	// an open pull request; a Claim removes it. "" for none.
+	InReviewLabel string
+	Runner        Runner
 	// GOOS picks the install command `check` names; runtime.GOOS in
 	// production.
 	GOOS string
@@ -188,6 +191,9 @@ func (t *Tracker) spec(ctx context.Context, home string, id tracker.ID) (tracker
 		return tracker.Spec{}, err
 	}
 	s := tracker.Spec{ID: id, Title: i.Title, Body: i.Body, Claim: c}
+	for _, l := range i.Labels {
+		s.Labels = append(s.Labels, l.Name)
+	}
 	for _, c := range i.SubIssues.Nodes {
 		s.Tickets = append(s.Tickets, tracker.SpecTicket{ID: idFor(home, c.URL, c.Number), Title: c.Title, State: stateOf(c.State)})
 	}
@@ -352,9 +358,14 @@ func (t *Tracker) apiPath(key string) string {
 	return "repos/" + repo + "/issues/" + n
 }
 
-// Claim adds the in-progress label and gh's own login as assignee.
+// Claim adds the in-progress label and gh's own login as assignee, and
+// removes the In review label.
 func (t *Tracker) Claim(ctx context.Context, id tracker.ID) error {
-	args := append(t.args("issue", "edit", id.Key), "--add-label", t.opts.InProgressLabel, "--add-assignee", "@me")
+	args := append(t.args("issue", "edit", id.Key), "--add-label", t.opts.InProgressLabel)
+	if t.opts.InReviewLabel != "" {
+		args = append(args, "--remove-label", t.opts.InReviewLabel)
+	}
+	args = append(args, "--add-assignee", "@me")
 	if err := t.write(ctx, id, nil, args...); err != nil {
 		return fmt.Errorf("claiming %s: %w", id.Display, err)
 	}

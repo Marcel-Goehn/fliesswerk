@@ -101,6 +101,8 @@ type Options struct {
 	Only string
 	// Hooks are the project's Hooks; none means nothing runs.
 	Hooks Hooks
+	// PullRequest is whether, and how, a finished Spec gets a pull request.
+	PullRequest PullRequestSetting
 	// Drain, once closed, stops new work: the Tickets in flight finish and
 	// nothing else starts. Ending the context of Run instead kills every
 	// Step and discards the work in flight. Either way the Run stops.
@@ -163,7 +165,10 @@ const (
 	KindHook          = "sandbox_created"
 	KindPushRejected  = "push_rejected"
 	KindFactory       = "factory"
-	KindOutOfMemory   = "out_of_memory"
+	// KindPullRequest is a finished Spec whose pull request couldn't be
+	// looked up or opened.
+	KindPullRequest = "pull_request"
+	KindOutOfMemory = "out_of_memory"
 )
 
 // TicketStats are what a Ticket's Steps used, over all their attempts.
@@ -189,11 +194,17 @@ type FinishedSpec struct {
 	ID     tracker.ID
 	Title  string
 	Branch string
+	// PullRequest is the URL of its branch's pull request, opened or
+	// reused, "" for none.
+	PullRequest string
 }
 
 // Result is how a Run ended.
 type Result struct {
 	Closed []tracker.Ticket
+	// Landed are the standalone Tickets whose work landed but which stay
+	// open until their pull request is merged.
+	Landed []tracker.Ticket
 	Failed []Failure
 	// Iterations is how many Iterations took Tickets.
 	Iterations int
@@ -264,9 +275,12 @@ type run struct {
 	claimed map[string]bool
 	// requeued holds the Tickets whose merge has failed once, by ID.Key.
 	requeued map[string]bool
+	// summaries holds what the agent said it did, for each Ticket this Run
+	// closed, by ID.Key.
+	summaries map[string]string
 	// mu guards what the Tickets of an Iteration share: res, done,
-	// stoppedSpecs, logs and requeued. It also keeps calls of opts.Log one
-	// at a time.
+	// stoppedSpecs, logs, requeued and summaries. It also keeps calls of
+	// opts.Log one at a time.
 	mu sync.Mutex
 	// gitMu keeps the Tickets' changes to .git/config one at a time: git
 	// refuses a second writer.
@@ -283,6 +297,7 @@ func Run(ctx context.Context, opts Options) Result {
 		worktrees: filepath.Join(opts.Root, StateDir, "worktrees"),
 		specDirs:  map[string]string{}, done: map[string]bool{}, stoppedSpecs: map[string]bool{},
 		logs: map[string]*lastLines{}, claimed: map[string]bool{}, requeued: map[string]bool{},
+		summaries: map[string]string{},
 	}
 	r.writes = &durableTracker{
 		Tracker: opts.Tracker, path: filepath.Join(opts.Root, StateDir, "replay.json"),
@@ -591,6 +606,13 @@ type ticketWork struct {
 	b                   build
 	// resolution is the merge Step's summary, if one resolved a conflict.
 	resolution string
+	// staysOpen reports that the Ticket landed but, as a standalone
+	// Ticket that gets a pull request, stays open until that is merged.
+	staysOpen bool
+	// workDone is what was done on a Ticket that stays open, from
+	// workComment: the start of the comment it gets once its pull request
+	// is opened or has failed.
+	workDone string
 }
 
 // iterate takes the Iteration's Tickets through their Steps at once, and
@@ -748,17 +770,6 @@ func (r *run) abandon(w *ticketWork) error {
 	return errKilled
 }
 
-// finishSpec notes that the Ticket's Spec is finished.
-func (r *run) finishSpec(tk tracker.Ticket, spec *tracker.Spec, branch string) {
-	title := tk.Title
-	if spec != nil {
-		title = spec.Title
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.res.SpecsFinished = append(r.res.SpecsFinished, FinishedSpec{ID: tk.SpecID(), Title: title, Branch: branch})
-}
-
 // claim claims the Ticket's Spec (or the Ticket, if it stands alone) the
 // first time a Run takes a Ticket from it. A Spec the user claimed before
 // keeps its Claim.
@@ -773,30 +784,6 @@ func (r *run) claim(ctx context.Context, tk tracker.Ticket, snap tracker.Snapsho
 	r.claimed[id.Key] = true
 	r.logf("%s: claimed", id)
 	return nil
-}
-
-// wasLast reports whether the Ticket that just closed was its Spec's last;
-// a standalone Ticket's closing is its last.
-func (r *run) wasLast(tk tracker.Ticket, spec *tracker.Spec) bool {
-	if spec == nil {
-		return tk.Parent == nil // without the Spec's Ticket list, it can't be known
-	}
-	for _, st := range spec.Tickets {
-		if st.State == tracker.Open && !r.closed(st.ID) {
-			return false
-		}
-	}
-	return true
-}
-
-// release releases the Claim on a finished Spec. Its last Ticket is closed
-// already, so a failed release only warns.
-func (r *run) release(ctx context.Context, id tracker.ID) {
-	if err := r.opts.Tracker.Release(ctx, id, r.user); err != nil {
-		r.warnf("%s: warning: its last Ticket closed, but releasing its claim failed: %v", id, err)
-		return
-	}
-	r.logf("%s: released (its last Ticket closed)", id)
 }
 
 // closed reports whether this Run closed the Ticket.
@@ -1173,6 +1160,46 @@ func (r *run) specStopped(tk tracker.Ticket) bool {
 // then on the remote, or cuts it from the remote base branch. A standalone
 // Ticket's branch takes the Spec branch's place.
 func (r *run) specBranch(ctx context.Context, tk tracker.Ticket, spec *tracker.Spec) (string, error) {
+	b, where, err := findBranch(ctx, r.repo, r.opts.Remote, r.opts.Prefix, tk, spec)
+	if err != nil {
+		return "", err
+	}
+	id := tk.SpecID()
+	switch where {
+	case branchLocal:
+		return b, nil
+	case branchRemote:
+		if err := r.repo.Fetch(ctx, r.opts.Remote, b); err != nil {
+			return "", err
+		}
+		r.logf("%s: continuing %s from %s", id, b, r.opts.Remote)
+		return b, r.repo.CreateBranch(ctx, b, r.opts.Remote+"/"+b)
+	}
+	r.logf("%s: cutting %s from %s/%s", id, b, r.opts.Remote, r.opts.BaseBranch)
+	return b, r.repo.CreateBranch(ctx, b, r.opts.Remote+"/"+r.opts.BaseBranch)
+}
+
+// PlannedBranch is the branch a Run in root would use for tk's Spec, or
+// for tk if it stands alone: the one that exists, locally or on remote,
+// or else the one the Run would cut. It changes nothing.
+func PlannedBranch(ctx context.Context, root, remote, prefix string, tk tracker.Ticket, spec *tracker.Spec) (string, error) {
+	b, _, err := findBranch(ctx, git.Repo{Dir: root}, remote, prefix, tk, spec)
+	return b, err
+}
+
+// branchPlace is where findBranch found a branch.
+type branchPlace int
+
+const (
+	branchNew    branchPlace = iota // nowhere: the Run would cut it
+	branchLocal                     // in the repository
+	branchRemote                    // only on the remote
+)
+
+// findBranch finds the branch of tk's Spec (or of tk, if it stands alone)
+// by number, locally and then on remote, and says where it found it. If
+// there is none, it names the branch a Run would cut.
+func findBranch(ctx context.Context, repo git.Repo, remote, branchPrefix string, tk tracker.Ticket, spec *tracker.Spec) (branch string, where branchPlace, err error) {
 	kind, id, title := "ticket", tk.ID, tk.Title
 	if tk.Parent != nil {
 		kind, id, title = "spec", *tk.Parent, ""
@@ -1180,32 +1207,22 @@ func (r *run) specBranch(ctx context.Context, tk tracker.Ticket, spec *tracker.S
 			title = spec.Title
 		}
 	}
-	prefix := r.opts.Prefix + "/" + kind + "-" + id.Branch + "-"
-	local, err := r.repo.LocalBranches(ctx, prefix)
+	prefix := branchPrefix + "/" + kind + "-" + id.Branch + "-"
+	local, err := repo.LocalBranches(ctx, prefix)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	if b, err := one(local, id, "locally"); err != nil || b != "" {
-		return b, err
+		return b, branchLocal, err
 	}
-	remote, err := r.repo.RemoteBranches(ctx, r.opts.Remote, prefix)
+	remotes, err := repo.RemoteBranches(ctx, remote, prefix)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
-	b, err := one(remote, id, "on "+r.opts.Remote)
-	if err != nil {
-		return "", err
+	if b, err := one(remotes, id, "on "+remote); err != nil || b != "" {
+		return b, branchRemote, err
 	}
-	if b != "" {
-		if err := r.repo.Fetch(ctx, r.opts.Remote, b); err != nil {
-			return "", err
-		}
-		r.logf("%s: continuing %s from %s", id, b, r.opts.Remote)
-		return b, r.repo.CreateBranch(ctx, b, r.opts.Remote+"/"+b)
-	}
-	b = prefix + slug(title, kind)
-	r.logf("%s: cutting %s from %s/%s", id, b, r.opts.Remote, r.opts.BaseBranch)
-	return b, r.repo.CreateBranch(ctx, b, r.opts.Remote+"/"+r.opts.BaseBranch)
+	return prefix + slug(title, kind), branchNew, nil
 }
 
 // one is the single branch of branches, "" if there is none.

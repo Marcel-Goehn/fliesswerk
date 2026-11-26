@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/Marcel-Goehn/fliesswerk/internal/factory"
 	"github.com/Marcel-Goehn/fliesswerk/internal/frontier"
 	"github.com/Marcel-Goehn/fliesswerk/internal/runlog"
 	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
@@ -57,14 +58,23 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		return exitStopped
 	}
 	limit := maxParallel(values)
-	p := frontier.Compute(snap, frontier.Options{
+	opts := frontier.Options{
 		ReadyLabel:     readyLabel(values),
 		MaxParallel:    limit,
 		LinkBlockerFix: tr.Describe().LinkBlockerFix,
 		User:           user,
 		Only:           only,
-	})
-	printPlan(stdout, stderr, p, limit)
+	}
+	p := frontier.Compute(snap, opts)
+	var prLines []string
+	if pullRequestsOpen(values) {
+		finishing := frontier.WouldFinish(snap, opts, intAt(values, defaultMaxIterations, "max_iterations"))
+		if prLines, err = plannedPullRequests(ctx, tr, values, root, finishing); err != nil {
+			_, _ = fmt.Fprintf(stderr, "fliesswerk run: %v\n", err)
+			return exitStopped
+		}
+	}
+	printPlan(stdout, stderr, p, limit, prLines)
 
 	for _, s := range p.Skipped {
 		if s.NeedsFix {
@@ -74,8 +84,37 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
-// printPlan prints a dry run's Plan.
-func printPlan(stdout, stderr io.Writer, p frontier.Plan, limit int) {
+// plannedPullRequests says, for each Spec or standalone Ticket that would
+// finish, whether the Run would open its pull request or reuse the open
+// one. It only reads: the Tracker's pull requests and the branches.
+func plannedPullRequests(ctx context.Context, tr tracker.Tracker, values map[string]any, root string, finishing []frontier.Finishing) ([]string, error) {
+	base := stringAt(values, defaultBaseBranch, "branches", "base_branch")
+	prefix := stringAt(values, defaultPrefix, "branches", "prefix")
+	var lines []string
+	noPR := noPRLabel(values)
+	for _, f := range finishing {
+		if factory.OptsOutOfPullRequest(noPR, f.Ticket, f.Spec) {
+			continue
+		}
+		branch, err := factory.PlannedBranch(ctx, root, remote, prefix, f.Ticket, f.Spec)
+		if err != nil {
+			return nil, err
+		}
+		url, err := tr.FindPullRequest(ctx, branch)
+		if err != nil {
+			return nil, err
+		}
+		what := "would open a pull request into " + base
+		if url != "" {
+			what = "would reuse the open pull request " + url
+		}
+		lines = append(lines, fmt.Sprintf("%s  %s: %s", f.ID(), f.Title(), what))
+	}
+	return lines, nil
+}
+
+// printPlan prints a dry run's Plan, and what prLines say about pull requests.
+func printPlan(stdout, stderr io.Writer, p frontier.Plan, limit int, prLines []string) {
 	noun := "Tickets"
 	if len(p.Take) == 1 {
 		noun = "Ticket"
@@ -100,6 +139,12 @@ func printPlan(stdout, stderr io.Writer, p frontier.Plan, limit int) {
 		}
 	}
 	printClaimedByOthers(stdout, p.ClaimedByOthers)
+	if len(prLines) > 0 {
+		_, _ = fmt.Fprintln(stdout, "\nPull requests, once the Run's Tickets land:")
+		for _, line := range prLines {
+			_, _ = fmt.Fprintf(stdout, "  %s\n", line)
+		}
+	}
 	for _, w := range p.Warnings {
 		_, _ = fmt.Fprintf(stderr, "warning: %s\n", w)
 	}

@@ -136,11 +136,31 @@ func (d *durableTracker) dequeue(w *queuedWrite) error {
 	return d.save()
 }
 
-// attempt tries w, and retries it with backoff, waiting at least as long
-// as a rate limit asks. A kill of the Run ends the waiting.
+// OpenPullRequest opens a pull request, retried like every other write.
+// Unlike them it isn't queued for replay, as nothing retries a pull
+// request on its own (Spec #132): one that can't be opened is a failure
+// a person is told about and opens by hand, and a replay in a later Run
+// could open one after they merged their own, or chose not to open one.
+func (d *durableTracker) OpenPullRequest(ctx context.Context, pr tracker.PullRequest) (url string, err error) {
+	err = d.retry(ctx, func() error {
+		ctx, cancel := writeContext(ctx)
+		defer cancel()
+		url, err = d.Tracker.OpenPullRequest(ctx, pr)
+		return err
+	})
+	return url, err
+}
+
+// attempt tries w, and retries it with backoff.
 func (d *durableTracker) attempt(ctx context.Context, w queuedWrite) error {
+	return d.retry(ctx, func() error { return d.apply(ctx, w) })
+}
+
+// retry calls send, and retries it with backoff, waiting at least as long
+// as a rate limit asks. A kill of the Run ends the waiting.
+func (d *durableTracker) retry(ctx context.Context, send func() error) error {
 	for retry := 1; ; retry++ {
-		err := d.apply(ctx, w)
+		err := send()
 		if err == nil || retry > writeRetries {
 			return err
 		}
@@ -158,10 +178,16 @@ func (d *durableTracker) attempt(ctx context.Context, w queuedWrite) error {
 	}
 }
 
-// apply sends w once. A write that has begun isn't killed with the Run:
-// half of one is worse than a moment's wait.
+// writeContext is the context of one attempt at a write. A write that has
+// begun isn't killed with the Run: half of one is worse than a moment's
+// wait.
+func writeContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), writeTimeout)
+}
+
+// apply sends w once.
 func (d *durableTracker) apply(ctx context.Context, w queuedWrite) error {
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), writeTimeout)
+	ctx, cancel := writeContext(ctx)
 	defer cancel()
 	switch w.Op {
 	case opComment:

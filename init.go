@@ -57,19 +57,19 @@ func runInit(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	var answers *setup.Answers
 	var repo string
 	var values map[string]any
-	hasServices := false
+	hasServices, pullRequests := false, false
 	if hasConfig {
 		values = config.Load(root, nil).Values
 		files = setup.Recreated()
 		repo = stringAt(values, facts.Repo, "tracker", "repo")
-		hasServices = config.HasServices(values)
+		hasServices, pullRequests = config.HasServices(values), pullRequestsOpen(values)
 	} else {
 		a, err := setup.Ask(root, ask, facts, trackerInfo.Questions)
 		if err != nil {
 			return fail(err)
 		}
 		a.TokenKey = trackerInfo.Access.TokenKey(a.Values["tracker.repo"])
-		files, answers, repo, hasServices = setup.Files(facts, a, h, version), &a, a.Values["tracker.repo"], a.ComposeFile != ""
+		files, answers, repo, hasServices, pullRequests = setup.Files(facts, a, h, version), &a, a.Values["tracker.repo"], a.ComposeFile != "", a.OpenPullRequests
 	}
 	// The kind is this person's: asked now, or in the file they have. An
 	// unreadable file has no kind, so no Containerfile comes back.
@@ -79,7 +79,7 @@ func runInit(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		home, _ := os.UserHomeDir() // without one, there's just nothing to import
 		personal, err = setup.AskPersonal(ctx, ask, setup.PersonalInput{Harness: desc, Tracker: trackerInfo.Access, Repo: repo, Store: store, Root: root, Home: home,
 			FindInterception: findInterception(values, root), TeamCACerts: stringsOf(valueAt(values, "network", "ca_certs")),
-			HasServices: hasServices, Installed: installed})
+			HasServices: hasServices, Installed: installed, PullRequests: pullRequests})
 		if err != nil {
 			return fail(err)
 		}

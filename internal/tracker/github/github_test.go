@@ -136,6 +136,9 @@ func TestSnapshotFromRecordedIssueList(t *testing.T) {
 	if s.Title != "Spec: Factory v1 (Fliesswerk)" || !strings.HasPrefix(s.Body, "## Problem Statement") {
 		t.Errorf("spec = %q, %.30q…", s.Title, s.Body)
 	}
+	if !slices.Equal(s.Labels, []string{"ready-for-agent", "no-pr"}) {
+		t.Errorf("spec labels = %v, want ready-for-agent and no-pr", s.Labels)
+	}
 	if len(s.Tickets) != 34 {
 		t.Fatalf("spec has %d Tickets, want 34", len(s.Tickets))
 	}
@@ -440,6 +443,21 @@ func TestClaimAndReleaseGoThroughGh(t *testing.T) {
 		{args: "issue edit 31 --repo " + repo + " --add-label in-progress --add-assignee @me"},
 		{args: "issue edit 31 --repo " + repo + " --remove-label in-progress --remove-assignee alice"},
 	}
+	if !slices.Equal(r.calls, want) {
+		t.Fatalf("calls = %q\nwant    %q", r.calls, want)
+	}
+}
+
+func TestClaimRemovesTheInReviewLabel(t *testing.T) {
+	id := tracker.ID{Key: "31", Display: "#31", Branch: "31"}
+	r := &fixtureRunner{t: t}
+	tr := github.New(github.Options{Repo: repo, ReadyLabel: "ready-for-agent", InProgressLabel: "in-progress", InReviewLabel: "in-review", Runner: r, GOOS: "linux"})
+
+	if err := tr.Claim(context.Background(), id); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []call{{args: "issue edit 31 --repo " + repo + " --add-label in-progress --remove-label in-review --add-assignee @me"}}
 	if !slices.Equal(r.calls, want) {
 		t.Fatalf("calls = %q\nwant    %q", r.calls, want)
 	}

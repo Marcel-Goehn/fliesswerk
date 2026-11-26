@@ -21,14 +21,18 @@ import (
 //	 "issues": [{"Number": 1, …}], "writes": []}
 //
 // in_progress_label and user may be left out for the fake's defaults.
+// "pull_requests" are the repository's pull requests, each with a "State"
+// of "open", "merged" or "closed"; an opened one is added there.
 // "labels" lists the repository's labels; left out, it has every label it
-// is asked about.
+// is asked about. "no_pull_request_permission" makes the token one that
+// can't open pull requests, and "fail_pull_requests" makes every lookup
+// ("find") or opening ("open") of a pull request fail.
 //
 // Every write is applied to the file, and recorded in "writes". The next
 // "fail_writes" writes fail instead, and with "fail_snapshot" so does
 // every Snapshot.
 func init() {
-	testTracker = func() (tracker.Tracker, error) {
+	testTracker = func(values map[string]any) (tracker.Tracker, error) {
 		path := os.Getenv("FWK_FAKE_TRACKER")
 		if path == "" {
 			return nil, nil
@@ -43,10 +47,13 @@ func init() {
 		}
 		tr := fake.New(st.ReadyLabel, st.Issues...)
 		tr.InProgressLabel = cmp.Or(st.InProgressLabel, tr.InProgressLabel)
+		tr.InReviewLabel = inReviewLabel(values)
 		tr.Me = cmp.Or(st.User, tr.Me)
 		if st.Labels != nil {
 			tr.Labels = *st.Labels
 		}
+		tr.PullRequests = st.PullRequests
+		tr.NoPullRequestPermission = st.NoPullRequestPermission
 		return &fileTracker{Tracker: tr, path: path, state: st}, nil
 	}
 }
@@ -57,10 +64,21 @@ type fakeState struct {
 	User            string       `json:"user,omitempty"`
 	Labels          *[]string    `json:"labels,omitempty"`
 	Issues          []fake.Issue `json:"issues"`
-	Writes          []fake.Write `json:"writes"`
-	FailWrites      int          `json:"fail_writes,omitempty"`
-	FailSnapshot    bool         `json:"fail_snapshot,omitempty"`
+	// PullRequests are the repository's pull requests, open, merged and
+	// closed.
+	PullRequests []fake.PullRequest `json:"pull_requests,omitempty"`
+	Writes       []fake.Write       `json:"writes"`
+	FailWrites   int                `json:"fail_writes,omitempty"`
+	FailSnapshot bool               `json:"fail_snapshot,omitempty"`
+	// NoPullRequestPermission is a token that can't open pull requests.
+	NoPullRequestPermission bool `json:"no_pull_request_permission,omitempty"`
+	// FailPullRequests is "find" or "open": every pull request lookup, or
+	// every opening of one, fails.
+	FailPullRequests string `json:"fail_pull_requests,omitempty"`
 }
+
+// errPullRequest is how a pull request write or lookup fails.
+var errPullRequest = errors.New("fake tracker: Resource not accessible by integration")
 
 // fileTracker is a fake Tracker that saves itself after every write.
 type fileTracker struct {
@@ -76,7 +94,7 @@ func (f *fileTracker) save(err error) error {
 		return err
 	}
 	st := f.state
-	st.Issues, st.Writes = f.Issues(), f.Writes()
+	st.Issues, st.Writes, st.PullRequests = f.Issues(), f.Writes(), f.PullRequests
 	if st.Labels != nil {
 		st.Labels = &f.Labels
 	}
@@ -130,6 +148,24 @@ func (f *fileTracker) MissingLabels(ctx context.Context, names []string) ([]stri
 		return nil, nil
 	}
 	return f.Tracker.MissingLabels(ctx, names)
+}
+
+func (f *fileTracker) FindPullRequest(ctx context.Context, head string) (string, error) {
+	if f.state.FailPullRequests == "find" {
+		return "", errPullRequest
+	}
+	return f.Tracker.FindPullRequest(ctx, head)
+}
+
+func (f *fileTracker) OpenPullRequest(ctx context.Context, pr tracker.PullRequest) (url string, err error) {
+	if f.state.FailPullRequests == "open" {
+		return "", errPullRequest
+	}
+	err = f.write(func() error {
+		url, err = f.Tracker.OpenPullRequest(ctx, pr)
+		return err
+	})
+	return url, err
 }
 
 func (f *fileTracker) CreateLabel(ctx context.Context, name, description string) error {

@@ -111,11 +111,24 @@ type Spec struct {
 	ID    ID
 	Title string
 	Body  string
+	// Labels are the Spec's own labels.
+	Labels []string
 	// Tickets is the Spec's full list of sub-issues, in the Tracker's
 	// order.
 	Tickets []SpecTicket
 	// Claim is nil if nobody claimed the Spec.
 	Claim *Claim
+}
+
+// Finished reports whether none of the Spec's Tickets is open, counting
+// as closed those that closed says are.
+func (s Spec) Finished(closed func(ID) bool) bool {
+	for _, st := range s.Tickets {
+		if st.State == Open && !closed(st.ID) {
+			return false
+		}
+	}
+	return true
 }
 
 // Snapshot is what the Tracker holds that the core needs to pick Tickets.
@@ -141,9 +154,18 @@ type Comment struct {
 	Body      string
 }
 
+// PullRequest is a pull request to open.
+type PullRequest struct {
+	// Head is the branch it merges, Base the one it merges into.
+	Head, Base  string
+	Title, Body string
+	// Draft opens it as a draft rather than ready for review.
+	Draft bool
+}
+
 // Tracker is the boundary every Tracker adapter implements. There are no
-// other writes than Comment, Close, SetLabels, Claim and Release, and
-// CreateLabel, which only `init` uses.
+// other writes than Comment, Close, SetLabels, Claim, Release and
+// OpenPullRequest, and CreateLabel, which only `init` uses.
 type Tracker interface {
 	// Snapshot reads every open Ticket with the ready label, and the Spec
 	// of each.
@@ -174,6 +196,15 @@ type Tracker interface {
 	// CreateLabel creates a label with a description. It never changes a
 	// label that already exists.
 	CreateLabel(ctx context.Context, name, description string) error
+	// FindPullRequest returns the URL of the open pull request from the
+	// branch head, "" if there is none. Merged and closed ones don't count.
+	FindPullRequest(ctx context.Context, head string) (string, error)
+	// OpenPullRequest opens a pull request and returns its URL.
+	OpenPullRequest(ctx context.Context, pr PullRequest) (string, error)
+	// CanOpenPullRequests checks, without opening one, that the Tracker's
+	// credential may open pull requests. Its error names the permission to
+	// add.
+	CanOpenPullRequests(ctx context.Context) error
 	// Describe tells the rest of the Factory what this Tracker needs.
 	Describe() Description
 }
@@ -219,8 +250,9 @@ type Access struct {
 	LoggedIn func(ctx context.Context) bool
 	// LoginLabel and TokenLabel offer that login and a token of their own.
 	LoginLabel, TokenLabel string
-	// Walkthrough says how to make a token for repo with the least it needs.
-	Walkthrough func(repo string) string
+	// Walkthrough says how to make a token for repo with the least it needs:
+	// with pullRequests, also enough to open pull requests.
+	Walkthrough func(repo string, pullRequests bool) string
 	// TokenKey is the token's name in the user-level credentials file. It
 	// differs per repo, as such a token only reaches one.
 	TokenKey func(repo string) string

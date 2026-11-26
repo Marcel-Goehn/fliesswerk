@@ -22,9 +22,12 @@ type Summary struct {
 	ExitCode        int            `json:"exit_code"`
 	ExitMeaning     string         `json:"exit_meaning"`
 	Closed          []ClosedTicket `json:"closed"`
-	Failed          []FailedTicket `json:"failed"`
-	Stopped         Stopped        `json:"stopped"`
-	Skipped         Skipped        `json:"skipped"`
+	// Landed are the standalone Tickets whose work landed but which stay
+	// open until their pull request is merged.
+	Landed  []ClosedTicket `json:"landed"`
+	Failed  []FailedTicket `json:"failed"`
+	Stopped Stopped        `json:"stopped"`
+	Skipped Skipped        `json:"skipped"`
 	// StillReady is how many Tickets were still ready when the Run reached
 	// max_iterations.
 	StillReady    int            `json:"still_ready"`
@@ -42,7 +45,7 @@ type Summary struct {
 	LogDir  string        `json:"log_dir"`
 }
 
-// ClosedTicket is a Ticket the Run closed.
+// ClosedTicket is a Ticket the Run closed, or landed and left open.
 type ClosedTicket struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
@@ -105,6 +108,9 @@ type FinishedSpec struct {
 	ID     string `json:"id"`
 	Title  string `json:"title"`
 	Branch string `json:"branch"`
+	// PullRequest is the URL of its branch's pull request, opened or
+	// reused, empty for none.
+	PullRequest string `json:"pull_request"`
 }
 
 // Memory is what the Run's memory admission saw.
@@ -167,7 +173,11 @@ func (s Summary) Text() string {
 		fmt.Fprintf(&b, "\nStill ready at the limit: %d\n", s.StillReady)
 	}
 	section(&b, "Specs finished", s.SpecsFinished, func(f FinishedSpec) string {
-		return fmt.Sprintf("  %s  %s  (%s)", f.ID, f.Title, f.Branch)
+		line := fmt.Sprintf("  %s  %s  (%s)", f.ID, f.Title, f.Branch)
+		if f.PullRequest != "" {
+			line += "  " + f.PullRequest
+		}
+		return line
 	})
 	if s.Memory != nil {
 		fmt.Fprintf(&b, "\nMemory: peak estimate %d MB, %d %s\n", s.Memory.PeakEstimateMB, s.Memory.Waits, plural(s.Memory.Waits, "wait", "waits"))
@@ -191,13 +201,16 @@ func (s Summary) writeTokens(b *strings.Builder) {
 }
 
 func (s Summary) writeClosed(b *strings.Builder) {
-	section(b, "Closed", s.Closed, func(c ClosedTicket) string {
-		where := "standalone"
-		if c.Spec != "" {
-			where = "Spec " + c.Spec
-		}
-		return fmt.Sprintf("  %s  %s  (%s)  %d %s  context %d  %s", c.ID, c.Title, where, c.Commits, plural(c.Commits, "commit", "commits"), c.LargestContextWindow, c.CostDisplay)
-	})
+	section(b, "Closed", s.Closed, ClosedTicket.line)
+	section(b, "Landed, open until their pull request is merged", s.Landed, ClosedTicket.line)
+}
+
+func (c ClosedTicket) line() string {
+	where := "standalone"
+	if c.Spec != "" {
+		where = "Spec " + c.Spec
+	}
+	return fmt.Sprintf("  %s  %s  (%s)  %d %s  context %d  %s", c.ID, c.Title, where, c.Commits, plural(c.Commits, "commit", "commits"), c.LargestContextWindow, c.CostDisplay)
 }
 
 func (s Summary) writeFailed(b *strings.Builder) {
@@ -278,6 +291,7 @@ func (s Summary) json() []byte {
 // over any of them.
 func (s Summary) withLists() Summary {
 	s.Closed = orEmpty(s.Closed)
+	s.Landed = orEmpty(s.Landed)
 	s.Failed = orEmpty(s.Failed)
 	s.Stopped.Specs = orEmpty(s.Stopped.Specs)
 	s.Skipped.TextOnlyBlockers = orEmpty(s.Skipped.TextOnlyBlockers)

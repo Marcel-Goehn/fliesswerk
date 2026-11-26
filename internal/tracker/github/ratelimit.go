@@ -16,11 +16,19 @@ const secondaryLimitWait = time.Minute
 // write runs a gh command that changes the issue id. A rate limit comes
 // back as a *tracker.RateLimitError.
 func (t *Tracker) write(ctx context.Context, id tracker.ID, stdin []byte, args ...string) error {
-	_, err := t.opts.Runner.Run(ctx, stdin, args...)
+	_, err := t.writeAt(ctx, t.apiPath(id.Key), stdin, args...)
+	return err
+}
+
+// writeAt runs a gh command that changes what the REST path probe reads,
+// and returns its stdout. A rate limit comes back as a
+// *tracker.RateLimitError.
+func (t *Tracker) writeAt(ctx context.Context, probe string, stdin []byte, args ...string) ([]byte, error) {
+	out, err := t.opts.Runner.Run(ctx, stdin, args...)
 	if err == nil || !isRateLimit(err) {
-		return err
+		return out, err
 	}
-	return &tracker.RateLimitError{Wait: t.limitWait(ctx, id), Err: err}
+	return out, &tracker.RateLimitError{Wait: t.limitWait(ctx, probe), Err: err}
 }
 
 // isRateLimit reports whether gh's error is about a rate limit.
@@ -34,11 +42,11 @@ func isRateLimit(err error) bool {
 	return false
 }
 
-// limitWait is how long GitHub asks to be left alone. `gh issue` doesn't
-// show the response's headers, so a read of the same issue, which the
-// limit also applies to, is asked for them.
-func (t *Tracker) limitWait(ctx context.Context, id tracker.ID) time.Duration {
-	out, _ := t.opts.Runner.Run(ctx, nil, "api", "--include", t.apiPath(id.Key)) // a failure is what's expected
+// limitWait is how long GitHub asks to be left alone. `gh issue` and `gh
+// pr` don't show the response's headers, so a read of the REST path
+// probe, which the limit also applies to, is asked for them.
+func (t *Tracker) limitWait(ctx context.Context, probe string) time.Duration {
+	out, _ := t.opts.Runner.Run(ctx, nil, "api", "--include", probe) // a failure is what's expected
 	return waitFrom(string(out), time.Now())
 }
 

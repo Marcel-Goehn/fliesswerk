@@ -151,7 +151,14 @@ var schema = table("Fliesswerk configuration.", map[string]*node{
 		"ready_label":       str("The label that marks a Ticket Ready for agent."),
 		"in_progress_label": str("The label that marks a claimed Spec or standalone Ticket."),
 		"cannot_do_label":   str("The label a Ticket gets when the agent can't do it."),
+		"in_review_label":   str("The label of a Spec or standalone Ticket whose work waits in an open pull request, with [pull_request] open = true. Default \"in-review\"."),
+		"no_pr_label":       str("The label that opts a Spec or standalone Ticket out of its pull request, with [pull_request] open = true. Default \"no-pr\"."),
 		"token":             local(secret("Where the Tracker token comes from."), "a Tracker credential", always),
+	}),
+
+	"pull_request": table("The pull request the Factory opens when a Spec or standalone Ticket finishes.", map[string]*node{
+		"open":  boolean("Open a pull request into base_branch when a Spec's last Ticket, or a standalone Ticket, lands. Default false."),
+		"draft": boolean("Open the pull request as a draft. Default false."),
 	}),
 
 	"branches": table("Branch names.", map[string]*node{

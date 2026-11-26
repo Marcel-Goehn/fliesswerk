@@ -105,22 +105,38 @@ func (r *run) land(w *ticketWork, summary string) error {
 		return nil
 	}
 	w.lane.landed = append(w.lane.landed, landedTicket{tk: tk, commits: commits})
+	comment := summary
 	if w.resolution != "" {
-		summary += "\n\nMerge: " + strings.TrimSpace(w.resolution)
+		comment += mergeNote + strings.TrimSpace(w.resolution)
 	}
-	if err := r.opts.Tracker.Close(ctx, tk.ID, closeComment(summary, commits, w.specBranch)); err != nil {
+	if r.staysInReview(w) {
+		// It closes when its pull request is merged. Without the ready
+		// label, no Run takes it again meanwhile.
+		if err := r.opts.Tracker.SetLabels(ctx, tk.ID, nil, []string{r.opts.ReadyLabel}); err != nil {
+			r.fail(tk, KindFactory, fmt.Sprintf("its commits are on %s, but removing %s failed: %v", w.specBranch, r.opts.ReadyLabel, err))
+			return nil
+		}
+		w.staysOpen, w.workDone = true, workComment(comment, commits, w.specBranch)
+	} else if err := r.opts.Tracker.Close(ctx, tk.ID, closeComment(comment, commits, w.specBranch)); err != nil {
 		r.fail(tk, KindFactory, fmt.Sprintf("its commits are on %s, but closing it failed: %v", w.specBranch, err))
 		return nil
 	}
 	r.mu.Lock()
-	r.res.Closed = append(r.res.Closed, tk)
+	if w.staysOpen {
+		r.res.Landed = append(r.res.Landed, tk)
+	} else {
+		r.res.Closed = append(r.res.Closed, tk)
+	}
+	r.summaries[tk.ID.Key] = summary
 	r.mu.Unlock()
-	r.line(tk, runlog.Line{Kind: runlog.Success, Text: "closed"})
+	if w.staysOpen {
+		r.line(tk, runlog.Line{Kind: runlog.Success, Text: "landed, open until its pull request is merged"})
+	} else {
+		r.line(tk, runlog.Line{Kind: runlog.Success, Text: "closed"})
+	}
 	r.discard(w.b)
 	if r.wasLast(tk, w.spec) {
-		r.finishSpec(tk, w.spec, w.specBranch)
-		r.release(ctx, tk.SpecID())
-		r.specFinished(ctx, tk.SpecID(), w.specBranch, w.specDir)
+		r.finishSpec(ctx, w)
 	}
 	return nil
 }

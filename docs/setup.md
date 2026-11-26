@@ -38,11 +38,12 @@ The project questions come first, in this order:
 2. **The repository**, as `owner/name`. Suggested from your git remote.
 3. **The base branch** that Spec branches start from. Suggested from the remote's default branch.
 4. **The ready label** that marks a Ticket Ready for agent. Default `ready-for-agent`.
-5. **Languages.** Node, Go, Python and Rust have recipes. `init` suggests the ones it finds and names any language it found without a recipe.
-6. **Feedback commands**: `test`, `typecheck`, `lint` and `format`, suggested from your project files. The ones you set become `verify`, which the Factory runs itself to check every change.
-7. **The compose file** for the Services the agent needs, such as a database. See the [Services guide](services.md).
-8. **The Coding standards file**, which only the review Step reads.
-9. **Protecting `.claude/`**, if your project has one. Say yes: a hook planted there would run in a later Step.
+5. **Pull requests**: "Open a pull request when a Spec finishes?" Default no. The answer becomes [`pull_request.open`](config.md#pull_requestopen). With yes, the token needs to open pull requests, and `check` makes sure it can.
+6. **Languages.** Node, Go, Python and Rust have recipes. `init` suggests the ones it finds and names any language it found without a recipe.
+7. **Feedback commands**: `test`, `typecheck`, `lint` and `format`, suggested from your project files. The ones you set become `verify`, which the Factory runs itself to check every change.
+8. **The compose file** for the Services the agent needs, such as a database. See the [Services guide](services.md).
+9. **The Coding standards file**, which only the review Step reads.
+10. **Protecting `.claude/`**, if your project has one. Say yes: a hook planted there would run in a later Step.
 
 Then come your own questions. They depend on your machine, so `init` asks them of everyone, a teammate who clones a project that is already set up included:
 
@@ -82,7 +83,7 @@ or the exact lines to fix. Fix them and run `fliesswerk check --commands` again.
 
 ### Labels
 
-A Run needs three labels in the repository: the ready label (default `ready-for-agent`), the `in_progress_label` (default `in-progress`) it adds to a Spec it claims, and the `cannot_do_label` (default `needs-investigation`) it swaps the ready label for on a Ticket it hands back. GitHub can only add labels that exist, so `init` creates those that are missing, by the names in `[tracker]`, and lists each one it created (`+ label in-progress`). It leaves a label that already exists exactly as it is, color and description included. GitHub compares label names without regard to case, so `Ready-For-Agent` counts as `ready-for-agent`.
+A Run needs three labels in the repository: the ready label (default `ready-for-agent`), the `in_progress_label` (default `in-progress`) it adds to a Spec it claims, and the `cannot_do_label` (default `needs-investigation`) it swaps the ready label for on a Ticket it hands back. With `[pull_request] open = true` it also needs the `in_review_label` (default `in-review`) it adds to a finished Spec whose pull request is open, and the `no_pr_label` (default `no-pr`) you put on a Spec to skip its pull request. GitHub can only add labels that exist, so `init` creates those that are missing, by the names in `[tracker]`, and lists each one it created (`+ label in-progress`). It leaves a label that already exists exactly as it is, color and description included. GitHub compares label names without regard to case, so `Ready-For-Agent` counts as `ready-for-agent`.
 
 When `init` can't create a label (your login or token can't write to Issues, or GitHub can't be reached), it still writes its files and prints the lines to run instead. With the default names, they are:
 
@@ -181,8 +182,10 @@ The Factory reads and writes your Issues with `gh`, on your machine only. The ag
 1. Open <https://github.com/settings/personal-access-tokens/new>.
 2. Name it, and set **Resource owner** to the repository's owner.
 3. Under **Repository access**, choose **Only select repositories** and pick the repository.
-4. Under **Repository permissions**, set **Issues** to **Read and write**, and **Contents** and **Pull requests** to **Read-only**. **Metadata** is always read-only.
+4. Under **Repository permissions**, set **Issues** to **Read and write**, and **Contents** and **Pull requests** to **Read-only**. **Metadata** is always read-only. With [`pull_request.open = true`](config.md#pull_requestopen), set **Pull requests** to **Read and write** instead, so the Factory can open them.
 5. Generate the token and copy it.
+
+With `pull_request.open = true`, `check` and the start of every Run make sure the token (or your `gh` login) can open pull requests, without opening one. If it can't, they stop with exit code 3 and name the permission to add.
 
 `init` then asks where the token is kept, as for the Claude secret. It ends up in `config.local.toml`:
 

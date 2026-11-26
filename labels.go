@@ -28,6 +28,12 @@ func trackerLabels(values map[string]any) []trackerLabel {
 		{stringAt(values, defaultInProgressLabel, "tracker", "in_progress_label"), "Claimed by a Fliesswerk Run"},
 		{stringAt(values, defaultCannotDoLabel, "tracker", "cannot_do_label"), "Fliesswerk handed it back to a person"},
 	}
+	if l := inReviewLabel(values); l != "" {
+		all = append(all, trackerLabel{l, "Its work waits in an open pull request"})
+	}
+	if l := noPRLabel(values); l != "" {
+		all = append(all, trackerLabel{l, "Fliesswerk opens no pull request for it"})
+	}
 	var out []trackerLabel
 	for _, l := range all {
 		if !slices.ContainsFunc(out, func(o trackerLabel) bool { return strings.EqualFold(o.name, l.name) }) {

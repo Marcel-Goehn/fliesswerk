@@ -17,6 +17,7 @@ import (
 	"github.com/Marcel-Goehn/fliesswerk/internal/memory"
 	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox/container"
 	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox/native"
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
 )
 
 // localFlags are the CLI flags that override the config files. They count
@@ -163,12 +164,28 @@ func checkTracker(ctx context.Context, values map[string]any, s *secrets, stdout
 		return err
 	}
 	_, _ = fmt.Fprintln(stdout, "fliesswerk check: labels ok")
+	if pullRequestsOpen(values) {
+		if err := checkPullRequests(ctx, tr); err != nil {
+			return err
+		}
+		_, _ = fmt.Fprintln(stdout, "fliesswerk check: pull requests ok")
+	}
 	others, err := claimedByOthers(ctx, tr)
 	if err != nil {
 		return err
 	}
 	for _, c := range others {
 		_, _ = fmt.Fprintf(stderr, "warning: %s; your Runs skip it\n", claimLine(c))
+	}
+	return nil
+}
+
+// checkPullRequests proves the Tracker's credential can open the pull
+// requests `pull_request.open` asks for. A credential that can't is a
+// *factory.SetupError that names the permission to add.
+func checkPullRequests(ctx context.Context, tr tracker.Tracker) error {
+	if err := tr.CanOpenPullRequests(ctx); err != nil {
+		return &factory.SetupError{Msg: "pull requests: " + err.Error()}
 	}
 	return nil
 }

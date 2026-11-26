@@ -220,7 +220,7 @@ func TestFinishWritesTheVersionedSummary(t *testing.T) {
 	if got["schema"] != float64(1) || got["exit_code"] != float64(1) {
 		t.Errorf("summary = %v", got)
 	}
-	for _, list := range []string{"closed", "failed", "specs_finished", "queued_writes"} {
+	for _, list := range []string{"closed", "landed", "failed", "specs_finished", "queued_writes"} {
 		if _, ok := got[list].([]any); !ok {
 			t.Errorf("%s = %v, want a list even when empty", list, got[list])
 		}

@@ -4,6 +4,7 @@ package fake
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -37,15 +38,39 @@ type Issue struct {
 	ClaimedAt time.Time
 }
 
+// The states of a PullRequest.
+const (
+	PullOpen   = "open"
+	PullMerged = "merged"
+	PullClosed = "closed"
+)
+
+// PullRequest is one pull request in the fake Tracker. It shares its
+// numbers with the issues, like GitHub's.
+type PullRequest struct {
+	Number      int
+	URL         string
+	Head, Base  string
+	Title, Body string
+	Draft       bool
+	// State is PullOpen, PullMerged or PullClosed.
+	State string
+}
+
+// PullURL is the URL the fake Tracker gives pull request n.
+func PullURL(n int) string { return "https://fake.test/pull/" + strconv.Itoa(n) }
+
 // Write is one recorded write.
 type Write struct {
-	Op     string // "comment", "close", "labels", "claim", "release" or "create_label"
+	Op     string // "comment", "close", "labels", "claim", "release", "create_label" or "open_pr"
 	Ticket int
 	Text   string
 	Add    []string
 	Remove []string
 	// By is whose Claim a release drops.
 	By string
+	// PullRequest is what an open_pr opened.
+	PullRequest *PullRequest `json:",omitempty"`
 }
 
 // Tracker is an in-memory Tracker. The zero value is not usable; use New.
@@ -53,12 +78,20 @@ type Tracker struct {
 	ReadyLabel string
 	// InProgressLabel marks a claimed issue; New sets "in-progress".
 	InProgressLabel string
+	// InReviewLabel is the In review label a Claim removes; "" for none.
+	InReviewLabel string
 	// Me is the login the fake's token acts as; New sets "me".
 	Me string
 	// Now stamps a Claim; New sets time.Now.
 	Now func() time.Time
 	// Labels are the labels the fake's repository has.
 	Labels []string
+	// PullRequests are the repository's pull requests, open, merged and
+	// closed, oldest first.
+	PullRequests []PullRequest
+	// NoPullRequestPermission makes CanOpenPullRequests fail, as for a
+	// token without the permission.
+	NoPullRequestPermission bool
 
 	mu     sync.Mutex
 	issues map[int]*Issue
@@ -146,7 +179,7 @@ func (t *Tracker) children(parent int) []int {
 func (t *Tracker) spec(n int) tracker.Spec {
 	s := tracker.Spec{ID: ID(n)}
 	if p := t.issues[n]; p != nil {
-		s.Title, s.Body, s.Claim = p.Title, p.Body, t.claim(p)
+		s.Title, s.Body, s.Labels, s.Claim = p.Title, p.Body, slices.Clone(p.Labels), t.claim(p)
 	}
 	for _, c := range t.children(n) {
 		i := t.issues[c]
@@ -248,13 +281,17 @@ func (t *Tracker) Claims(context.Context) ([]tracker.Claimed, error) {
 	return out, nil
 }
 
-// Claim adds the in-progress label and Me as assignee.
+// Claim adds the in-progress label and Me as assignee, and removes the In
+// review label.
 func (t *Tracker) Claim(_ context.Context, id tracker.ID) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	i, err := t.issue(id)
 	if err != nil {
 		return err
+	}
+	if t.InReviewLabel != "" {
+		i.Labels = slices.DeleteFunc(i.Labels, func(l string) bool { return l == t.InReviewLabel })
 	}
 	if !slices.Contains(i.Labels, t.InProgressLabel) {
 		i.Labels = append(i.Labels, t.InProgressLabel)
@@ -306,6 +343,50 @@ func (t *Tracker) CreateLabel(_ context.Context, name, description string) error
 	}
 	t.Labels = append(t.Labels, name)
 	t.writes = append(t.writes, Write{Op: "create_label", Add: []string{name}, Text: description})
+	return nil
+}
+
+// FindPullRequest returns the URL of the open pull request from head, ""
+// if there is none.
+func (t *Tracker) FindPullRequest(_ context.Context, head string) (string, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for _, p := range t.PullRequests {
+		if p.Head == head && p.State == PullOpen {
+			return p.URL, nil
+		}
+	}
+	return "", nil
+}
+
+// OpenPullRequest adds an open pull request, recording an open_pr write.
+// Like GitHub, it refuses a second open one from the same head into the
+// same base.
+func (t *Tracker) OpenPullRequest(_ context.Context, pr tracker.PullRequest) (string, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	n := 1
+	for _, i := range t.issues {
+		n = max(n, i.Number+1)
+	}
+	for _, p := range t.PullRequests {
+		if p.Head == pr.Head && p.Base == pr.Base && p.State == PullOpen {
+			return "", fmt.Errorf("fake tracker: a pull request from %s into %s is already open", pr.Head, pr.Base)
+		}
+		n = max(n, p.Number+1)
+	}
+	p := PullRequest{Number: n, URL: PullURL(n), Head: pr.Head, Base: pr.Base, Title: pr.Title, Body: pr.Body, Draft: pr.Draft, State: PullOpen}
+	t.PullRequests = append(t.PullRequests, p)
+	t.writes = append(t.writes, Write{Op: "open_pr", Text: pr.Body, PullRequest: &p})
+	return p.URL, nil
+}
+
+// CanOpenPullRequests fails when NoPullRequestPermission is set, naming
+// the permission as GitHub's does.
+func (t *Tracker) CanOpenPullRequests(context.Context) error {
+	if t.NoPullRequestPermission {
+		return errors.New("fake tracker: the token can't open pull requests; give it Pull requests: Read and write")
+	}
 	return nil
 }
 
