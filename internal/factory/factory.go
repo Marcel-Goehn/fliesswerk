@@ -1184,17 +1184,19 @@ func PlannedBranch(ctx context.Context, root, remote, prefix string, tk tracker.
 	return b, err
 }
 
-// Where findBranch found a branch.
+// branchPlace is where findBranch found a branch.
+type branchPlace int
+
 const (
-	branchNew = iota
-	branchLocal
-	branchRemote
+	branchNew    branchPlace = iota // nowhere: the Run would cut it
+	branchLocal                     // in the repository
+	branchRemote                    // only on the remote
 )
 
 // findBranch finds the branch of tk's Spec (or of tk, if it stands alone)
 // by number, locally and then on remote, and says where it found it. If
 // there is none, it names the branch a Run would cut.
-func findBranch(ctx context.Context, repo git.Repo, remote, branchPrefix string, tk tracker.Ticket, spec *tracker.Spec) (branch string, where int, err error) {
+func findBranch(ctx context.Context, repo git.Repo, remote, branchPrefix string, tk tracker.Ticket, spec *tracker.Spec) (branch string, where branchPlace, err error) {
 	kind, id, title := "ticket", tk.ID, tk.Title
 	if tk.Parent != nil {
 		kind, id, title = "spec", *tk.Parent, ""
