@@ -105,6 +105,9 @@ type FinishedSpec struct {
 	ID     string `json:"id"`
 	Title  string `json:"title"`
 	Branch string `json:"branch"`
+	// PullRequest is the URL of its branch's pull request, opened or
+	// reused, empty for none.
+	PullRequest string `json:"pull_request"`
 }
 
 // Memory is what the Run's memory admission saw.
@@ -167,7 +170,11 @@ func (s Summary) Text() string {
 		fmt.Fprintf(&b, "\nStill ready at the limit: %d\n", s.StillReady)
 	}
 	section(&b, "Specs finished", s.SpecsFinished, func(f FinishedSpec) string {
-		return fmt.Sprintf("  %s  %s  (%s)", f.ID, f.Title, f.Branch)
+		line := fmt.Sprintf("  %s  %s  (%s)", f.ID, f.Title, f.Branch)
+		if f.PullRequest != "" {
+			line += "  " + f.PullRequest
+		}
+		return line
 	})
 	if s.Memory != nil {
 		fmt.Fprintf(&b, "\nMemory: peak estimate %d MB, %d %s\n", s.Memory.PeakEstimateMB, s.Memory.Waits, plural(s.Memory.Waits, "wait", "waits"))

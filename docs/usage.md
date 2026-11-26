@@ -64,12 +64,15 @@ After every committing Step, the Factory checks that no Protected path was chang
 
 All the Factory's work happens in its own worktrees under `.fliesswerk/state/`. Your checkout is never touched: keep working on any branch, even with uncommitted changes. The Factory never rebases a Spec branch, never merges `base_branch` into it, never force-pushes and never pushes `base_branch`.
 
-The Factory doesn't open pull requests. Open one when a Spec is finished, or have a `spec_finished` Hook do it. Host Hooks run with your own `gh` login:
+To have the Factory open the pull request when a Spec's last Ticket lands, or a standalone Ticket lands, turn it on in `config.toml`:
 
 ```toml
-[[hooks.spec_finished]]
-run = 'gh pr create --fill --head "$FLIESSWERK_BRANCH"'
+[pull_request]
+open  = true
+draft = false  # true opens it as a draft
 ```
+
+The pull request goes from the Spec branch into `base_branch`. Its title is the Spec's (or the standalone Ticket's), and its body says `Closes #<N>` and lists each closed Ticket with its number, title and summary. If a pull request is already open for the branch, say after a follow-up Ticket, it is reused as it is: its title and body aren't changed. A branch whose earlier pull requests were all merged or closed gets a new one. Its link is printed as a live line, and shown next to the finished Spec in the summary and in `summary.json`. The `spec_finished` Hook runs after the pull request was opened or found, so it can look it up on `$FLIESSWERK_BRANCH`. With `open = false`, the default, the Factory opens no pull requests.
 
 ### When a Ticket fails
 
@@ -186,7 +189,7 @@ Only directories named like Run ids are removed. Anything else in `.fliesswerk/l
 | `stopped` | `reason` (empty unless the whole Run stopped) and `specs`: `id`, `branch` and `fix` for each Spec a rejected push stopped |
 | `skipped` | `text_only_blockers` (`id`, `title`, `reason`, `fix`), `claimed_by_others` (`id`, `title`, `by`, `at`) and `outside_blockers` |
 | `still_ready` | How many Tickets were still ready when the Run reached `max_iterations` |
-| `specs_finished` | `id`, `title`, `branch` |
+| `specs_finished` | `id`, `title`, `branch` and `pull_request`, the URL of its pull request (empty for none) |
 | `memory` | `peak_estimate_mb`, `waits`, or `null` when nothing was measured |
 | `queued_writes` | Tracker writes waiting to be replayed |
 | `tickets` | `id` and `usage` for each Ticket that ran a Step |

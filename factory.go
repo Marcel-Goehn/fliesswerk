@@ -402,6 +402,10 @@ func factoryOptions(values map[string]any, root, only string, tr tracker.Tracker
 			SpecFinished:   hookEntries(values, "spec_finished", s),
 			RunEnd:         hookEntries(values, "run_end", s),
 		},
+		PullRequest: factory.PullRequestSetting{
+			Open:  boolAt(values, false, "pull_request", "open"),
+			Draft: boolAt(values, false, "pull_request", "draft"),
+		},
 	}
 }
 

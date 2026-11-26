@@ -101,6 +101,8 @@ type Options struct {
 	Only string
 	// Hooks are the project's Hooks; none means nothing runs.
 	Hooks Hooks
+	// PullRequest is whether, and how, a finished Spec gets a pull request.
+	PullRequest PullRequestSetting
 	// Drain, once closed, stops new work: the Tickets in flight finish and
 	// nothing else starts. Ending the context of Run instead kills every
 	// Step and discards the work in flight. Either way the Run stops.
@@ -189,6 +191,9 @@ type FinishedSpec struct {
 	ID     tracker.ID
 	Title  string
 	Branch string
+	// PullRequest is the URL of its branch's pull request, opened or
+	// reused, "" for none.
+	PullRequest string
 }
 
 // Result is how a Run ended.
@@ -264,9 +269,12 @@ type run struct {
 	claimed map[string]bool
 	// requeued holds the Tickets whose merge has failed once, by ID.Key.
 	requeued map[string]bool
+	// summaries holds what the agent said it did, for each Ticket this Run
+	// closed, by ID.Key.
+	summaries map[string]string
 	// mu guards what the Tickets of an Iteration share: res, done,
-	// stoppedSpecs, logs and requeued. It also keeps calls of opts.Log one
-	// at a time.
+	// stoppedSpecs, logs, requeued and summaries. It also keeps calls of
+	// opts.Log one at a time.
 	mu sync.Mutex
 	// gitMu keeps the Tickets' changes to .git/config one at a time: git
 	// refuses a second writer.
@@ -283,6 +291,7 @@ func Run(ctx context.Context, opts Options) Result {
 		worktrees: filepath.Join(opts.Root, StateDir, "worktrees"),
 		specDirs:  map[string]string{}, done: map[string]bool{}, stoppedSpecs: map[string]bool{},
 		logs: map[string]*lastLines{}, claimed: map[string]bool{}, requeued: map[string]bool{},
+		summaries: map[string]string{},
 	}
 	r.writes = &durableTracker{
 		Tracker: opts.Tracker, path: filepath.Join(opts.Root, StateDir, "replay.json"),
@@ -748,17 +757,6 @@ func (r *run) abandon(w *ticketWork) error {
 	return errKilled
 }
 
-// finishSpec notes that the Ticket's Spec is finished.
-func (r *run) finishSpec(tk tracker.Ticket, spec *tracker.Spec, branch string) {
-	title := tk.Title
-	if spec != nil {
-		title = spec.Title
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.res.SpecsFinished = append(r.res.SpecsFinished, FinishedSpec{ID: tk.SpecID(), Title: title, Branch: branch})
-}
-
 // claim claims the Ticket's Spec (or the Ticket, if it stands alone) the
 // first time a Run takes a Ticket from it. A Spec the user claimed before
 // keeps its Claim.
@@ -773,30 +771,6 @@ func (r *run) claim(ctx context.Context, tk tracker.Ticket, snap tracker.Snapsho
 	r.claimed[id.Key] = true
 	r.logf("%s: claimed", id)
 	return nil
-}
-
-// wasLast reports whether the Ticket that just closed was its Spec's last;
-// a standalone Ticket's closing is its last.
-func (r *run) wasLast(tk tracker.Ticket, spec *tracker.Spec) bool {
-	if spec == nil {
-		return tk.Parent == nil // without the Spec's Ticket list, it can't be known
-	}
-	for _, st := range spec.Tickets {
-		if st.State == tracker.Open && !r.closed(st.ID) {
-			return false
-		}
-	}
-	return true
-}
-
-// release releases the Claim on a finished Spec. Its last Ticket is closed
-// already, so a failed release only warns.
-func (r *run) release(ctx context.Context, id tracker.ID) {
-	if err := r.opts.Tracker.Release(ctx, id, r.user); err != nil {
-		r.warnf("%s: warning: its last Ticket closed, but releasing its claim failed: %v", id, err)
-		return
-	}
-	r.logf("%s: released (its last Ticket closed)", id)
 }
 
 // closed reports whether this Run closed the Ticket.

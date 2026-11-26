@@ -434,6 +434,21 @@
       },
       "type": "array"
     },
+    "pull_request": {
+      "additionalProperties": false,
+      "description": "The pull request the Factory opens when a Spec or standalone Ticket finishes.",
+      "properties": {
+        "draft": {
+          "description": "Open the pull request as a draft. Default false.",
+          "type": "boolean"
+        },
+        "open": {
+          "description": "Open a pull request into base_branch when a Spec's last Ticket, or a standalone Ticket, lands. Default false.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "sandbox": {
       "additionalProperties": false,
       "description": "The Sandbox each Step runs in.",

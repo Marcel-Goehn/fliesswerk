@@ -154,6 +154,11 @@ var schema = table("Fliesswerk configuration.", map[string]*node{
 		"token":             local(secret("Where the Tracker token comes from."), "a Tracker credential", always),
 	}),
 
+	"pull_request": table("The pull request the Factory opens when a Spec or standalone Ticket finishes.", map[string]*node{
+		"open":  boolean("Open a pull request into base_branch when a Spec's last Ticket, or a standalone Ticket, lands. Default false."),
+		"draft": boolean("Open the pull request as a draft. Default false."),
+	}),
+
 	"branches": table("Branch names.", map[string]*node{
 		"base_branch": str("The remote branch Spec branches are cut from."),
 		"prefix":      str("The prefix of every branch the Factory creates."),

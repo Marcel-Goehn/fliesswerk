@@ -105,22 +105,22 @@ func (r *run) land(w *ticketWork, summary string) error {
 		return nil
 	}
 	w.lane.landed = append(w.lane.landed, landedTicket{tk: tk, commits: commits})
+	comment := summary
 	if w.resolution != "" {
-		summary += "\n\nMerge: " + strings.TrimSpace(w.resolution)
+		comment += mergeNote + strings.TrimSpace(w.resolution)
 	}
-	if err := r.opts.Tracker.Close(ctx, tk.ID, closeComment(summary, commits, w.specBranch)); err != nil {
+	if err := r.opts.Tracker.Close(ctx, tk.ID, closeComment(comment, commits, w.specBranch)); err != nil {
 		r.fail(tk, KindFactory, fmt.Sprintf("its commits are on %s, but closing it failed: %v", w.specBranch, err))
 		return nil
 	}
 	r.mu.Lock()
 	r.res.Closed = append(r.res.Closed, tk)
+	r.summaries[tk.ID.Key] = summary
 	r.mu.Unlock()
 	r.line(tk, runlog.Line{Kind: runlog.Success, Text: "closed"})
 	r.discard(w.b)
 	if r.wasLast(tk, w.spec) {
-		r.finishSpec(tk, w.spec, w.specBranch)
-		r.release(ctx, tk.SpecID())
-		r.specFinished(ctx, tk.SpecID(), w.specBranch, w.specDir)
+		r.finishSpec(ctx, w)
 	}
 	return nil
 }

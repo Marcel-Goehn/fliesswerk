@@ -65,15 +65,33 @@ func (r *run) part(step string) string {
 	return prompt.Builtin(step, prompt.Latest(step))
 }
 
+// The parts of a close comment summaryIn finds the summary by.
+const (
+	commitsNote = "\n\nCommits on `"
+	mergeNote   = "\n\nMerge: "
+	closedNote  = "\nClosed by the Factory after pushing `"
+)
+
 // closeComment is the last comment on a Ticket the Factory closes.
 func closeComment(summary string, commits []git.Commit, branch string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s\n\nCommits on `%s`:\n\n", strings.TrimSpace(summary), branch)
+	fmt.Fprintf(&b, "%s"+commitsNote+"%s`:\n\n", strings.TrimSpace(summary), branch)
 	for _, c := range commits {
 		fmt.Fprintf(&b, "- %s %s\n", c.Short(), c.Subject)
 	}
-	fmt.Fprintf(&b, "\nClosed by the Factory after pushing `%s`.\n", branch)
+	fmt.Fprintf(&b, closedNote+"%s`.\n", branch)
 	return b.String()
+}
+
+// summaryIn is the agent's summary in a comment closeComment wrote,
+// without how a merge was resolved. ok is false for any other comment.
+func summaryIn(comment string) (summary string, ok bool) {
+	if !strings.Contains(comment, closedNote) {
+		return "", false
+	}
+	summary, _, ok = strings.Cut(comment, commitsNote)
+	summary, _, _ = strings.Cut(summary, mergeNote)
+	return strings.TrimSpace(summary), ok
 }
 
 // maxSlug bounds a slug's length, so branch names stay readable.

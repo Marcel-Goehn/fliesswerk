@@ -111,6 +111,24 @@ The label that replaces the ready label on a Ticket the Factory hands back to a 
 
 Where the GitHub token comes from, as a [secret source](#secret-sources). Local only. Unset, `gh` uses its own login. The token is used on your machine only and never reaches the agent. See the [setup guide](setup.md#creating-a-fine-grained-token) for a token that reaches one repository.
 
+## `pull_request`
+
+The pull request the Factory opens when a Spec or standalone Ticket finishes. It belongs in `config.toml`, as the team decides it.
+
+```toml
+[pull_request]
+open  = true
+draft = false
+```
+
+### `pull_request.open`
+
+When a Spec's last Ticket lands, or a standalone Ticket lands, open a pull request from its branch into `base_branch`, or reuse the one already open for that branch. Its title is the Spec's (or standalone Ticket's), and its body says `Closes #<N>` and lists each closed Ticket with its summary. An open pull request is reused as it is: its title and body aren't changed. Default `false`, which opens none.
+
+### `pull_request.draft`
+
+Open the pull request as a draft. Default `false`, which opens it ready for review.
+
 ## `branches`
 
 Branch names.
@@ -270,7 +288,7 @@ parallel = ["cd web && pnpm install --frozen-lockfile", "cd api && uv sync --loc
 timeout  = "10m"
 
 [[hooks.spec_finished]]
-run = 'gh pr create --fill --head "$FLIESSWERK_BRANCH"'
+run = 'gh pr view "$FLIESSWERK_BRANCH" --json url --jq .url'
 ```
 
 ### `hooks.run_start`
@@ -283,7 +301,7 @@ Runs when a Sandbox has been created and its Services are healthy, before the ag
 
 ### `hooks.spec_finished`
 
-Runs on your machine in the Spec branch's worktree when a Spec's last Ticket closes, or a standalone Ticket closes, with `FLIESSWERK_SPEC` (such as `#31`) and `FLIESSWERK_BRANCH` set. A failure only warns.
+Runs on your machine in the Spec branch's worktree when a Spec's last Ticket closes, or a standalone Ticket closes, with `FLIESSWERK_SPEC` (such as `#31`) and `FLIESSWERK_BRANCH` set. With [`pull_request.open`](#pull_requestopen), it runs after the pull request was opened or found. A failure only warns.
 
 ### `hooks.run_end`
 

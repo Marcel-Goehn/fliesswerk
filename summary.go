@@ -68,7 +68,7 @@ func summaryOf(res factory.Result, id string, started time.Time, code int, basis
 	}
 	s.Skipped.OutsideBlockers = res.Warnings
 	for _, f := range res.SpecsFinished {
-		s.SpecsFinished = append(s.SpecsFinished, runlog.FinishedSpec{ID: f.ID.String(), Title: f.Title, Branch: f.Branch})
+		s.SpecsFinished = append(s.SpecsFinished, runlog.FinishedSpec{ID: f.ID.String(), Title: f.Title, Branch: f.Branch, PullRequest: f.PullRequest})
 	}
 	s.QueuedWrites = res.QueuedWrites
 	if res.Memory != nil {
