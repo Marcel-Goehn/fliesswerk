@@ -202,6 +202,9 @@ type FinishedSpec struct {
 // Result is how a Run ended.
 type Result struct {
 	Closed []tracker.Ticket
+	// Landed are the standalone Tickets whose work landed but which stay
+	// open until their pull request is merged.
+	Landed []tracker.Ticket
 	Failed []Failure
 	// Iterations is how many Iterations took Tickets.
 	Iterations int

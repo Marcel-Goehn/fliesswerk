@@ -156,7 +156,7 @@ Local-only settings can also come from flags, which override both config files f
 
 ### The summary
 
-When a Run ends it prints a summary, leaving out empty sections: the duration, Iterations and exit code, then the Tickets closed (with commits, largest context window and cost), failed (with the reason), stopped and skipped (with the fix), how many Tickets were still ready at the limit, the Specs finished, memory, writes queued for replay, the tokens and cost per Ticket and for the Run, and the log directory.
+When a Run ends it prints a summary, leaving out empty sections: the duration, Iterations and exit code, then the Tickets closed (with commits, largest context window and cost), the standalone Tickets that landed but stay open until their pull request is merged (likewise), failed (with the reason), stopped and skipped (with the fix), how many Tickets were still ready at the limit, the Specs finished, memory, writes queued for replay, the tokens and cost per Ticket and for the Run, and the log directory.
 
 Cost is shown in the unit the Harness reports and never converted. Mixed units are summed separately, such as `$3.10 + 12 credits (2 Steps reported no cost)`. A cost the Harness doesn't report is never made up.
 
@@ -196,6 +196,7 @@ Only directories named like Run ids are removed. Anything else in `.fliesswerk/l
 | `run_id`, `started_at`, `duration_seconds`, `iterations` | The Run |
 | `exit_code`, `exit_meaning` | How it ended |
 | `closed` | `id`, `title`, `spec` (empty for a standalone Ticket), `commits`, `largest_context_window`, `cost_display` |
+| `landed` | The same fields, for each standalone Ticket that landed but stays open until its pull request is merged (with `[pull_request] open = true`). It is not in `closed` |
 | `failed` | `id`, `title`, `reason`, `kind`, `largest_context_window` |
 | `stopped` | `reason` (empty unless the whole Run stopped) and `specs`: `id`, `branch` and `fix` for each Spec a rejected push stopped |
 | `skipped` | `text_only_blockers` (`id`, `title`, `reason`, `fix`), `claimed_by_others` (`id`, `title`, `by`, `at`) and `outside_blockers` |

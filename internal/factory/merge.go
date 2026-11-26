@@ -122,7 +122,11 @@ func (r *run) land(w *ticketWork, summary string) error {
 		return nil
 	}
 	r.mu.Lock()
-	r.res.Closed = append(r.res.Closed, tk)
+	if w.inReview != "" {
+		r.res.Landed = append(r.res.Landed, tk)
+	} else {
+		r.res.Closed = append(r.res.Closed, tk)
+	}
 	r.summaries[tk.ID.Key] = summary
 	r.mu.Unlock()
 	if w.inReview != "" {

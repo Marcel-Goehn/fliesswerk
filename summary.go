@@ -36,12 +36,18 @@ func summaryOf(res factory.Result, id string, started time.Time, code int, basis
 		stats[st.Ticket.ID.Key] = st
 		s.Tickets = append(s.Tickets, runlog.TicketUsage{ID: st.Ticket.ID.String(), Usage: runlog.UsageOf(st.Usage, basis)})
 	}
-	for _, tk := range res.Closed {
+	closed := func(tk tracker.Ticket) runlog.ClosedTicket {
 		c := runlog.ClosedTicket{ID: tk.ID.String(), Title: tk.Title, Spec: specOf(tk)}
 		if st := stats[tk.ID.Key]; st != nil {
 			c.Commits, c.LargestContextWindow, c.CostDisplay = st.Commits, st.LargestContextWindow, st.Usage.CostString(basis)
 		}
-		s.Closed = append(s.Closed, c)
+		return c
+	}
+	for _, tk := range res.Closed {
+		s.Closed = append(s.Closed, closed(tk))
+	}
+	for _, tk := range res.Landed {
+		s.Landed = append(s.Landed, closed(tk))
 	}
 	for _, f := range res.Failed {
 		c := runlog.FailedTicket{ID: f.Ticket.ID.String(), Title: f.Ticket.Title, Reason: f.Reason, Kind: f.Kind}

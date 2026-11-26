@@ -65,6 +65,24 @@ func (p *runProject) finishedSpecs(t *testing.T) []map[string]any {
 	return s.SpecsFinished
 }
 
+// summaryList is the list summary.json holds under key.
+func (p *runProject) summaryList(t *testing.T, key string) []map[string]any {
+	t.Helper()
+	var s map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(readFile(t, filepath.Join(p.logDir(t), "summary.json"))), &s); err != nil {
+		t.Fatal(err)
+	}
+	list, ok := s[key]
+	if !ok {
+		t.Fatalf("summary.json has no %s", key)
+	}
+	var out []map[string]any
+	if err := json.Unmarshal(list, &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
 // implements is a fake Harness session that commits file and reports
 // summary.
 func implements(match, file, summary string) string {
@@ -170,6 +188,15 @@ func TestALandedStandaloneTicketStaysOpenUntilItsPullRequestIsMerged(t *testing.
 	mustContain(t, "#5's last comment", five.Comments[len(five.Comments)-1].Body,
 		"Fixed the typo.", "Commits on `"+branch+"`", "Add typo.go", prs[0].URL)
 	mustNotContain(t, "#5's last comment", five.Comments[len(five.Comments)-1].Body, "Closed by the Factory")
+	mustContain(t, "stdout", p.stdout, "#5: released (it landed, and stays open until its pull request is merged)",
+		"Landed, open until their pull request is merged:\n  #5  Fix the typo")
+	mustNotContain(t, "stdout", p.stdout, "Closed:", "its last Ticket closed")
+	if closed := p.summaryList(t, "closed"); len(closed) != 0 {
+		t.Errorf("summary.json's closed = %v, want none: #5 stays open", closed)
+	}
+	if landed := p.summaryList(t, "landed"); len(landed) != 1 || landed[0]["id"] != "#5" || landed[0]["commits"] != 1.0 {
+		t.Errorf("summary.json's landed = %v, want #5 with one commit", landed)
+	}
 
 	// A later Run doesn't take it again.
 	if code := p.run(t); code != 0 {

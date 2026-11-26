@@ -89,7 +89,11 @@ func (r *run) finishSpec(ctx context.Context, w *ticketWork) {
 	if failed != nil {
 		r.pullRequestFailed(ctx, f, failed)
 	}
-	r.release(ctx, id)
+	why := "its last Ticket closed"
+	if w.inReview != "" {
+		why = "it landed, and stays open until its pull request is merged"
+	}
+	r.release(ctx, id, why)
 	if f.PullRequest != "" {
 		r.markInReview(ctx, id)
 	}
@@ -194,12 +198,12 @@ func (r *run) markInReview(ctx context.Context, id tracker.ID) {
 	r.logf("%s: in review (%s)", id, label)
 }
 
-// release releases the Claim on a finished Spec. Its last Ticket is closed
-// already, so a failed release only warns.
-func (r *run) release(ctx context.Context, id tracker.ID) {
+// release releases the Claim on a finished Spec, which why says. Its work
+// has landed already, so a failed release only warns.
+func (r *run) release(ctx context.Context, id tracker.ID, why string) {
 	if err := r.opts.Tracker.Release(ctx, id, r.user); err != nil {
-		r.warnf("%s: warning: its last Ticket closed, but releasing its claim failed: %v", id, err)
+		r.warnf("%s: warning: %s, but releasing its claim failed: %v", id, why, err)
 		return
 	}
-	r.logf("%s: released (its last Ticket closed)", id)
+	r.logf("%s: released (%s)", id, why)
 }
