@@ -35,6 +35,19 @@ func (r *run) wasLast(tk tracker.Ticket, spec *tracker.Spec) bool {
 	return true
 }
 
+// opensPullRequest reports whether w's Spec (or standalone Ticket) gets a
+// pull request when it finishes.
+func (r *run) opensPullRequest(w *ticketWork) bool {
+	return r.opts.PullRequest.Open
+}
+
+// staysInReview reports whether w, which is landing, stays open until its
+// pull request is merged: a standalone Ticket that gets one. A Spec's
+// Tickets close when they land.
+func (r *run) staysInReview(w *ticketWork) bool {
+	return w.spec == nil && w.tk.Parent == nil && r.opensPullRequest(w)
+}
+
 // finishSpec finishes the Spec (or standalone Ticket) whose last Ticket w
 // just landed: its pull request is opened or found, its Claim released,
 // and then the spec_finished Hooks run, so they find the pull request.
@@ -44,8 +57,13 @@ func (r *run) finishSpec(ctx context.Context, w *ticketWork) {
 	if w.spec != nil {
 		f.Title = w.spec.Title
 	}
-	if r.opts.PullRequest.Open {
+	if r.opensPullRequest(w) {
 		f.PullRequest = r.pullRequest(ctx, w, f)
+	}
+	if w.inReview != "" {
+		if err := r.opts.Tracker.Comment(ctx, w.tk.ID, landedComment(w.inReview, w.specBranch, f.PullRequest)); err != nil {
+			r.warnf("%s: warning: it landed, but commenting on it failed: %v", id, err)
+		}
 	}
 	r.release(ctx, id)
 	if f.PullRequest != "" {

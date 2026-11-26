@@ -48,7 +48,7 @@ That is "finish what's started": a Spec gets finished before the next one starts
 3. **implement**: the agent writes the code, commits, and reports `done` or `cannot_do`
 4. **review**, in a fresh session, if `[steps.review] enabled` and implement made commits: it either approves or commits fixes
 5. **verify**: the Factory runs the Feedback commands in `verify` itself, after the last Step that changed code
-6. The Spec's merge queue: merged into the Spec branch by code, or by the **merge** Step on a real conflict, then pushed, then the Ticket is closed with a comment that names the summary, the commits and the branch
+6. The Spec's merge queue: merged into the Spec branch by code, or by the **merge** Step on a real conflict, then pushed, then the Ticket is closed with a comment that names the summary, the commits and the branch (a standalone Ticket that gets a pull request stays open, see below)
 
 After every committing Step, the Factory checks that no Protected path was changed. When every Ticket in the Iteration has finished, the Factory reads the Tracker again and the next Iteration takes the Tickets that are ready now. A Run ends when nothing is ready, after `max_iterations` (default 10), or when it is stopped.
 
@@ -60,7 +60,7 @@ After every committing Step, the Factory checks that no Protected path was chang
 | Standalone Ticket's branch | `fliesswerk/ticket-<N>-<slug>` | Always |
 | Ticket branch inside a Spec | `fliesswerk/ticket-<N>` | Until the Ticket lands. It is never pushed |
 
-`fliesswerk` is `[branches] prefix`. A Spec branch is cut from the remote `base_branch` the first time, and pushed after every Ticket that lands. Closed always means the code is on GitHub. An existing Spec branch, local or remote, is found by its number and continued, so a Spec can be handed over or moved to another machine.
+`fliesswerk` is `[branches] prefix`. A Spec branch is cut from the remote `base_branch` the first time, and pushed after every Ticket that lands. Closed always means the code is on GitHub (and, for a standalone Ticket that got a pull request, in `base_branch`). An existing Spec branch, local or remote, is found by its number and continued, so a Spec can be handed over or moved to another machine.
 
 All the Factory's work happens in its own worktrees under `.fliesswerk/state/`. Your checkout is never touched: keep working on any branch, even with uncommitted changes. The Factory never rebases a Spec branch, never merges `base_branch` into it, never force-pushes and never pushes `base_branch`.
 
@@ -73,6 +73,13 @@ draft = false  # true opens it as a draft
 ```
 
 The pull request goes from the Spec branch into `base_branch`. Its title is the Spec's (or the standalone Ticket's), and its body says `Closes #<N>` and lists each closed Ticket with its number, title and summary. If a pull request is already open for the branch, say after a follow-up Ticket, it is reused as it is: its title and body aren't changed. A branch whose earlier pull requests were all merged or closed gets a new one. Its link is printed as a live line, and shown next to the finished Spec in the summary and in `summary.json`. The `spec_finished` Hook runs after the pull request was opened or found, so it can look it up on `$FLIESSWERK_BRANCH`. With `open = false`, the default, the Factory opens no pull requests.
+
+When a standalone Ticket closes depends on this setting:
+
+- With `open = true`, a standalone Ticket stays open when it lands. It loses the ready label, so no Run takes it again, and gets the comment it would have got on close (the summary, the commits and the branch) with the pull request's link. The `Closes #<N>` in the pull request closes it when the pull request is merged. Tickets it blocks wait until then, so they start from code that has its work in it.
+- With `open = false`, a standalone Ticket closes when it lands, as soon as its code is pushed to its own branch.
+
+A Spec's Tickets close when they land either way, so the next ones can start on the Spec branch.
 
 ### When a Ticket fails
 

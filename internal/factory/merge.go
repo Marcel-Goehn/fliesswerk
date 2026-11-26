@@ -109,7 +109,15 @@ func (r *run) land(w *ticketWork, summary string) error {
 	if w.resolution != "" {
 		comment += mergeNote + strings.TrimSpace(w.resolution)
 	}
-	if err := r.opts.Tracker.Close(ctx, tk.ID, closeComment(comment, commits, w.specBranch)); err != nil {
+	if r.staysInReview(w) {
+		// It closes when its pull request is merged. Without the ready
+		// label, no Run takes it again meanwhile.
+		if err := r.opts.Tracker.SetLabels(ctx, tk.ID, nil, []string{r.opts.ReadyLabel}); err != nil {
+			r.fail(tk, KindFactory, fmt.Sprintf("its commits are on %s, but removing %s failed: %v", w.specBranch, r.opts.ReadyLabel, err))
+			return nil
+		}
+		w.inReview = workComment(comment, commits, w.specBranch)
+	} else if err := r.opts.Tracker.Close(ctx, tk.ID, closeComment(comment, commits, w.specBranch)); err != nil {
 		r.fail(tk, KindFactory, fmt.Sprintf("its commits are on %s, but closing it failed: %v", w.specBranch, err))
 		return nil
 	}
@@ -117,7 +125,11 @@ func (r *run) land(w *ticketWork, summary string) error {
 	r.res.Closed = append(r.res.Closed, tk)
 	r.summaries[tk.ID.Key] = summary
 	r.mu.Unlock()
-	r.line(tk, runlog.Line{Kind: runlog.Success, Text: "closed"})
+	if w.inReview != "" {
+		r.line(tk, runlog.Line{Kind: runlog.Success, Text: "landed, open until its pull request is merged"})
+	} else {
+		r.line(tk, runlog.Line{Kind: runlog.Success, Text: "closed"})
+	}
 	r.discard(w.b)
 	if r.wasLast(tk, w.spec) {
 		r.finishSpec(ctx, w)
