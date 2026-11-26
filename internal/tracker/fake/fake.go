@@ -4,6 +4,7 @@ package fake
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -86,6 +87,9 @@ type Tracker struct {
 	// PullRequests are the repository's pull requests, open, merged and
 	// closed, oldest first.
 	PullRequests []PullRequest
+	// NoPullRequestPermission makes CanOpenPullRequests fail, as for a
+	// token without the permission.
+	NoPullRequestPermission bool
 
 	mu     sync.Mutex
 	issues map[int]*Issue
@@ -369,6 +373,15 @@ func (t *Tracker) OpenPullRequest(_ context.Context, pr tracker.PullRequest) (st
 	t.PullRequests = append(t.PullRequests, p)
 	t.writes = append(t.writes, Write{Op: "open_pr", Text: pr.Body, PullRequest: &p})
 	return p.URL, nil
+}
+
+// CanOpenPullRequests fails when NoPullRequestPermission is set, naming
+// the permission as GitHub's does.
+func (t *Tracker) CanOpenPullRequests(context.Context) error {
+	if t.NoPullRequestPermission {
+		return errors.New("fake tracker: the token can't open pull requests; give it Pull requests: Read and write")
+	}
+	return nil
 }
 
 // Issues returns every issue as it is now, by number.

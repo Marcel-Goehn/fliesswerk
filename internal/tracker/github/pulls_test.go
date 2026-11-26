@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -109,5 +110,49 @@ func TestARateLimitedPullRequestSaysHowLongToWait(t *testing.T) {
 	}
 	if want := []call{{args: "api --include repos/" + repo + "/pulls"}}; !slices.Equal(r.calls, want) {
 		t.Errorf("calls = %q, want a probe of the repository's pull requests", r.calls)
+	}
+}
+
+func TestCanOpenPullRequestsTriesAnEmptyOneThatGitHubMustRefuseAsInvalid(t *testing.T) {
+	probe := "api --method POST repos/" + repo + "/pulls --input - --silent"
+	for name, tt := range map[string]struct {
+		err   error
+		wants []string // nil when the credential can open pull requests
+	}{
+		"allowed: GitHub only finds the empty pull request invalid": {
+			err: errors.New("gh api: gh: Invalid request.\n\n\"head\", \"base\" weren't supplied. (HTTP 422)"),
+		},
+		"a fine-grained token without the permission": {
+			err:   errors.New("gh api: gh: Resource not accessible by personal access token (HTTP 403)"),
+			wants: []string{repo, "Pull requests", "Read and write", "Resource not accessible"},
+		},
+		"a login that can't see the repository": {
+			err:   errors.New("gh api: gh: Not Found (HTTP 404)"),
+			wants: []string{repo, "Pull requests", "Read and write"},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := &fixtureRunner{t: t, errs: map[string]error{probe: tt.err}}
+
+			err := newTracker(r).CanOpenPullRequests(context.Background())
+
+			if want := []call{{args: probe, stdin: "{}"}}; !slices.Equal(r.calls, want) {
+				t.Errorf("calls = %q\nwant    %q", r.calls, want)
+			}
+			if tt.wants == nil {
+				if err != nil {
+					t.Fatalf("err = %v, want none", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("want an error naming the permission")
+			}
+			for _, w := range tt.wants {
+				if !strings.Contains(err.Error(), w) {
+					t.Errorf("err = %v, want it to name %q", err, w)
+				}
+			}
+		})
 	}
 }

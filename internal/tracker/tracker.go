@@ -188,6 +188,10 @@ type Tracker interface {
 	FindPullRequest(ctx context.Context, head string) (string, error)
 	// OpenPullRequest opens a pull request and returns its URL.
 	OpenPullRequest(ctx context.Context, pr PullRequest) (string, error)
+	// CanOpenPullRequests checks, without opening one, that the Tracker's
+	// credential may open pull requests. Its error names the permission to
+	// add.
+	CanOpenPullRequests(ctx context.Context) error
 	// Describe tells the rest of the Factory what this Tracker needs.
 	Describe() Description
 }

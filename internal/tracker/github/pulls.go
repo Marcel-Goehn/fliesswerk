@@ -57,6 +57,19 @@ func (t *Tracker) OpenPullRequest(ctx context.Context, pr tracker.PullRequest) (
 	return "", fmt.Errorf("opening a pull request from %s: gh printed no URL: %q", pr.Head, strings.TrimSpace(string(out)))
 }
 
+// CanOpenPullRequests asks GitHub to open an empty pull request. GitHub
+// checks the credential's permission before what it was sent, so a
+// credential that may open pull requests gets 422 for the missing head and
+// base, and nothing is ever opened.
+func (t *Tracker) CanOpenPullRequests(ctx context.Context) error {
+	_, err := t.opts.Runner.Run(ctx, []byte("{}"), "api", "--method", "POST", t.pullsPath(), "--input", "-", "--silent")
+	if err == nil || strings.Contains(err.Error(), "HTTP 422") {
+		return nil
+	}
+	return fmt.Errorf("your login or `tracker.token` can't open pull requests in %s (%v). Give the token Pull requests: Read and write under Repository permissions (a classic token needs the repo scope), or set `pull_request.open = false`",
+		cmp.Or(t.opts.Repo, "the repository"), err)
+}
+
 // pullsPath is the REST path of the repository's pull requests.
 func (t *Tracker) pullsPath() string {
 	return "repos/" + cmp.Or(t.opts.Repo, "{owner}/{repo}") + "/pulls"
