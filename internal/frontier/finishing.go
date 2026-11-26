@@ -1,6 +1,10 @@
 package frontier
 
-import "github.com/Marcel-Goehn/fliesswerk/internal/tracker"
+import (
+	"slices"
+
+	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
+)
 
 // Finishing is a Spec, or a standalone Ticket, that a Run would finish.
 type Finishing struct {
@@ -42,7 +46,7 @@ func WouldFinish(snap tracker.Snapshot, opts Options, iterations int) []Finishin
 				continue
 			}
 			spec, ok := snap.Specs[tk.Parent.Key]
-			if !ok || !allLanded(spec, landed) || tk.ID.Key != lastTaken(tk.Parent.Key, p.Take) {
+			if !ok || !spec.Finished(func(id tracker.ID) bool { return landed[id.Key] }) || tk.ID.Key != lastTaken(tk.Parent.Key, p.Take) {
 				continue
 			}
 			out = append(out, Finishing{Ticket: tk, Spec: &spec})
@@ -53,42 +57,31 @@ func WouldFinish(snap tracker.Snapshot, opts Options, iterations int) []Finishin
 
 // afterLanding is snap with the landed Tickets closed.
 func afterLanding(snap tracker.Snapshot, landed map[string]bool) tracker.Snapshot {
+	state := func(id tracker.ID, s tracker.State) tracker.State {
+		if landed[id.Key] {
+			return tracker.Closed
+		}
+		return s
+	}
 	out := tracker.Snapshot{Specs: map[string]tracker.Spec{}}
 	for _, tk := range snap.Tickets {
 		if landed[tk.ID.Key] {
 			continue
 		}
-		blockers := make([]tracker.Blocker, len(tk.Blockers))
+		tk.Blockers = slices.Clone(tk.Blockers)
 		for i, b := range tk.Blockers {
-			if landed[b.ID.Key] {
-				b.State = tracker.Closed
-			}
-			blockers[i] = b
+			tk.Blockers[i].State = state(b.ID, b.State)
 		}
-		tk.Blockers = blockers
 		out.Tickets = append(out.Tickets, tk)
 	}
 	for key, spec := range snap.Specs {
-		tickets := make([]tracker.SpecTicket, len(spec.Tickets))
+		spec.Tickets = slices.Clone(spec.Tickets)
 		for i, st := range spec.Tickets {
-			if landed[st.ID.Key] {
-				st.State = tracker.Closed
-			}
-			tickets[i] = st
+			spec.Tickets[i].State = state(st.ID, st.State)
 		}
-		spec.Tickets = tickets
 		out.Specs[key] = spec
 	}
 	return out
-}
-
-func allLanded(spec tracker.Spec, landed map[string]bool) bool {
-	for _, st := range spec.Tickets {
-		if st.State == tracker.Open && !landed[st.ID.Key] {
-			return false
-		}
-	}
-	return true
 }
 
 // lastTaken is the key of the last of take in the Spec specKey, so a Spec

@@ -120,6 +120,17 @@ type Spec struct {
 	Claim *Claim
 }
 
+// Finished reports whether none of the Spec's Tickets is open, counting
+// as closed those that closed says are.
+func (s Spec) Finished(closed func(ID) bool) bool {
+	for _, st := range s.Tickets {
+		if st.State == Open && !closed(st.ID) {
+			return false
+		}
+	}
+	return true
+}
+
 // Snapshot is what the Tracker holds that the core needs to pick Tickets.
 type Snapshot struct {
 	Tickets []Ticket

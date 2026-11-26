@@ -30,12 +30,7 @@ func (r *run) wasLast(tk tracker.Ticket, spec *tracker.Spec) bool {
 	if spec == nil {
 		return tk.Parent == nil // without the Spec's Ticket list, it can't be known
 	}
-	for _, st := range spec.Tickets {
-		if st.State == tracker.Open && !r.closed(st.ID) {
-			return false
-		}
-	}
-	return true
+	return spec.Finished(r.closed)
 }
 
 // opensPullRequest reports whether w's Spec (or standalone Ticket) gets a
