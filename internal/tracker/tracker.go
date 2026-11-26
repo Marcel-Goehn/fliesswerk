@@ -188,6 +188,10 @@ type Tracker interface {
 	FindPullRequest(ctx context.Context, head string) (string, error)
 	// OpenPullRequest opens a pull request and returns its URL.
 	OpenPullRequest(ctx context.Context, pr PullRequest) (string, error)
+	// CanOpenPullRequests checks, without opening one, that the Tracker's
+	// credential may open pull requests. Its error names the permission to
+	// add.
+	CanOpenPullRequests(ctx context.Context) error
 	// Describe tells the rest of the Factory what this Tracker needs.
 	Describe() Description
 }
@@ -233,8 +237,9 @@ type Access struct {
 	LoggedIn func(ctx context.Context) bool
 	// LoginLabel and TokenLabel offer that login and a token of their own.
 	LoginLabel, TokenLabel string
-	// Walkthrough says how to make a token for repo with the least it needs.
-	Walkthrough func(repo string) string
+	// Walkthrough says how to make a token for repo with the least it needs:
+	// with pullRequests, also enough to open pull requests.
+	Walkthrough func(repo string, pullRequests bool) string
 	// TokenKey is the token's name in the user-level credentials file. It
 	// differs per repo, as such a token only reaches one.
 	TokenKey func(repo string) string

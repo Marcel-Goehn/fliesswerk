@@ -364,7 +364,13 @@ func preflight(ctx context.Context, tr tracker.Tracker, values map[string]any, s
 			return fmt.Errorf("%s: %w", c.Name, err)
 		}
 	}
-	return checkLabels(ctx, tr, values)
+	if err := checkLabels(ctx, tr, values); err != nil {
+		return err
+	}
+	if pullRequestsOpen(values) {
+		return checkPullRequests(ctx, tr)
+	}
+	return nil
 }
 
 // factoryOptions are the Options of a Run with this config.

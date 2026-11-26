@@ -127,7 +127,7 @@ draft = false
 
 ### `pull_request.open`
 
-When a Spec's last Ticket lands, or a standalone Ticket lands, open a pull request from its branch into `base_branch`, or reuse the one already open for that branch. Its title is the Spec's (or standalone Ticket's), and its body says `Closes #<N>` and lists each closed Ticket with its summary. An open pull request is reused as it is: its title and body aren't changed. Default `false`, which opens none.
+When a Spec's last Ticket lands, or a standalone Ticket lands, open a pull request from its branch into `base_branch`, or reuse the one already open for that branch. Its title is the Spec's (or standalone Ticket's), and its body says `Closes #<N>` and lists each closed Ticket with its summary. An open pull request is reused as it is: its title and body aren't changed. Default `false`, which opens none. With `true`, `check` and the start of a Run make sure the Tracker's token can open pull requests; a fine-grained GitHub token needs **Pull requests** set to **Read and write**. `init` asks for this setting.
 
 ### `pull_request.draft`
 

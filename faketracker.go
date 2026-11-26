@@ -24,7 +24,8 @@ import (
 // "pull_requests" are the repository's pull requests, each with a "State"
 // of "open", "merged" or "closed"; an opened one is added there.
 // "labels" lists the repository's labels; left out, it has every label it
-// is asked about.
+// is asked about. "no_pull_request_permission" makes the token one that
+// can't open pull requests.
 //
 // Every write is applied to the file, and recorded in "writes". The next
 // "fail_writes" writes fail instead, and with "fail_snapshot" so does
@@ -51,6 +52,7 @@ func init() {
 			tr.Labels = *st.Labels
 		}
 		tr.PullRequests = st.PullRequests
+		tr.NoPullRequestPermission = st.NoPullRequestPermission
 		return &fileTracker{Tracker: tr, path: path, state: st}, nil
 	}
 }
@@ -67,6 +69,8 @@ type fakeState struct {
 	Writes       []fake.Write       `json:"writes"`
 	FailWrites   int                `json:"fail_writes,omitempty"`
 	FailSnapshot bool               `json:"fail_snapshot,omitempty"`
+	// NoPullRequestPermission is a token that can't open pull requests.
+	NoPullRequestPermission bool `json:"no_pull_request_permission,omitempty"`
 }
 
 // fileTracker is a fake Tracker that saves itself after every write.
