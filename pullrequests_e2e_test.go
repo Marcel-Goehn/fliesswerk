@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -139,9 +140,103 @@ func TestAFinishedStandaloneTicketGetsAPullRequestFromItsBranch(t *testing.T) {
 		t.Errorf("pull request = %+v, want one from the Ticket's branch into main, titled like it", pr)
 	}
 	mustContain(t, "the body", prs[0].Body, "Closes #5", "Fixed the typo.")
-	if !p.issues(t)[5].Closed {
-		t.Errorf("#5 is open, want it closed on landing as before")
+}
+
+func TestALandedStandaloneTicketStaysOpenUntilItsPullRequestIsMerged(t *testing.T) {
+	issues := []fake.Issue{{Number: 5, Title: "Fix the typo", Labels: []string{"ready-for-agent"}}}
+	p := newRunProject(t, buildTestFliesswerk(t), issues, `{"sessions": [`+approves+`, `+
+		implements("Implement Ticket #5", "typo.go", "Fixed the typo.")+`]}`)
+	p.withPullRequests(t, "open = true\n")
+
+	if code := p.run(t); code != 0 {
+		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
 	}
+
+	five := p.issues(t)[5]
+	if five.Closed {
+		t.Errorf("#5 is closed, want it open until its pull request is merged")
+	}
+	if slices.Contains(five.Labels, "ready-for-agent") {
+		t.Errorf("#5's labels = %v, want ready-for-agent removed", five.Labels)
+	}
+	prs := p.openedPullRequests(t)
+	if len(prs) != 1 {
+		t.Fatalf("opened %d pull requests, want 1: %+v", len(prs), prs)
+	}
+	if len(five.Comments) == 0 {
+		t.Fatalf("#5 has no comments, want one with what was done and the pull request")
+	}
+	branch := "fliesswerk/ticket-5-fix-the-typo"
+	mustContain(t, "#5's last comment", five.Comments[len(five.Comments)-1].Body,
+		"Fixed the typo.", "Commits on `"+branch+"`", "Add typo.go", prs[0].URL)
+	mustNotContain(t, "#5's last comment", five.Comments[len(five.Comments)-1].Body, "Closed by the Factory")
+
+	// A later Run doesn't take it again.
+	if code := p.run(t); code != 0 {
+		t.Fatalf("second Run: exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+	}
+	mustNotContain(t, "the second Run's stdout", p.stdout, "#5: claimed", "Implement Ticket #5")
+	if prs := p.openedPullRequests(t); len(prs) != 1 {
+		t.Errorf("opened %d pull requests over both Runs, want 1", len(prs))
+	}
+}
+
+func TestATicketBlockedByAStandaloneTicketInReviewWaits(t *testing.T) {
+	issues := []fake.Issue{
+		{Number: 5, Title: "Fix the typo", Labels: []string{"ready-for-agent"}},
+		{Number: 6, Title: "Use the fixed word", Labels: []string{"ready-for-agent"}, BlockedBy: []int{5}},
+	}
+	p := newRunProject(t, buildTestFliesswerk(t), issues, `{"sessions": [`+approves+`, `+
+		implements("Implement Ticket #5", "typo.go", "Fixed the typo.")+`, `+
+		implements("Implement Ticket #6", "word.go", "Used the word.")+`]}`)
+	p.withPullRequests(t, "open = true\n")
+
+	if code := p.run(t); code != 0 {
+		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+	}
+
+	got := p.issues(t)
+	if got[5].Closed || got[6].Closed {
+		t.Errorf("#5 closed = %v, #6 closed = %v, want both open", got[5].Closed, got[6].Closed)
+	}
+	for _, w := range p.writes(t) {
+		if w.Ticket == 6 {
+			t.Errorf("#6 got the write %+v, want it untouched while #5 is open", w)
+		}
+	}
+}
+
+func TestASpecsTicketsStillCloseWhenTheyLand(t *testing.T) {
+	p := newRunProject(t, buildTestFliesswerk(t), cartIssues(), cartScript())
+	p.withPullRequests(t, "open = true\n")
+
+	if code := p.run(t); code != 0 {
+		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+	}
+
+	if !p.issues(t)[2].Closed {
+		t.Errorf("#2 is open, want it closed on landing")
+	}
+	if prs := p.openedPullRequests(t); len(prs) != 1 {
+		t.Errorf("opened %+v, want one for the Spec", prs)
+	}
+}
+
+func TestWithoutOpenAStandaloneTicketClosesOnLanding(t *testing.T) {
+	issues := []fake.Issue{{Number: 5, Title: "Fix the typo", Labels: []string{"ready-for-agent"}}}
+	p := newRunProject(t, buildTestFliesswerk(t), issues, `{"sessions": [`+approves+`, `+
+		implements("Implement Ticket #5", "typo.go", "Fixed the typo.")+`]}`)
+	p.withPullRequests(t, "open = false\n")
+
+	if code := p.run(t); code != 0 {
+		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+	}
+
+	five := p.issues(t)[5]
+	if !five.Closed {
+		t.Errorf("#5 is open, want it closed on landing")
+	}
+	mustContain(t, "#5's last comment", five.Comments[len(five.Comments)-1].Body, "Fixed the typo.", "Closed by the Factory")
 }
 
 func TestDraftOpensThePullRequestAsADraft(t *testing.T) {
@@ -214,4 +309,46 @@ func TestWithoutOpenNoPullRequestIsLookedUpOrOpened(t *testing.T) {
 	if got := p.finishedSpecs(t); len(got) != 1 || got[0]["pull_request"] != "" {
 		t.Errorf("summary.json's specs_finished = %v, want #1 without a pull request", got)
 	}
+}
+
+// dryRunIssues are the cart Spec of two, which a Run would finish, a
+// standalone Ticket, and a Spec a Run wouldn't finish, since its #8 isn't
+// ready.
+func dryRunIssues() []fake.Issue {
+	return append(specOfTwo(),
+		fake.Issue{Number: 5, Title: "Fix the typo", Labels: []string{"ready-for-agent"}},
+		fake.Issue{Number: 6, Title: "Spec: Checkout", Labels: []string{"ready-for-agent"}},
+		fake.Issue{Number: 7, Title: "Add the checkout", Labels: []string{"ready-for-agent"}, Parent: 6},
+		fake.Issue{Number: 8, Title: "Pay", Parent: 6},
+	)
+}
+
+func TestADryRunNamesThePullRequestEachFinishingSpecWouldGet(t *testing.T) {
+	p := newRunProject(t, buildTestFliesswerk(t), dryRunIssues(), `{"sessions": []}`)
+	p.withPullRequests(t, "open = true\n")
+	mine := fake.PullRequest{Number: 20, URL: fake.PullURL(20), Head: cartSpecBranch, Base: "main", State: fake.PullOpen}
+	p.withOpenedPullRequests(t, mine)
+
+	if code := p.run(t, "--dry-run"); code != 0 {
+		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+	}
+
+	mustContain(t, "stdout", p.stdout,
+		"#1  Spec: Shopping cart: would reuse the open pull request "+mine.URL,
+		"#5  Fix the typo: would open a pull request into main")
+	mustNotContain(t, "stdout", p.stdout, "Spec: Checkout: would")
+	if w := p.writes(t); len(w) != 0 {
+		t.Errorf("the dry run wrote %+v, want nothing", w)
+	}
+}
+
+func TestADryRunWithoutOpenShowsNoPullRequest(t *testing.T) {
+	p := newRunProject(t, buildTestFliesswerk(t), dryRunIssues(), `{"sessions": []}`)
+	p.withPullRequests(t, "open = false\n")
+
+	if code := p.run(t, "--dry-run"); code != 0 {
+		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+	}
+
+	mustNotContain(t, "stdout", p.stdout, "pull request")
 }

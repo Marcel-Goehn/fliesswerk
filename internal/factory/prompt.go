@@ -70,23 +70,41 @@ const (
 	commitsNote = "\n\nCommits on `"
 	mergeNote   = "\n\nMerge: "
 	closedNote  = "\nClosed by the Factory after pushing `"
+	landedNote  = "\nLanded by the Factory on `"
 )
 
 // closeComment is the last comment on a Ticket the Factory closes.
 func closeComment(summary string, commits []git.Commit, branch string) string {
+	return workComment(summary, commits, branch) + fmt.Sprintf(closedNote+"%s`.\n", branch)
+}
+
+// landedComment is the comment on a standalone Ticket whose work, from
+// workComment, landed on branch, and which stays open until its pull
+// request at url is merged. url is "" when there is none.
+func landedComment(work, branch, url string) string {
+	s := work + fmt.Sprintf(landedNote+"%s`. It closes when its pull request is merged", branch)
+	if url != "" {
+		s += ": " + url
+	}
+	return s + ".\n"
+}
+
+// workComment is the summary and the commits on branch that start
+// closeComment and landedComment.
+func workComment(summary string, commits []git.Commit, branch string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s"+commitsNote+"%s`:\n\n", strings.TrimSpace(summary), branch)
 	for _, c := range commits {
 		fmt.Fprintf(&b, "- %s %s\n", c.Short(), c.Subject)
 	}
-	fmt.Fprintf(&b, closedNote+"%s`.\n", branch)
 	return b.String()
 }
 
-// summaryIn is the agent's summary in a comment closeComment wrote,
-// without how a merge was resolved. ok is false for any other comment.
+// summaryIn is the agent's summary in a comment closeComment or
+// landedComment wrote, without how a merge was resolved. ok is false for
+// any other comment.
 func summaryIn(comment string) (summary string, ok bool) {
-	if !strings.Contains(comment, closedNote) {
+	if !strings.Contains(comment, closedNote) && !strings.Contains(comment, landedNote) {
 		return "", false
 	}
 	summary, _, ok = strings.Cut(comment, commitsNote)
