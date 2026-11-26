@@ -77,6 +77,27 @@ func TestASpecWhosePullRequestCantBeOpenedNeedsAPerson(t *testing.T) {
 	}
 }
 
+func TestAPullRequestThatKeepsFailingToOpenIsNotQueuedButNeedsAPerson(t *testing.T) {
+	p := newRunProject(t, buildTestFliesswerk(t), cartIssues(), cartScript())
+	p.withPullRequests(t, "open = true\n")
+	p.patchTracker(t, map[string]any{"fail_writes": 1000})
+
+	if code := p.run(t); code != 1 {
+		t.Fatalf("exit code = %d, want 1\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+	}
+
+	mustContain(t, "the summary", p.stdout, "Failed:", "#1  Spec: Shopping cart", "[pull_request]", "Writes queued for replay", "close #2", "comment #1")
+	mustNotContain(t, "the summary", p.stdout, "open_pr", "pull request #1")
+	if prs := p.pullRequests(t); len(prs) != 0 {
+		t.Errorf("pull requests = %+v, want none", prs)
+	}
+	failed := p.failedInSummary(t)
+	if len(failed) != 1 || failed[0]["id"] != "#1" || failed[0]["kind"] != "pull_request" {
+		t.Fatalf("summary.json's failed = %v, want Spec #1 as pull_request", failed)
+	}
+	mustContain(t, "its reason", failed[0]["reason"].(string), "opening its pull request failed", "the write failed")
+}
+
 func TestASpecWhosePullRequestCantBeLookedUpNeedsAPerson(t *testing.T) {
 	p := newRunProject(t, buildTestFliesswerk(t), cartIssues(), cartScript())
 	p.withPullRequests(t, "open = true\n")
