@@ -600,6 +600,10 @@ type ticketWork struct {
 	b                   build
 	// resolution is the merge Step's summary, if one resolved a conflict.
 	resolution string
+	// inReview is what was done on a landed standalone Ticket that stays
+	// open until its pull request is merged: the comment it gets, without
+	// the pull request. It is "" for a Ticket that closed.
+	inReview string
 }
 
 // iterate takes the Iteration's Tickets through their Steps at once, and
