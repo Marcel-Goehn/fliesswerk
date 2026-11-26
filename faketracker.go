@@ -21,6 +21,8 @@ import (
 //	 "issues": [{"Number": 1, …}], "writes": []}
 //
 // in_progress_label and user may be left out for the fake's defaults.
+// "pull_requests" are the repository's pull requests, each with a "State"
+// of "open", "merged" or "closed"; an opened one is added there.
 // "labels" lists the repository's labels; left out, it has every label it
 // is asked about.
 //
@@ -47,6 +49,7 @@ func init() {
 		if st.Labels != nil {
 			tr.Labels = *st.Labels
 		}
+		tr.PullRequests = st.PullRequests
 		return &fileTracker{Tracker: tr, path: path, state: st}, nil
 	}
 }
@@ -57,9 +60,12 @@ type fakeState struct {
 	User            string       `json:"user,omitempty"`
 	Labels          *[]string    `json:"labels,omitempty"`
 	Issues          []fake.Issue `json:"issues"`
-	Writes          []fake.Write `json:"writes"`
-	FailWrites      int          `json:"fail_writes,omitempty"`
-	FailSnapshot    bool         `json:"fail_snapshot,omitempty"`
+	// PullRequests are the repository's pull requests, open, merged and
+	// closed.
+	PullRequests []fake.PullRequest `json:"pull_requests,omitempty"`
+	Writes       []fake.Write       `json:"writes"`
+	FailWrites   int                `json:"fail_writes,omitempty"`
+	FailSnapshot bool               `json:"fail_snapshot,omitempty"`
 }
 
 // fileTracker is a fake Tracker that saves itself after every write.
@@ -76,7 +82,7 @@ func (f *fileTracker) save(err error) error {
 		return err
 	}
 	st := f.state
-	st.Issues, st.Writes = f.Issues(), f.Writes()
+	st.Issues, st.Writes, st.PullRequests = f.Issues(), f.Writes(), f.PullRequests
 	if st.Labels != nil {
 		st.Labels = &f.Labels
 	}
@@ -130,6 +136,14 @@ func (f *fileTracker) MissingLabels(ctx context.Context, names []string) ([]stri
 		return nil, nil
 	}
 	return f.Tracker.MissingLabels(ctx, names)
+}
+
+func (f *fileTracker) OpenPullRequest(ctx context.Context, pr tracker.PullRequest) (url string, err error) {
+	err = f.write(func() error {
+		url, err = f.Tracker.OpenPullRequest(ctx, pr)
+		return err
+	})
+	return url, err
 }
 
 func (f *fileTracker) CreateLabel(ctx context.Context, name, description string) error {

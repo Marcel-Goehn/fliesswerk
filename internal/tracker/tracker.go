@@ -141,9 +141,18 @@ type Comment struct {
 	Body      string
 }
 
+// PullRequest is a pull request to open.
+type PullRequest struct {
+	// Head is the branch it merges, Base the one it merges into.
+	Head, Base  string
+	Title, Body string
+	// Draft opens it as a draft rather than ready for review.
+	Draft bool
+}
+
 // Tracker is the boundary every Tracker adapter implements. There are no
-// other writes than Comment, Close, SetLabels, Claim and Release, and
-// CreateLabel, which only `init` uses.
+// other writes than Comment, Close, SetLabels, Claim, Release and
+// OpenPullRequest, and CreateLabel, which only `init` uses.
 type Tracker interface {
 	// Snapshot reads every open Ticket with the ready label, and the Spec
 	// of each.
@@ -174,6 +183,11 @@ type Tracker interface {
 	// CreateLabel creates a label with a description. It never changes a
 	// label that already exists.
 	CreateLabel(ctx context.Context, name, description string) error
+	// FindPullRequest returns the URL of the open pull request from the
+	// branch head, "" if there is none. Merged and closed ones don't count.
+	FindPullRequest(ctx context.Context, head string) (string, error)
+	// OpenPullRequest opens a pull request and returns its URL.
+	OpenPullRequest(ctx context.Context, pr PullRequest) (string, error)
 	// Describe tells the rest of the Factory what this Tracker needs.
 	Describe() Description
 }

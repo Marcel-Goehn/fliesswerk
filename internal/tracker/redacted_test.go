@@ -30,3 +30,18 @@ func TestARedactedTrackerNeverWritesASecret(t *testing.T) {
 		t.Errorf("writes = %+v, want the comment and the close", inner.Writes())
 	}
 }
+
+func TestARedactedTrackerOpensNoPullRequestWithASecret(t *testing.T) {
+	inner := fake.New("ready")
+	tr := tracker.Redacted(inner, func(s string) string { return strings.ReplaceAll(s, "hunter2", "***") })
+
+	_, err := tr.OpenPullRequest(context.Background(), tracker.PullRequest{Head: "b", Base: "main", Title: "Use hunter2", Body: "Closes #1: hunter2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	prs := inner.PullRequests
+	if len(prs) != 1 || prs[0].Title != "Use ***" || prs[0].Body != "Closes #1: ***" {
+		t.Errorf("pull requests = %+v, want one with the secret redacted from its title and body", prs)
+	}
+}

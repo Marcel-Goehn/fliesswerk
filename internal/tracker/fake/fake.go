@@ -37,15 +37,39 @@ type Issue struct {
 	ClaimedAt time.Time
 }
 
+// The states of a PullRequest.
+const (
+	PullOpen   = "open"
+	PullMerged = "merged"
+	PullClosed = "closed"
+)
+
+// PullRequest is one pull request in the fake Tracker. It shares its
+// numbers with the issues, like GitHub's.
+type PullRequest struct {
+	Number      int
+	URL         string
+	Head, Base  string
+	Title, Body string
+	Draft       bool
+	// State is PullOpen, PullMerged or PullClosed.
+	State string
+}
+
+// PullURL is the URL the fake Tracker gives pull request n.
+func PullURL(n int) string { return "https://fake.test/pull/" + strconv.Itoa(n) }
+
 // Write is one recorded write.
 type Write struct {
-	Op     string // "comment", "close", "labels", "claim", "release" or "create_label"
+	Op     string // "comment", "close", "labels", "claim", "release", "create_label" or "open_pr"
 	Ticket int
 	Text   string
 	Add    []string
 	Remove []string
 	// By is whose Claim a release drops.
 	By string
+	// PullRequest is what an open_pr opened.
+	PullRequest *PullRequest `json:",omitempty"`
 }
 
 // Tracker is an in-memory Tracker. The zero value is not usable; use New.
@@ -59,6 +83,9 @@ type Tracker struct {
 	Now func() time.Time
 	// Labels are the labels the fake's repository has.
 	Labels []string
+	// PullRequests are the repository's pull requests, open, merged and
+	// closed, oldest first.
+	PullRequests []PullRequest
 
 	mu     sync.Mutex
 	issues map[int]*Issue
@@ -307,6 +334,41 @@ func (t *Tracker) CreateLabel(_ context.Context, name, description string) error
 	t.Labels = append(t.Labels, name)
 	t.writes = append(t.writes, Write{Op: "create_label", Add: []string{name}, Text: description})
 	return nil
+}
+
+// FindPullRequest returns the URL of the open pull request from head, ""
+// if there is none.
+func (t *Tracker) FindPullRequest(_ context.Context, head string) (string, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for _, p := range t.PullRequests {
+		if p.Head == head && p.State == PullOpen {
+			return p.URL, nil
+		}
+	}
+	return "", nil
+}
+
+// OpenPullRequest adds an open pull request, recording an open_pr write.
+// Like GitHub, it refuses a second open one from the same head into the
+// same base.
+func (t *Tracker) OpenPullRequest(_ context.Context, pr tracker.PullRequest) (string, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	n := 1
+	for _, i := range t.issues {
+		n = max(n, i.Number+1)
+	}
+	for _, p := range t.PullRequests {
+		if p.Head == pr.Head && p.Base == pr.Base && p.State == PullOpen {
+			return "", fmt.Errorf("fake tracker: a pull request from %s into %s is already open", pr.Head, pr.Base)
+		}
+		n = max(n, p.Number+1)
+	}
+	p := PullRequest{Number: n, URL: PullURL(n), Head: pr.Head, Base: pr.Base, Title: pr.Title, Body: pr.Body, Draft: pr.Draft, State: PullOpen}
+	t.PullRequests = append(t.PullRequests, p)
+	t.writes = append(t.writes, Write{Op: "open_pr", Text: pr.Body, PullRequest: &p})
+	return p.URL, nil
 }
 
 // Issues returns every issue as it is now, by number.
