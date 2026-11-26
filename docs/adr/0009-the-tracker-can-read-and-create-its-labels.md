@@ -13,3 +13,4 @@ The adapter compares label names: GitHub compares them without regard to case, a
 
 - The Tracker's writes are Comment, Close, SetLabels, Claim, Release and CreateLabel. A Run never calls CreateLabel.
 - A missing label stops `check` and a Run with exit code 3, as a setup problem. A failure to read the labels stops a Run like any other Tracker failure.
+- **Amended by [Open a pull request when a Spec or standalone Ticket finishes](https://github.com/Marcel-Goehn/fliesswerk/issues/132): the Tracker can open pull requests.** Its writes are now Comment, Close, SetLabels, Claim, Release, CreateLabel and OpenPullRequest. A Run calls OpenPullRequest only with `[pull_request] open = true`, and never queues it for replay. With `open = true`, `in_review_label` and `no_pr_label` are among the labels that must exist.
