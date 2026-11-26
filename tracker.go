@@ -52,19 +52,23 @@ func pullRequestsOpen(values map[string]any) bool {
 // inReviewLabel is the label of a Spec or standalone Ticket whose work
 // waits in an open pull request, "" when the Factory opens none.
 func inReviewLabel(values map[string]any) string {
-	if !pullRequestsOpen(values) {
-		return ""
-	}
-	return stringAt(values, defaultInReviewLabel, "tracker", "in_review_label")
+	return pullRequestLabel(values, defaultInReviewLabel, "in_review_label")
 }
 
 // noPRLabel is the label that opts a Spec or standalone Ticket out of its
 // pull request, "" when the Factory opens none.
 func noPRLabel(values map[string]any) string {
+	return pullRequestLabel(values, defaultNoPRLabel, "no_pr_label")
+}
+
+// pullRequestLabel is the label `[tracker] key` names, def by default. It
+// is "" when the Factory opens no pull requests: the label is then neither
+// used nor required.
+func pullRequestLabel(values map[string]any, def, key string) string {
 	if !pullRequestsOpen(values) {
 		return ""
 	}
-	return stringAt(values, defaultNoPRLabel, "tracker", "no_pr_label")
+	return stringAt(values, def, "tracker", key)
 }
 
 func maxParallel(values map[string]any) int {
