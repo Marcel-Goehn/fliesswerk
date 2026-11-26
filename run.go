@@ -67,7 +67,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	}
 	p := frontier.Compute(snap, opts)
 	var prs []string
-	if boolAt(values, false, "pull_request", "open") {
+	if pullRequestsOpen(values) {
 		finishing := frontier.WouldFinish(snap, opts, intAt(values, defaultMaxIterations, "max_iterations"))
 		if prs, err = plannedPullRequests(ctx, tr, values, root, finishing); err != nil {
 			_, _ = fmt.Fprintf(stderr, "fliesswerk run: %v\n", err)
