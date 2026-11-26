@@ -81,8 +81,8 @@ func (r *run) finishSpec(ctx context.Context, w *ticketWork) {
 	if r.opensPullRequest(w) {
 		f.PullRequest, failed = r.pullRequest(ctx, w, f)
 	}
-	if w.inReview != "" {
-		if err := r.opts.Tracker.Comment(ctx, w.tk.ID, landedComment(w.inReview, w.specBranch, f.PullRequest)); err != nil {
+	if w.staysOpen {
+		if err := r.opts.Tracker.Comment(ctx, w.tk.ID, landedComment(w.workDone, w.specBranch, f.PullRequest)); err != nil {
 			r.warnf("%s: warning: it landed, but commenting on it failed: %v", id, err)
 		}
 	}
@@ -90,7 +90,7 @@ func (r *run) finishSpec(ctx context.Context, w *ticketWork) {
 		r.pullRequestFailed(ctx, f, failed)
 	}
 	why := "its last Ticket closed"
-	if w.inReview != "" {
+	if w.staysOpen {
 		why = "it landed, and stays open until its pull request is merged"
 	}
 	r.release(ctx, id, why)

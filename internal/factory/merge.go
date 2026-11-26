@@ -116,20 +116,20 @@ func (r *run) land(w *ticketWork, summary string) error {
 			r.fail(tk, KindFactory, fmt.Sprintf("its commits are on %s, but removing %s failed: %v", w.specBranch, r.opts.ReadyLabel, err))
 			return nil
 		}
-		w.inReview = workComment(comment, commits, w.specBranch)
+		w.staysOpen, w.workDone = true, workComment(comment, commits, w.specBranch)
 	} else if err := r.opts.Tracker.Close(ctx, tk.ID, closeComment(comment, commits, w.specBranch)); err != nil {
 		r.fail(tk, KindFactory, fmt.Sprintf("its commits are on %s, but closing it failed: %v", w.specBranch, err))
 		return nil
 	}
 	r.mu.Lock()
-	if w.inReview != "" {
+	if w.staysOpen {
 		r.res.Landed = append(r.res.Landed, tk)
 	} else {
 		r.res.Closed = append(r.res.Closed, tk)
 	}
 	r.summaries[tk.ID.Key] = summary
 	r.mu.Unlock()
-	if w.inReview != "" {
+	if w.staysOpen {
 		r.line(tk, runlog.Line{Kind: runlog.Success, Text: "landed, open until its pull request is merged"})
 	} else {
 		r.line(tk, runlog.Line{Kind: runlog.Success, Text: "closed"})
