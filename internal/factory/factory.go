@@ -165,7 +165,10 @@ const (
 	KindHook          = "sandbox_created"
 	KindPushRejected  = "push_rejected"
 	KindFactory       = "factory"
-	KindOutOfMemory   = "out_of_memory"
+	// KindPullRequest is a finished Spec whose pull request couldn't be
+	// looked up or opened.
+	KindPullRequest = "pull_request"
+	KindOutOfMemory = "out_of_memory"
 )
 
 // TicketStats are what a Ticket's Steps used, over all their attempts.

@@ -92,6 +92,7 @@ A Spec's Tickets close when they land either way, so the next ones can start on 
 | The merge failed, or `verify` failed on the merged result | Discards the work and re-implements the Ticket fresh from the updated Spec branch in the next Iteration. A second failure hands it back |
 | A transient error, such as an outage | Retries the Step 3 times with backoff, then stops the Run and leaves the Ticket untouched |
 | An authentication error | Stops the Run at once, with no retry and once for the whole Run, says how to fix the credential, and leaves the Ticket untouched. Claude Code's credential is first checked here, at the first Step |
+| With `[pull_request] open = true`, looking up or opening the pull request of a finished Spec or standalone Ticket failed (a missing permission, say) | Keeps the pushed code, comments on the Spec or standalone Ticket with the reason, adds no In review label, still releases the Claim and runs `spec_finished`, and lists the Spec under Failed with kind `pull_request`. A standalone Ticket stays open without its ready label. No later Run retries the pull request by itself: it is tried again the next time that Spec or Ticket finishes, or you open it by hand |
 
 A handed-back Ticket's comment ends with the last 30 lines of its log in a collapsed **details** block, or the failing command's last 30 lines after a failed `verify`, plus the Run id and the local log path. The Tickets it blocks stay blocked, and the rest of the Spec goes on. To try again, fix the cause, then swap `needs-investigation` back for `ready-for-agent`.
 
@@ -126,7 +127,7 @@ Either way the `run_end` Hook runs and the summary is written. The next Run clea
 | Code | Meaning |
 | --- | --- |
 | 0 | Nothing is left that needs a person: nothing more was ready and nothing failed, or the Run reached `max_iterations` |
-| 1 | Some Tickets failed, were handed back with `cannot_do`, or were skipped and need a fix |
+| 1 | Some Tickets failed, were handed back with `cannot_do`, or were skipped and need a fix, or a finished Spec's pull request couldn't be opened |
 | 2 | The Run was stopped: an authentication error, a transient error that outlasted its retries, a failed `run_start` Hook, Ctrl-C, an unreadable Tracker, or another Run holding the checkout's Run lock |
 | 3 | The config is invalid, `check` failed, or the project isn't set up for a Run |
 
@@ -205,7 +206,7 @@ Only directories named like Run ids are removed. Anything else in `.fliesswerk/l
 | `usage` | The Run's `input`, `output`, `cache_read`, `cache_write`, `cost` (by unit), `steps_without_cost` and `cost_display` |
 | `log_dir` | The Run's log directory |
 
-A failure's `kind` is one of `cannot_do`, `no_changes`, `no_report`, `harness_error`, `verify`, `merge`, `protected_path`, `sandbox_created`, `push_rejected`, `out_of_memory` or `factory`.
+A failure's `kind` is one of `cannot_do`, `no_changes`, `no_report`, `harness_error`, `verify`, `merge`, `protected_path`, `sandbox_created`, `push_rejected`, `out_of_memory`, `pull_request` (a finished Spec or standalone Ticket, under its own id, whose pull request couldn't be looked up or opened) or `factory`.
 
 ## Claims and `release`
 
