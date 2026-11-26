@@ -82,7 +82,7 @@ or the exact lines to fix. Fix them and run `fliesswerk check --commands` again.
 
 ### Labels
 
-A Run needs three labels in the repository: the ready label (default `ready-for-agent`), the `in_progress_label` (default `in-progress`) it adds to a Spec it claims, and the `cannot_do_label` (default `needs-investigation`) it swaps the ready label for on a Ticket it hands back. GitHub can only add labels that exist, so `init` creates those that are missing, by the names in `[tracker]`, and lists each one it created (`+ label in-progress`). It leaves a label that already exists exactly as it is, color and description included. GitHub compares label names without regard to case, so `Ready-For-Agent` counts as `ready-for-agent`.
+A Run needs three labels in the repository: the ready label (default `ready-for-agent`), the `in_progress_label` (default `in-progress`) it adds to a Spec it claims, and the `cannot_do_label` (default `needs-investigation`) it swaps the ready label for on a Ticket it hands back. With `[pull_request] open = true` it also needs the `in_review_label` (default `in-review`) it adds to a finished Spec whose pull request is open. GitHub can only add labels that exist, so `init` creates those that are missing, by the names in `[tracker]`, and lists each one it created (`+ label in-progress`). It leaves a label that already exists exactly as it is, color and description included. GitHub compares label names without regard to case, so `Ready-For-Agent` counts as `ready-for-agent`.
 
 When `init` can't create a label (your login or token can't write to Issues, or GitHub can't be reached), it still writes its files and prints the lines to run instead. With the default names, they are:
 

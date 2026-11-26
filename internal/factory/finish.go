@@ -16,6 +16,9 @@ type PullRequestSetting struct {
 	Open bool
 	// Draft opens it as a draft.
 	Draft bool
+	// InReviewLabel replaces the Claim of a Spec whose pull request is
+	// open.
+	InReviewLabel string
 }
 
 // wasLast reports whether the Ticket that just closed was its Spec's last;
@@ -45,6 +48,9 @@ func (r *run) finishSpec(ctx context.Context, w *ticketWork) {
 		f.PullRequest = r.pullRequest(ctx, w, f)
 	}
 	r.release(ctx, id)
+	if f.PullRequest != "" {
+		r.markInReview(ctx, id)
+	}
 	r.specFinished(ctx, id, w.specBranch, w.specDir)
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -121,6 +127,20 @@ func (r *run) summaryOf(ctx context.Context, id tracker.ID) string {
 		}
 	}
 	return strings.Join(strings.Fields(s), " ")
+}
+
+// markInReview gives a finished Spec whose pull request is open the In
+// review label. Its work has landed already, so a failure only warns.
+func (r *run) markInReview(ctx context.Context, id tracker.ID) {
+	label := r.opts.PullRequest.InReviewLabel
+	if label == "" {
+		return
+	}
+	if err := r.opts.Tracker.SetLabels(ctx, id, []string{label}, nil); err != nil {
+		r.warnf("%s: warning: its pull request is open, but adding %s failed: %v", id, label, err)
+		return
+	}
+	r.logf("%s: in review (%s)", id, label)
 }
 
 // release releases the Claim on a finished Spec. Its last Ticket is closed

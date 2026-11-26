@@ -30,7 +30,7 @@ import (
 // "fail_writes" writes fail instead, and with "fail_snapshot" so does
 // every Snapshot.
 func init() {
-	testTracker = func() (tracker.Tracker, error) {
+	testTracker = func(values map[string]any) (tracker.Tracker, error) {
 		path := os.Getenv("FWK_FAKE_TRACKER")
 		if path == "" {
 			return nil, nil
@@ -45,6 +45,7 @@ func init() {
 		}
 		tr := fake.New(st.ReadyLabel, st.Issues...)
 		tr.InProgressLabel = cmp.Or(st.InProgressLabel, tr.InProgressLabel)
+		tr.InReviewLabel = inReviewLabel(values)
 		tr.Me = cmp.Or(st.User, tr.Me)
 		if st.Labels != nil {
 			tr.Labels = *st.Labels
