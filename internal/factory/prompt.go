@@ -89,6 +89,15 @@ func landedComment(work, branch, url string) string {
 	return s + ".\n"
 }
 
+// pullRequestFailedComment is the comment on a finished Spec (or
+// standalone Ticket) whose pull request from branch into base couldn't be
+// looked up or opened, why says.
+func pullRequestFailedComment(branch, base, why string) string {
+	return fmt.Sprintf("Its work is pushed to `%s`, but it has no pull request: %s.\n\n"+
+		"Fix the cause, then open the pull request from `%s` into `%s` yourself. The Factory tries again only the next time this finishes.\n",
+		branch, why, branch, base)
+}
+
 // workComment is the summary and the commits on branch that start
 // closeComment and landedComment.
 func workComment(summary string, commits []git.Commit, branch string) string {

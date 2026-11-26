@@ -77,13 +77,17 @@ func (r *run) finishSpec(ctx context.Context, w *ticketWork) {
 	if w.spec != nil {
 		f.Title = w.spec.Title
 	}
+	var failed error
 	if r.opensPullRequest(w) {
-		f.PullRequest = r.pullRequest(ctx, w, f)
+		f.PullRequest, failed = r.pullRequest(ctx, w, f)
 	}
 	if w.inReview != "" {
 		if err := r.opts.Tracker.Comment(ctx, w.tk.ID, landedComment(w.inReview, w.specBranch, f.PullRequest)); err != nil {
 			r.warnf("%s: warning: it landed, but commenting on it failed: %v", id, err)
 		}
+	}
+	if failed != nil {
+		r.pullRequestFailed(ctx, f, failed)
 	}
 	r.release(ctx, id)
 	if f.PullRequest != "" {
@@ -96,28 +100,37 @@ func (r *run) finishSpec(ctx context.Context, w *ticketWork) {
 }
 
 // pullRequest reuses the open pull request of the finished Spec's branch
-// as it is, or opens one into the base branch. It returns its URL, "" if
+// as it is, or opens one into the base branch. It returns its URL, or why
 // there is none.
-func (r *run) pullRequest(ctx context.Context, w *ticketWork, f FinishedSpec) string {
+func (r *run) pullRequest(ctx context.Context, w *ticketWork, f FinishedSpec) (string, error) {
 	url, err := r.opts.Tracker.FindPullRequest(ctx, f.Branch)
 	if err != nil {
-		r.warnf("%s: warning: its last Ticket landed, but looking up its pull request failed: %v", f.ID, err)
-		return ""
+		return "", fmt.Errorf("looking up its pull request failed: %w", err)
 	}
 	if url != "" {
 		r.logf("%s: reused the open pull request %s", f.ID, url)
-		return url
+		return url, nil
 	}
 	url, err = r.opts.Tracker.OpenPullRequest(ctx, tracker.PullRequest{
 		Head: f.Branch, Base: r.opts.BaseBranch, Title: f.Title,
 		Body: r.pullRequestBody(ctx, w, f), Draft: r.opts.PullRequest.Draft,
 	})
 	if err != nil {
-		r.warnf("%s: warning: its last Ticket landed, but opening its pull request failed: %v", f.ID, err)
-		return ""
+		return "", fmt.Errorf("opening its pull request failed: %w", err)
 	}
 	r.logf("%s: opened the pull request %s", f.ID, url)
-	return url
+	return url, nil
+}
+
+// pullRequestFailed tells a person that the finished Spec's pull request
+// couldn't be looked up or opened: on the Spec, and as a failure of the
+// Run. Its code is pushed, so nothing is undone, and nothing tries again
+// until the Spec finishes again.
+func (r *run) pullRequestFailed(ctx context.Context, f FinishedSpec, why error) {
+	if err := r.opts.Tracker.Comment(ctx, f.ID, pullRequestFailedComment(f.Branch, r.opts.BaseBranch, why.Error())); err != nil {
+		r.warnf("%s: warning: %v, and commenting on it failed too: %v", f.ID, why, err)
+	}
+	r.fail(tracker.Ticket{ID: f.ID, Title: f.Title}, KindPullRequest, why.Error())
 }
 
 // pullRequestBody is a short header, `Closes` for the Spec, and a line
