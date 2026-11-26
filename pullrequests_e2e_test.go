@@ -310,3 +310,45 @@ func TestWithoutOpenNoPullRequestIsLookedUpOrOpened(t *testing.T) {
 		t.Errorf("summary.json's specs_finished = %v, want #1 without a pull request", got)
 	}
 }
+
+// dryRunIssues are the cart Spec of two, which a Run would finish, a
+// standalone Ticket, and a Spec a Run wouldn't finish, since its #8 isn't
+// ready.
+func dryRunIssues() []fake.Issue {
+	return append(specOfTwo(),
+		fake.Issue{Number: 5, Title: "Fix the typo", Labels: []string{"ready-for-agent"}},
+		fake.Issue{Number: 6, Title: "Spec: Checkout", Labels: []string{"ready-for-agent"}},
+		fake.Issue{Number: 7, Title: "Add the checkout", Labels: []string{"ready-for-agent"}, Parent: 6},
+		fake.Issue{Number: 8, Title: "Pay", Parent: 6},
+	)
+}
+
+func TestADryRunNamesThePullRequestEachFinishingSpecWouldGet(t *testing.T) {
+	p := newRunProject(t, buildTestFliesswerk(t), dryRunIssues(), `{"sessions": []}`)
+	p.withPullRequests(t, "open = true\n")
+	mine := fake.PullRequest{Number: 20, URL: fake.PullURL(20), Head: cartSpecBranch, Base: "main", State: fake.PullOpen}
+	p.withOpenedPullRequests(t, mine)
+
+	if code := p.run(t, "--dry-run"); code != 0 {
+		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+	}
+
+	mustContain(t, "stdout", p.stdout,
+		"#1  Spec: Shopping cart: would reuse the open pull request "+mine.URL,
+		"#5  Fix the typo: would open a pull request into main")
+	mustNotContain(t, "stdout", p.stdout, "Spec: Checkout: would")
+	if w := p.writes(t); len(w) != 0 {
+		t.Errorf("the dry run wrote %+v, want nothing", w)
+	}
+}
+
+func TestADryRunWithoutOpenShowsNoPullRequest(t *testing.T) {
+	p := newRunProject(t, buildTestFliesswerk(t), dryRunIssues(), `{"sessions": []}`)
+	p.withPullRequests(t, "open = false\n")
+
+	if code := p.run(t, "--dry-run"); code != 0 {
+		t.Fatalf("exit code = %d, want 0\nstdout: %s\nstderr: %s", code, p.stdout, p.stderr)
+	}
+
+	mustNotContain(t, "stdout", p.stdout, "pull request")
+}

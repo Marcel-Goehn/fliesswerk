@@ -1151,6 +1151,44 @@ func (r *run) specStopped(tk tracker.Ticket) bool {
 // then on the remote, or cuts it from the remote base branch. A standalone
 // Ticket's branch takes the Spec branch's place.
 func (r *run) specBranch(ctx context.Context, tk tracker.Ticket, spec *tracker.Spec) (string, error) {
+	b, where, err := findBranch(ctx, r.repo, r.opts.Remote, r.opts.Prefix, tk, spec)
+	if err != nil {
+		return "", err
+	}
+	id := tk.SpecID()
+	switch where {
+	case branchLocal:
+		return b, nil
+	case branchRemote:
+		if err := r.repo.Fetch(ctx, r.opts.Remote, b); err != nil {
+			return "", err
+		}
+		r.logf("%s: continuing %s from %s", id, b, r.opts.Remote)
+		return b, r.repo.CreateBranch(ctx, b, r.opts.Remote+"/"+b)
+	}
+	r.logf("%s: cutting %s from %s/%s", id, b, r.opts.Remote, r.opts.BaseBranch)
+	return b, r.repo.CreateBranch(ctx, b, r.opts.Remote+"/"+r.opts.BaseBranch)
+}
+
+// PlannedBranch is the branch a Run in root would use for tk's Spec, or
+// for tk if it stands alone: the one that exists, locally or on remote,
+// or else the one the Run would cut. It changes nothing.
+func PlannedBranch(ctx context.Context, root, remote, prefix string, tk tracker.Ticket, spec *tracker.Spec) (string, error) {
+	b, _, err := findBranch(ctx, git.Repo{Dir: root}, remote, prefix, tk, spec)
+	return b, err
+}
+
+// Where findBranch found a branch.
+const (
+	branchNew = iota
+	branchLocal
+	branchRemote
+)
+
+// findBranch finds the branch of tk's Spec (or of tk, if it stands alone)
+// by number, locally and then on remote, and says where it found it. If
+// there is none, it names the branch a Run would cut.
+func findBranch(ctx context.Context, repo git.Repo, remote, branchPrefix string, tk tracker.Ticket, spec *tracker.Spec) (branch string, where int, err error) {
 	kind, id, title := "ticket", tk.ID, tk.Title
 	if tk.Parent != nil {
 		kind, id, title = "spec", *tk.Parent, ""
@@ -1158,32 +1196,22 @@ func (r *run) specBranch(ctx context.Context, tk tracker.Ticket, spec *tracker.S
 			title = spec.Title
 		}
 	}
-	prefix := r.opts.Prefix + "/" + kind + "-" + id.Branch + "-"
-	local, err := r.repo.LocalBranches(ctx, prefix)
+	prefix := branchPrefix + "/" + kind + "-" + id.Branch + "-"
+	local, err := repo.LocalBranches(ctx, prefix)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	if b, err := one(local, id, "locally"); err != nil || b != "" {
-		return b, err
+		return b, branchLocal, err
 	}
-	remote, err := r.repo.RemoteBranches(ctx, r.opts.Remote, prefix)
+	remotes, err := repo.RemoteBranches(ctx, remote, prefix)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
-	b, err := one(remote, id, "on "+r.opts.Remote)
-	if err != nil {
-		return "", err
+	if b, err := one(remotes, id, "on "+remote); err != nil || b != "" {
+		return b, branchRemote, err
 	}
-	if b != "" {
-		if err := r.repo.Fetch(ctx, r.opts.Remote, b); err != nil {
-			return "", err
-		}
-		r.logf("%s: continuing %s from %s", id, b, r.opts.Remote)
-		return b, r.repo.CreateBranch(ctx, b, r.opts.Remote+"/"+b)
-	}
-	b = prefix + slug(title, kind)
-	r.logf("%s: cutting %s from %s/%s", id, b, r.opts.Remote, r.opts.BaseBranch)
-	return b, r.repo.CreateBranch(ctx, b, r.opts.Remote+"/"+r.opts.BaseBranch)
+	return prefix + slug(title, kind), branchNew, nil
 }
 
 // one is the single branch of branches, "" if there is none.
