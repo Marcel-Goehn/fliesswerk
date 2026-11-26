@@ -103,6 +103,7 @@ The dry run checks the config, reads the Tracker and prints:
 - the Tickets that are ready, but for a later Iteration
 - every skipped Ticket with the reason and, where there is one, the fix
 - the Specs other people have claimed
+- with `[pull_request] open = true`, each Spec or standalone Ticket the Run would finish if its Tickets land, and whether its pull request would be opened or the open one (by its link) reused
 
 It writes nothing and starts nothing: no Sandbox, no branch, no label and no token spent. It exits with 1 if a skipped Ticket needs a fix, otherwise 0.
 
