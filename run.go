@@ -66,15 +66,15 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		Only:           only,
 	}
 	p := frontier.Compute(snap, opts)
-	var prs []string
+	var prLines []string
 	if pullRequestsOpen(values) {
 		finishing := frontier.WouldFinish(snap, opts, intAt(values, defaultMaxIterations, "max_iterations"))
-		if prs, err = plannedPullRequests(ctx, tr, values, root, finishing); err != nil {
+		if prLines, err = plannedPullRequests(ctx, tr, values, root, finishing); err != nil {
 			_, _ = fmt.Fprintf(stderr, "fliesswerk run: %v\n", err)
 			return exitStopped
 		}
 	}
-	printPlan(stdout, stderr, p, limit, prs)
+	printPlan(stdout, stderr, p, limit, prLines)
 
 	for _, s := range p.Skipped {
 		if s.NeedsFix {
@@ -113,8 +113,8 @@ func plannedPullRequests(ctx context.Context, tr tracker.Tracker, values map[str
 	return lines, nil
 }
 
-// printPlan prints a dry run's Plan, and the pull request lines prs.
-func printPlan(stdout, stderr io.Writer, p frontier.Plan, limit int, prs []string) {
+// printPlan prints a dry run's Plan, and what prLines say about pull requests.
+func printPlan(stdout, stderr io.Writer, p frontier.Plan, limit int, prLines []string) {
 	noun := "Tickets"
 	if len(p.Take) == 1 {
 		noun = "Ticket"
@@ -139,9 +139,9 @@ func printPlan(stdout, stderr io.Writer, p frontier.Plan, limit int, prs []strin
 		}
 	}
 	printClaimedByOthers(stdout, p.ClaimedByOthers)
-	if len(prs) > 0 {
+	if len(prLines) > 0 {
 		_, _ = fmt.Fprintln(stdout, "\nPull requests, once the Run's Tickets land:")
-		for _, line := range prs {
+		for _, line := range prLines {
 			_, _ = fmt.Fprintf(stdout, "  %s\n", line)
 		}
 	}
