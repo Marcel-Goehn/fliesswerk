@@ -115,6 +115,12 @@ func TestAStandaloneTicketWhosePullRequestCantBeOpenedStaysOpenWithoutItsReadyLa
 		t.Errorf("#5 = %+v, want it open, without ready-for-agent, in-review or in-progress", five)
 	}
 	mustContain(t, "#5's last comment", lastComment(five), "pull request", fakePullRequestReason)
+	if len(five.Comments) < 2 {
+		t.Fatalf("#5's comments = %+v, want the landed one before the failure's", five.Comments)
+	}
+	landed := five.Comments[len(five.Comments)-2].Body
+	mustContain(t, "#5's landed comment", landed, "Fixed the typo.", "Landed by the Factory", "no pull request")
+	mustNotContain(t, "#5's landed comment", landed, "It closes when its pull request is merged")
 	if failed := p.failedInSummary(t); len(failed) != 1 || failed[0]["id"] != "#5" || failed[0]["kind"] != "pull_request" {
 		t.Errorf("summary.json's failed = %v, want #5 as pull_request", failed)
 	}

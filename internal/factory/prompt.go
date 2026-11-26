@@ -82,11 +82,11 @@ func closeComment(summary string, commits []git.Commit, branch string) string {
 // workComment, landed on branch, and which stays open until its pull
 // request at url is merged. url is "" when there is none.
 func landedComment(work, branch, url string) string {
-	s := work + fmt.Sprintf(landedNote+"%s`. It closes when its pull request is merged", branch)
-	if url != "" {
-		s += ": " + url
+	s := work + fmt.Sprintf(landedNote+"%s`. ", branch)
+	if url == "" {
+		return s + "It has no pull request, so it stays open until one that closes it is merged.\n"
 	}
-	return s + ".\n"
+	return s + "It closes when its pull request is merged: " + url + ".\n"
 }
 
 // pullRequestFailedComment is the comment on a finished Spec (or
