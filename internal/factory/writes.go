@@ -137,8 +137,10 @@ func (d *durableTracker) dequeue(w *queuedWrite) error {
 }
 
 // OpenPullRequest opens a pull request, retried like every other write.
-// It isn't queued: a pull request that can't be opened is a person's to
-// look into, and nothing opens it later by itself.
+// Unlike them it isn't queued for replay, as nothing retries a pull
+// request on its own (Spec #132): one that can't be opened is a failure
+// a person is told about and opens by hand, and a replay in a later Run
+// could open one after they merged their own, or chose not to open one.
 func (d *durableTracker) OpenPullRequest(ctx context.Context, pr tracker.PullRequest) (url string, err error) {
 	err = d.retry(ctx, func() error {
 		ctx, cancel := writeContext(ctx)
