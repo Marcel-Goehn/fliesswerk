@@ -6,14 +6,19 @@ import (
 )
 
 // tokenWalkthrough says how to make a token that reaches repo and no more.
-func tokenWalkthrough(repo string) string {
+// With pullRequests, it may also open pull requests.
+func tokenWalkthrough(repo string, pullRequests bool) string {
 	owner, _, _ := strings.Cut(repo, "/")
+	permissions := "set Issues to Read and write, and Contents and Pull requests to Read-only"
+	if pullRequests {
+		permissions = "set Issues and Pull requests to Read and write, and Contents to Read-only"
+	}
 	return strings.Join([]string{
 		"Make a fine-grained token that reaches only " + repo + ":",
 		"  1. Open https://github.com/settings/personal-access-tokens/new",
 		"  2. Name it, and set Resource owner to " + owner,
 		"  3. Under Repository access, choose Only select repositories and pick " + repo,
-		"  4. Under Repository permissions, set Issues to Read and write, and Contents and Pull requests to Read-only (Metadata is always Read-only)",
+		"  4. Under Repository permissions, " + permissions + " (Metadata is always Read-only)",
 		"  5. Generate the token and copy it",
 	}, "\n")
 }

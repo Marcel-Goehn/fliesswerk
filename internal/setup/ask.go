@@ -30,6 +30,8 @@ type Answers struct {
 	Tracker string
 	// Values are the Tracker questions' answers, by config key.
 	Values map[string]string
+	// OpenPullRequests is `pull_request.open`.
+	OpenPullRequests bool
 	// Languages are ids, in recipe order.
 	Languages []string
 	// Commands are Feedback commands by name; only those that are set.
@@ -199,6 +201,9 @@ func Ask(root string, a Asker, f Facts, questions []tracker.Question) (Answers, 
 		if ans.Values[q.Key], err = a.required(q.Prompt, orElse(suggestions[q.Key], q.Default)); err != nil {
 			return ans, err
 		}
+	}
+	if ans.OpenPullRequests, err = a.yes("Open a pull request when a Spec finishes?", false); err != nil {
+		return ans, err
 	}
 	if ans.Languages, err = a.languages(f); err != nil {
 		return ans, err

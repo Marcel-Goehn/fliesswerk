@@ -44,6 +44,9 @@ type PersonalInput struct {
 	HasServices bool
 	// Installed reports whether a container engine is on this machine.
 	Installed func(engine string) bool
+	// PullRequests reports that the Factory opens pull requests, which
+	// the Tracker's token then needs the permission for.
+	PullRequests bool
 }
 
 // Interception is a TLS endpoint a Sandbox wouldn't trust while this machine
@@ -305,7 +308,7 @@ func (a Asker) reachTracker(ctx context.Context, in PersonalInput, p *Personal) 
 			return err
 		}
 	}
-	a.say("%s", access.Walkthrough(in.Repo))
+	a.say("%s", access.Walkthrough(in.Repo, in.PullRequests))
 	var err error
 	f := harness.AuthField{Prompt: "the token", StoreKey: access.TokenKey(in.Repo), SuggestEnv: access.TokenEnv, FilledByHand: true}
 	p.tracker, err = a.keep(ctx, in, f, "", p) // the walkthrough above is its hint

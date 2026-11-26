@@ -149,6 +149,7 @@ func nodePostgres() map[string]string {
 // naming the repo, which a local remote can't suggest.
 var acceptAll = []string{
 	"", "acme/shop", "", "", // tracker, repo, base branch, ready label
+	"",             // open pull requests
 	"",             // languages
 	"", "", "", "", // test, typecheck, lint, format
 	"", "", "", // Services, standards file, protect .claude/
@@ -280,7 +281,7 @@ func TestInitAsksTheProjectQuestionsInOrder(t *testing.T) {
 	p.init(t, p.initEnv(t), p.thenSignIn(t, acceptAll)...)
 
 	last := -1
-	for _, q := range []string{"Where do your Tickets live?", "Which GitHub repository", "Which branch should", "Which label marks",
+	for _, q := range []string{"Where do your Tickets live?", "Which GitHub repository", "Which branch should", "Which label marks", "Open a pull request when a Spec finishes?",
 		"What does your project use?", "Which commands tell", "Which compose file", "Coding standards", "Stop agents from changing .claude/",
 		"Now your own settings", "Where should the agent run?", "Which container engine?", "How do you sign in"} {
 		at := strings.Index(p.stdout, q)
@@ -307,7 +308,7 @@ func TestInitNodeGoMonorepoInstallsBothInParallel(t *testing.T) {
 	gitIn(t, p.work, "config", "remote.origin.url", "git@github.com:acme/platform.git")
 	gitIn(t, p.work, "config", "url."+p.remote+".insteadOf", "git@github.com:acme/platform.git")
 
-	p.init(t, p.initEnv(t), p.thenSignIn(t, []string{"", "", "", "", "", "", "", "", "", "", ""})...)
+	p.init(t, p.initEnv(t), p.thenSignIn(t, []string{"", "", "", "", "", "", "", "", "", "", "", ""})...)
 
 	values := p.config(t)
 	if got := valueAt(values, "tracker", "repo"); got != "acme/platform" {
@@ -353,7 +354,7 @@ func TestInitPythonAndRustGetTheirRecipes(t *testing.T) {
 		"rust-toolchain.toml": "[toolchain]\nchannel = \"1.82.0\"\n",
 	})
 
-	p.init(t, p.initEnv(t), p.thenSignIn(t, []string{"", "acme/etl", "", "", "", "", "", "", "", "", ""})...)
+	p.init(t, p.initEnv(t), p.thenSignIn(t, []string{"", "acme/etl", "", "", "", "", "", "", "", "", "", ""})...)
 
 	file := p.fliesswerkFile(t, "Containerfile")
 	mustContain(t, "Containerfile", file, "uv python install 3.12", "--default-toolchain 1.82.0")
@@ -374,7 +375,7 @@ func TestInitPythonAndRustGetTheirRecipes(t *testing.T) {
 func TestInitUnknownLanguageLeavesATodoThatCheckRefuses(t *testing.T) {
 	p := initProject(t, map[string]string{"Gemfile": "source 'https://rubygems.org'\n", "compose.yml": "services:\n  db:\n    image: postgres:17\n"})
 
-	code := p.init(t, p.initEnv(t), p.thenSignIn(t, []string{"", "acme/legacy", "", "", "", "", "", "", "", "", ""})...)
+	code := p.init(t, p.initEnv(t), p.thenSignIn(t, []string{"", "acme/legacy", "", "", "", "", "", "", "", "", "", ""})...)
 
 	if code != exitConfigError {
 		t.Fatalf("exit code = %d, want %d\nstderr: %s", code, exitConfigError, p.stderr)
@@ -463,7 +464,7 @@ func TestInitNativeSandboxWithServicesAsksForTheEngineButGetsNoContainerfile(t *
 func TestInitNativeSandboxWithoutServicesIsNotAskedForAnEngine(t *testing.T) {
 	p := initProject(t, nodePostgres())
 	answers := slices.Clone(acceptAll)
-	answers[9] = "-" // no compose file
+	answers[10] = "-" // no compose file
 
 	p.init(t, p.initEnv(t), p.thenSandbox(t, answers, "native")...)
 
@@ -523,7 +524,7 @@ func TestInitYarnProjectsMayReachYarnsRegistry(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			p := initProject(t, map[string]string{"package.json": `{"scripts": {}}`, "yarn.lock": lock})
 
-			p.init(t, p.initEnv(t), p.thenSignIn(t, []string{"", "acme/shop", "", "", "", "", "", "", "", "", ""})...)
+			p.init(t, p.initEnv(t), p.thenSignIn(t, []string{"", "acme/shop", "", "", "", "", "", "", "", "", "", ""})...)
 
 			if got := stringsOf(valueAt(p.config(t), "sandbox", "network", "allow")); !slices.Contains(got, "registry.yarnpkg.com") {
 				t.Errorf("allow = %v", got)

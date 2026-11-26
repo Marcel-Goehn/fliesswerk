@@ -237,8 +237,9 @@ type Access struct {
 	LoggedIn func(ctx context.Context) bool
 	// LoginLabel and TokenLabel offer that login and a token of their own.
 	LoginLabel, TokenLabel string
-	// Walkthrough says how to make a token for repo with the least it needs.
-	Walkthrough func(repo string) string
+	// Walkthrough says how to make a token for repo with the least it needs:
+	// with pullRequests, also enough to open pull requests.
+	Walkthrough func(repo string, pullRequests bool) string
 	// TokenKey is the token's name in the user-level credentials file. It
 	// differs per repo, as such a token only reaches one.
 	TokenKey func(repo string) string
