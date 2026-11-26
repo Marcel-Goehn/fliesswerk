@@ -209,7 +209,9 @@ A failure's `kind` is one of `cannot_do`, `no_changes`, `no_report`, `harness_er
 
 ## Claims and `release`
 
-The first time a Run takes a Ticket from a Spec, it claims the Spec: it adds the `in_progress_label` and assigns the Spec to the user of the GitHub token. A standalone Ticket is claimed itself. The Claim lasts across Runs until the Spec's last Ticket closes.
+The first time a Run takes a Ticket from a Spec, it claims the Spec: it adds the `in_progress_label` and assigns the Spec to the user of the GitHub token. A standalone Ticket is claimed itself. The Claim lasts across Runs until the Spec's last Ticket lands.
+
+With [`pull_request.open`](config.md#pull_requestopen) on, a finished Spec or standalone Ticket whose pull request is open goes **In review**: the Factory releases its Claim and adds the `in_review_label` (default `in-review`), so GitHub shows which work waits in a pull request. The issue closes when the pull request is merged. If a Spec in review gets a new ready Ticket, or a standalone Ticket in review gets its ready label back, the next Run claims it again, and the Claim removes the In review label. The Factory doesn't watch the pull request: if you close it without merging, remove the label yourself.
 
 Everyone else's Runs skip a claimed Spec. `check`, the dry run and the summary list it with the claimer and the date. Your own Runs take your claimed Specs first.
 

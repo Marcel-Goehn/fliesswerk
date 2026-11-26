@@ -107,6 +107,10 @@ The label that marks a claimed Spec or standalone Ticket. Default `"in-progress"
 
 The label that replaces the ready label on a Ticket the Factory hands back to a person. Default `"needs-investigation"`. The label must exist in the repository; `init` creates it.
 
+### `tracker.in_review_label`
+
+The label that replaces the in-progress label on a finished Spec or standalone Ticket whose pull request is open, and that a new Claim removes again. Default `"in-review"`. With [`pull_request.open`](#pull_requestopen) on, the label must exist in the repository; `init` creates it. Otherwise it is never used.
+
 ### `tracker.token`
 
 Where the GitHub token comes from, as a [secret source](#secret-sources). Local only. Unset, `gh` uses its own login. The token is used on your machine only and never reaches the agent. See the [setup guide](setup.md#creating-a-fine-grained-token) for a token that reaches one repository.

@@ -403,8 +403,9 @@ func factoryOptions(values map[string]any, root, only string, tr tracker.Tracker
 			RunEnd:         hookEntries(values, "run_end", s),
 		},
 		PullRequest: factory.PullRequestSetting{
-			Open:  boolAt(values, false, "pull_request", "open"),
-			Draft: boolAt(values, false, "pull_request", "draft"),
+			Open:          pullRequestsOpen(values),
+			Draft:         boolAt(values, false, "pull_request", "draft"),
+			InReviewLabel: inReviewLabel(values),
 		},
 	}
 }

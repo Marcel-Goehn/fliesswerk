@@ -151,6 +151,7 @@ var schema = table("Fliesswerk configuration.", map[string]*node{
 		"ready_label":       str("The label that marks a Ticket Ready for agent."),
 		"in_progress_label": str("The label that marks a claimed Spec or standalone Ticket."),
 		"cannot_do_label":   str("The label a Ticket gets when the agent can't do it."),
+		"in_review_label":   str("The label of a Spec or standalone Ticket whose work waits in an open pull request, with [pull_request] open = true. Default \"in-review\"."),
 		"token":             local(secret("Where the Tracker token comes from."), "a Tracker credential", always),
 	}),
 

@@ -445,6 +445,21 @@ func TestClaimAndReleaseGoThroughGh(t *testing.T) {
 	}
 }
 
+func TestClaimRemovesTheInReviewLabel(t *testing.T) {
+	id := tracker.ID{Key: "31", Display: "#31", Branch: "31"}
+	r := &fixtureRunner{t: t}
+	tr := github.New(github.Options{Repo: repo, ReadyLabel: "ready-for-agent", InProgressLabel: "in-progress", InReviewLabel: "in-review", Runner: r, GOOS: "linux"})
+
+	if err := tr.Claim(context.Background(), id); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []call{{args: "issue edit 31 --repo " + repo + " --add-label in-progress --remove-label in-review --add-assignee @me"}}
+	if !slices.Equal(r.calls, want) {
+		t.Fatalf("calls = %q\nwant    %q", r.calls, want)
+	}
+}
+
 // limitedRunner refuses a write with a rate limit, and answers the probe
 // that follows with headers.
 type limitedRunner struct {

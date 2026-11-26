@@ -77,6 +77,8 @@ type Tracker struct {
 	ReadyLabel string
 	// InProgressLabel marks a claimed issue; New sets "in-progress".
 	InProgressLabel string
+	// InReviewLabel is the In review label a Claim removes; "" for none.
+	InReviewLabel string
 	// Me is the login the fake's token acts as; New sets "me".
 	Me string
 	// Now stamps a Claim; New sets time.Now.
@@ -275,13 +277,17 @@ func (t *Tracker) Claims(context.Context) ([]tracker.Claimed, error) {
 	return out, nil
 }
 
-// Claim adds the in-progress label and Me as assignee.
+// Claim adds the in-progress label and Me as assignee, and removes the In
+// review label.
 func (t *Tracker) Claim(_ context.Context, id tracker.ID) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	i, err := t.issue(id)
 	if err != nil {
 		return err
+	}
+	if t.InReviewLabel != "" {
+		i.Labels = slices.DeleteFunc(i.Labels, func(l string) bool { return l == t.InReviewLabel })
 	}
 	if !slices.Contains(i.Labels, t.InProgressLabel) {
 		i.Labels = append(i.Labels, t.InProgressLabel)

@@ -11,19 +11,20 @@ import (
 const (
 	defaultReadyLabel      = "ready-for-agent"
 	defaultInProgressLabel = "in-progress"
+	defaultInReviewLabel   = "in-review"
 	defaultMaxParallel     = 1
 )
 
 // testTracker, when set and returning a Tracker, replaces the configured
 // one. Only a test build (the `fwkfake` tag) sets it.
-var testTracker func() (tracker.Tracker, error)
+var testTracker func(values map[string]any) (tracker.Tracker, error)
 
 // newTracker builds the Tracker the config names, with token (empty for
 // the Tracker's own login). The config has already been validated, so
 // every value has the right type.
 func newTracker(values map[string]any, token string) (tracker.Tracker, error) {
 	if testTracker != nil {
-		if tr, err := testTracker(); tr != nil || err != nil {
+		if tr, err := testTracker(values); tr != nil || err != nil {
 			return tr, err
 		}
 	}
@@ -32,6 +33,7 @@ func newTracker(values map[string]any, token string) (tracker.Tracker, error) {
 		Repo:            stringAt(values, "", "tracker", "repo"),
 		ReadyLabel:      readyLabel(values),
 		InProgressLabel: stringAt(values, defaultInProgressLabel, "tracker", "in_progress_label"),
+		InReviewLabel:   inReviewLabel(values),
 		Runner:          github.ExecRunner{Token: token},
 		GOOS:            runtime.GOOS,
 	}), nil
@@ -39,6 +41,20 @@ func newTracker(values map[string]any, token string) (tracker.Tracker, error) {
 
 func readyLabel(values map[string]any) string {
 	return stringAt(values, defaultReadyLabel, "tracker", "ready_label")
+}
+
+// pullRequestsOpen is whether a finished Spec gets a pull request.
+func pullRequestsOpen(values map[string]any) bool {
+	return boolAt(values, false, "pull_request", "open")
+}
+
+// inReviewLabel is the label of a Spec or standalone Ticket whose work
+// waits in an open pull request, "" when the Factory opens none.
+func inReviewLabel(values map[string]any) string {
+	if !pullRequestsOpen(values) {
+		return ""
+	}
+	return stringAt(values, defaultInReviewLabel, "tracker", "in_review_label")
 }
 
 func maxParallel(values map[string]any) int {
