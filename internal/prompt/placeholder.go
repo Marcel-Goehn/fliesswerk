@@ -15,11 +15,11 @@ const (
 	mergeStep     = "merge"
 )
 
-// Steps are the Steps with a prompt file, in the order a Ticket meets
-// them.
+// Steps are the Steps with a prompt, in the order a Ticket meets them.
 var Steps = []string{implementStep, reviewStep, mergeStep}
 
-// The only placeholders. Each becomes a whole section, or nothing.
+// The placeholders of the guidance. Each becomes a whole section, or
+// nothing.
 const (
 	commandsPlaceholder  = "{{commands}}"
 	standardsPlaceholder = "{{standards}}"
@@ -32,29 +32,11 @@ var commandsIntro = map[string]string{
 	mergeStep:     "After resolving, run these and make them pass:",
 }
 
-// placeholderPattern finds anything that looks like a placeholder, so a
-// misspelt one is reported rather than sent to the agent.
-var placeholderPattern = regexp.MustCompile(`\{\{[^{}]*\}\}`)
-
-// Unknown lists, once each and in order, the placeholders in part that
-// don't exist.
-func Unknown(part string) []string {
-	var out []string
-	seen := map[string]bool{}
-	for _, p := range placeholderPattern.FindAllString(part, -1) {
-		if p != commandsPlaceholder && p != standardsPlaceholder && !seen[p] {
-			seen[p] = true
-			out = append(out, p)
-		}
-	}
-	return out
-}
-
-// fill replaces the placeholders in step's part. A placeholder that
+// fill replaces the placeholders in step's guidance. A placeholder that
 // renders nothing and stands on its own line takes its line, and one
-// blank line after it, with it. It is plain replacement: no logic, no
-// shell.
-func fill(part, step string, c Context) string {
+// blank line after it, with it.
+func fill(step string, c Context) string {
+	part := guidance[step]
 	part = replace(part, commandsPlaceholder, commandsSection(step, c.Commands))
 	standards := ""
 	if step == reviewStep {

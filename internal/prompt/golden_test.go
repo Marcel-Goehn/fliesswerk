@@ -22,15 +22,15 @@ var update = flag.Bool("update", false, "rewrite the golden files of the rendere
 // three are the only calls into Implement, Review and Merge, so a change
 // to their signatures is made here alone.
 func implement(c prompt.Context, r prompt.Recent, failed *verify.Failure) string {
-	return prompt.Implement(prompt.Builtin("implement", prompt.Latest("implement")), c, r, failed)
+	return prompt.Implement(c, r, failed)
 }
 
 func review(c prompt.Context, base string) string {
-	return prompt.Review(prompt.Builtin("review", prompt.Latest("review")), c, base)
+	return prompt.Review(c, base)
 }
 
 func merge(c prompt.Context, m prompt.Merging) string {
-	return prompt.Merge(prompt.Builtin("merge", prompt.Latest("merge")), c, m)
+	return prompt.Merge(c, m)
 }
 
 // with is c with Feedback commands, as most cases have them.

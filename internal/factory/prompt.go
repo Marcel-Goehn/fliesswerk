@@ -56,15 +56,6 @@ func (r *run) recentCommits(ctx context.Context, specTip string) (prompt.Recent,
 	return recent, err
 }
 
-// part is the project's editable part of step's prompt, or the built-in
-// one.
-func (r *run) part(step string) string {
-	if p, ok := r.opts.Prompts[step]; ok {
-		return p.Text
-	}
-	return prompt.Builtin(step, prompt.Latest(step))
-}
-
 // The parts of a close comment summaryIn finds the summary by.
 const (
 	commitsNote = "\n\nCommits on `"

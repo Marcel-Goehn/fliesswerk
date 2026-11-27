@@ -1,7 +1,7 @@
 // Package prompt assembles each Step's prompt: the Factory's fixed
 // contract, which code fills in with everything the agent needs, wrapped
-// around the project's editable part from .fliesswerk/prompts/<step>.md.
-// The agent never fetches context itself.
+// around the Step's built-in guidance. Every project gets the same
+// prompts. The agent never fetches context itself.
 package prompt
 
 import (
@@ -29,7 +29,7 @@ type Context struct {
 	Branch string
 	// Protected are every Protected path.
 	Protected []string
-	// Commands are the Feedback commands `{{commands}}` lists, in order.
+	// Commands are the Feedback commands the prompt lists, in order.
 	Commands []verify.Command
 	// Standards is the Coding standards file, "" for none. Only review
 	// gets it.
@@ -56,10 +56,9 @@ const RecentCommits = 10
 // a retried implement gets.
 const RetryOutputLines = 100
 
-// Implement is the implement prompt, around part, the project's editable
-// part. A retry after a failed verify also gets the failing command's
+// Implement is the implement prompt. A retry after a failed verify also gets the failing command's
 // output.
-func Implement(part string, c Context, recent Recent, failed *verify.Failure) string {
+func Implement(c Context, recent Recent, failed *verify.Failure) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Task\n\nImplement Ticket %s: %s\n\nWork only on this Ticket. %s\n\n", c.Ticket.ID, c.Ticket.Title, provided(c.Spec))
 	ticket(&b, c)
@@ -71,7 +70,7 @@ func Implement(part string, c Context, recent Recent, failed *verify.Failure) st
 		fmt.Fprintf(&b, "# The Factory's checks failed\n\nThis is a retry. Your earlier commits are on the branch, but after them the Feedback command `%s` (`%s`) failed (%v). Its last lines:\n\n%s\n%s\n%s\n\nFix the cause, then commit.\n\n",
 			failed.Command.Name, failed.Command.Line, failed.Err, fence, failed.Tail(RetryOutputLines), fence)
 	}
-	editable(&b, fill(part, implementStep, c))
+	guided(&b, fill(implementStep, c))
 	bottom(&b, c, "The Factory closes it after your work has been merged.", onBranch(c))
 	b.WriteString(`# Done
 
@@ -90,9 +89,9 @@ Anything else means try harder: nobody will answer questions.
 	return b.String()
 }
 
-// Review is the review prompt, around part, of the change made on top
+// Review is the review prompt of the change made on top
 // of the base commit.
-func Review(part string, c Context, base string) string {
+func Review(c Context, base string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Task\n\nReview the code changes for Ticket %s: %s. Check that they do what the Ticket asks, and improve how the code is written. Fix what you find yourself and commit it.\n\nThe Ticket's %s\n\n",
 		c.Ticket.ID, c.Ticket.Title, strings.TrimPrefix(provided(c.Spec), "Its "))
@@ -100,7 +99,7 @@ func Review(part string, c Context, base string) string {
 	spec(&b, c, "The Ticket is part of Spec %s: %s. The Spec describes the whole feature. Use it to judge whether the change fits, but review only what this Ticket asks for. The rest of the Spec is other Tickets' work.",
 		"Closed Tickets are finished. In progress and open Tickets are someone else's work: don't add them, even if they look easy to include.")
 	fmt.Fprintf(&b, "# What changed\n\nThe work to review is every commit on this branch since `%s`. Read it with:\n\n- `git log %s..HEAD`\n- `git diff %s..HEAD`\n\n", base, base, base)
-	editable(&b, fill(part, reviewStep, c))
+	guided(&b, fill(reviewStep, c))
 	bottom(&b, c, "The Factory closes it after the change has been merged.", onBranch(c))
 	b.WriteString(`# Done
 
@@ -127,8 +126,8 @@ type MergedTicket struct {
 	Commits []git.Commit
 }
 
-// Merge is the merge prompt, around part.
-func Merge(part string, c Context, m Merging) string {
+// Merge is the merge prompt.
+func Merge(c Context, m Merging) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Task\n\nResolve the merge of Ticket %s: %s\n\nThis Ticket's work is being merged into `%s`, and other Tickets changed the same files after it started. The merge is in progress in this worktree and has stopped on its conflicts. The Ticket's %s\n\n",
 		c.Ticket.ID, c.Ticket.Title, m.SpecBranch, strings.TrimPrefix(provided(c.Spec), "Its "))
@@ -150,7 +149,7 @@ func Merge(part string, c Context, m Merging) string {
 		}
 		b.WriteString("\n")
 	}
-	editable(&b, fill(part, mergeStep, c))
+	guided(&b, fill(mergeStep, c))
 	bottom(&b, c, "The Factory closes it after the merge has been verified and pushed.",
 		fmt.Sprintf("You are in a worktree made for this merge, at the tip of `%s`, on no branch. Commit the merge here. Don't push, switch branches, rebase, rewrite existing commits or abort the merge.", m.SpecBranch))
 	b.WriteString(`# Done
@@ -235,8 +234,8 @@ func recentCommits(b *strings.Builder, r Recent, inSpec bool) {
 	b.WriteString("</recent-commits>\n\n")
 }
 
-// editable writes the project's part.
-func editable(b *strings.Builder, part string) {
+// guided writes the Step's guidance.
+func guided(b *strings.Builder, part string) {
 	if part = strings.TrimSpace(part); part != "" {
 		b.WriteString(part + "\n\n")
 	}

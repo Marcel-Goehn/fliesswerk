@@ -17,7 +17,6 @@ import (
 	"github.com/Marcel-Goehn/fliesswerk/internal/factory"
 	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
 	"github.com/Marcel-Goehn/fliesswerk/internal/hook"
-	"github.com/Marcel-Goehn/fliesswerk/internal/prompt"
 	"github.com/Marcel-Goehn/fliesswerk/internal/runlock"
 	"github.com/Marcel-Goehn/fliesswerk/internal/runlog"
 	"github.com/Marcel-Goehn/fliesswerk/internal/sandbox"
@@ -69,11 +68,6 @@ const defaultKeepDays = 30
 // directory, and prints how it ended.
 func runFactory(values map[string]any, root, only string, view runView, stdout, stderr io.Writer) int {
 	kind := stringAt(values, defaultSandbox, "sandbox", "kind")
-	prompts, ok := loadPrompts(root, stderr)
-	if !ok {
-		_, _ = fmt.Fprintln(stderr, "fliesswerk run: the prompt files are not valid; fix the errors above")
-		return exitConfigError
-	}
 	s, code, ok := secretsForRun(values, root, stderr)
 	if !ok {
 		return code
@@ -133,7 +127,7 @@ func runFactory(values map[string]any, root, only string, view runView, stdout, 
 	if tr, err := newTracker(values, s.trackerToken); err != nil {
 		res.Stopped = &factory.SetupError{Msg: err.Error()}
 	} else {
-		opts := factoryOptions(values, root, only, tracker.Redacted(tr, s.redactor.String), s, prompts, log)
+		opts := factoryOptions(values, root, only, tracker.Redacted(tr, s.redactor.String), s, log)
 		opts.Drain = drain
 		sandboxes := newSandboxes(values, root, kind, s, log.ID(), func(line string) {
 			kind := runlog.Event
@@ -374,7 +368,7 @@ func preflight(ctx context.Context, tr tracker.Tracker, values map[string]any, s
 }
 
 // factoryOptions are the Options of a Run with this config.
-func factoryOptions(values map[string]any, root, only string, tr tracker.Tracker, s *secrets, prompts map[string]prompt.Part, log *runlog.Log) factory.Options {
+func factoryOptions(values map[string]any, root, only string, tr tracker.Tracker, s *secrets, log *runlog.Log) factory.Options {
 	return factory.Options{
 		Tracker:        tr,
 		Root:           root,
@@ -394,7 +388,6 @@ func factoryOptions(values map[string]any, root, only string, tr tracker.Tracker
 		Log:            log.Write,
 		LinkBlockerFix: tr.Describe().LinkBlockerFix,
 		ProtectedPaths: protectedPaths(values),
-		Prompts:        prompts,
 		Commands:       feedbackCommands(values),
 		Standards:      stringAt(values, "", "standards"),
 		Backoff:        transientBackoff,
@@ -582,7 +575,7 @@ func verifyCommands(values map[string]any) []verify.Command {
 }
 
 // feedbackCommands are every Feedback command in [commands], by name,
-// for the prompts' `{{commands}}`.
+// for every Step's prompt.
 func feedbackCommands(values map[string]any) []verify.Command {
 	m, _ := valueAt(values, "commands").(map[string]any)
 	cmds := make([]verify.Command, 0, len(m))

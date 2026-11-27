@@ -11,7 +11,6 @@ import (
 
 	"github.com/Marcel-Goehn/fliesswerk/internal/factory"
 	"github.com/Marcel-Goehn/fliesswerk/internal/harness"
-	"github.com/Marcel-Goehn/fliesswerk/internal/prompt"
 	"github.com/Marcel-Goehn/fliesswerk/internal/tracker"
 	"github.com/Marcel-Goehn/fliesswerk/internal/tracker/fake"
 	"github.com/Marcel-Goehn/fliesswerk/internal/verify"
@@ -35,7 +34,7 @@ func commitsWithBody(file, subject, body string) func(context.Context, factory.S
 	}
 }
 
-func TestEachStepsPromptHasTheTicketsCommentsTheRecentCommitsAndTheProjectsPart(t *testing.T) {
+func TestEachStepsPromptHasTheTicketsCommentsTheRecentCommitsAndTheGuidance(t *testing.T) {
 	f := newFixture(t)
 	tr := fake.New(ready,
 		fake.Issue{Number: 1, Title: "Spec: Shopping cart", Body: "A cart.", Labels: []string{ready}},
@@ -54,10 +53,6 @@ func TestEachStepsPromptHasTheTicketsCommentsTheRecentCommitsAndTheProjectsPart(
 	}}
 	opts := options(f, tr, steps.run)
 	opts.Review = true
-	opts.Prompts = map[string]prompt.Part{
-		factory.Implement: {Text: "# Our way\n\n{{commands}}\n"},
-		factory.Review:    {Text: "# Our review\n\n{{standards}}\n\n{{commands}}\n"},
-	}
 	opts.Commands = []verify.Command{{Name: "test", Line: "go test ./..."}}
 	opts.Standards = "docs/standards.md"
 
@@ -72,7 +67,7 @@ func TestEachStepsPromptHasTheTicketsCommentsTheRecentCommitsAndTheProjectsPart(
 	first, second, secondReview := steps.seen[0].Prompt, steps.seen[2].Prompt, steps.seen[3].Prompt
 
 	inOrder(t, first, "- #2 Add the cart (this Ticket)", "- #3 Add checkout (open)",
-		"The last commits of `main`", "Initial commit", "# Our way", "- test: `go test ./...`")
+		"The last commits of `main`", "Initial commit", "Use test-driven development", "- test: `go test ./...`", "# Do not close the Ticket")
 	if strings.Contains(first, "docs/standards.md") {
 		t.Errorf("implement got the standards:\n%s", first)
 	}
@@ -84,23 +79,8 @@ func TestEachStepsPromptHasTheTicketsCommentsTheRecentCommitsAndTheProjectsPart(
 		t.Errorf("the Spec branch has commits, but implement got main's:\n%s", second)
 	}
 
-	inOrder(t, secondReview, "Card payments only.", "# What changed", "# Our review",
-		"Follow the coding standards in `docs/standards.md`", "After your changes, run these")
-}
-
-func TestWithoutProjectFilesTheBuiltInPartsAreUsed(t *testing.T) {
-	f := newFixture(t)
-	steps := &byStep{fns: map[string]func(context.Context, factory.Step) harness.Outcome{
-		factory.Implement: commits(map[string]string{"cart.go": "package cart\n"}, "Done."),
-		factory.Review:    reports(harness.Done, "Fine."),
-	}}
-	opts := options(f, fake.New(ready, cartSpec()...), steps.run)
-	opts.Review = true
-
-	factory.Run(context.Background(), opts)
-
-	inOrder(t, steps.seen[0].Prompt, "# Recent commits", "Use test-driven development", "# Do not close the Ticket")
-	inOrder(t, steps.seen[1].Prompt, "# What changed", "**Feature Envy**", "# Do not close the Ticket")
+	inOrder(t, secondReview, "Card payments only.", "# What changed", "## 2. Is it well written?",
+		"Follow the coding standards in `docs/standards.md`", "**Feature Envy**", "After your changes, run these", "# Do not close the Ticket")
 }
 
 // inOrder fails unless every part is in p, each after the one before.
