@@ -66,7 +66,7 @@ func inOrder(t *testing.T, p string, parts ...string) {
 	}
 }
 
-func TestTheImplementPromptOfATicketInASpecIsTheFixedTopTheGuidanceAndTheFixedBottom(t *testing.T) {
+func TestTheImplementPromptOfATicketInASpecHasTheTicketItsSpecTheRecentCommitsAndTheRules(t *testing.T) {
 	p := prompt.Implement(inSpec(), specCommits, nil)
 
 	inOrder(t, p,

@@ -44,19 +44,20 @@ func loadTemplates() map[string]*template.Template {
 // parse parses a Step's template. A template that doesn't parse is a
 // programming error.
 func parse(name, text string) *template.Template {
-	return template.Must(template.New(name).Option("missingkey=error").Parse(text))
+	return template.Must(template.New(name).Parse(text))
 }
 
-// render renders t with data. A field t names that data lacks is an
-// error, not an empty string.
+// render renders t with data. The data is a struct, so text/template
+// itself fails the render when t names a field the struct lacks.
 func render(t *template.Template, data any) (string, error) {
 	var b strings.Builder
 	err := t.Execute(&b, data)
 	return b.String(), err
 }
 
-// mustRender renders step's template. The data is the Factory's own, so
-// a failure is a bug in the template, which the golden tests catch.
+// mustRender renders step's template and panics if that fails. The data
+// is the Factory's own, so a failure, such as a field the data lacks, is
+// a bug in the template, which the golden tests catch.
 func mustRender(step string, data any) string {
 	out, err := render(templates[step], data)
 	if err != nil {

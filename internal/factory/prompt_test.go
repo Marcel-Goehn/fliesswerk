@@ -34,7 +34,7 @@ func commitsWithBody(file, subject, body string) func(context.Context, factory.S
 	}
 }
 
-func TestEachStepsPromptHasTheTicketsCommentsTheRecentCommitsAndTheGuidance(t *testing.T) {
+func TestEachStepsPromptHasTheTicketsCommentsTheRecentCommitsAndTheFeedbackCommandsAndOnlyReviewGetsTheCodingStandards(t *testing.T) {
 	f := newFixture(t)
 	tr := fake.New(ready,
 		fake.Issue{Number: 1, Title: "Spec: Shopping cart", Body: "A cart.", Labels: []string{ready}},

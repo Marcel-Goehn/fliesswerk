@@ -18,21 +18,6 @@ import (
 
 var update = flag.Bool("update", false, "rewrite the golden files of the rendered prompts")
 
-// The golden prompts are rendered from the templates. These
-// three are the only calls into Implement, Review and Merge, so a change
-// to their signatures is made here alone.
-func implement(c prompt.Context, r prompt.Recent, failed *verify.Failure) string {
-	return prompt.Implement(c, r, failed)
-}
-
-func review(c prompt.Context, base string) string {
-	return prompt.Review(c, base)
-}
-
-func merge(c prompt.Context, m prompt.Merging) string {
-	return prompt.Merge(c, m)
-}
-
 // with is c with Feedback commands, as most cases have them.
 func with(c prompt.Context) prompt.Context {
 	c.Commands = commands
@@ -86,19 +71,19 @@ func TestEveryRenderedPromptMatchesItsGoldenFile(t *testing.T) {
 	standards.Standards = "docs/coding-standards.md"
 
 	for name, got := range map[string]string{
-		"implement-spec":                 implement(with(inSpec()), specCommits, nil),
-		"implement-spec-no-commits-yet":  implement(with(inSpec()), baseCommits, nil),
-		"implement-standalone":           implement(with(standalone()), baseCommits, nil),
-		"implement-standalone-on-branch": implement(with(standalone()), ownBranchCommits, nil),
-		"implement-retry":                implement(with(inSpec()), specCommits, failedTests),
-		"implement-services":             implement(withServices(with(standalone())), baseCommits, nil),
-		"implement-no-commands":          implement(inSpec(), specCommits, nil),
-		"review-standards":               review(standards, "abc1234"),
-		"review-no-standards":            review(with(inSpec()), "abc1234"),
-		"review-standalone-services":     review(withServices(with(standalone())), "abc1234"),
-		"merge-conflict":                 merge(with(inSpec()), conflict),
-		"merge-no-merged-tickets":        merge(with(inSpec()), prompt.Merging{SpecBranch: "fliesswerk/spec-1", Files: []string{"cart/cart.go"}}),
-		"merge-standalone-services":      merge(withServices(with(standalone())), prompt.Merging{SpecBranch: "main", Files: []string{"README.md"}}),
+		"implement-spec":                 prompt.Implement(with(inSpec()), specCommits, nil),
+		"implement-spec-no-commits-yet":  prompt.Implement(with(inSpec()), baseCommits, nil),
+		"implement-standalone":           prompt.Implement(with(standalone()), baseCommits, nil),
+		"implement-standalone-on-branch": prompt.Implement(with(standalone()), ownBranchCommits, nil),
+		"implement-retry":                prompt.Implement(with(inSpec()), specCommits, failedTests),
+		"implement-services":             prompt.Implement(withServices(with(standalone())), baseCommits, nil),
+		"implement-no-commands":          prompt.Implement(inSpec(), specCommits, nil),
+		"review-standards":               prompt.Review(standards, "abc1234"),
+		"review-no-standards":            prompt.Review(with(inSpec()), "abc1234"),
+		"review-standalone-services":     prompt.Review(withServices(with(standalone())), "abc1234"),
+		"merge-conflict":                 prompt.Merge(with(inSpec()), conflict),
+		"merge-no-merged-tickets":        prompt.Merge(with(inSpec()), prompt.Merging{SpecBranch: "fliesswerk/spec-1", Files: []string{"cart/cart.go"}}),
+		"merge-standalone-services":      prompt.Merge(withServices(with(standalone())), prompt.Merging{SpecBranch: "main", Files: []string{"README.md"}}),
 	} {
 		t.Run(name, func(t *testing.T) { golden(t, name, got) })
 	}

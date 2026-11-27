@@ -1,3 +1,5 @@
+// This test is in-package because the views and render it checks aren't
+// exported, and the golden tests can't render a broken template.
 package prompt
 
 import (
