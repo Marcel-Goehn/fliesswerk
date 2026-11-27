@@ -8,7 +8,9 @@ Read during review. Vocabulary and ADR basics: `docs/agents/domain.md`.
 interfaces, the CLI binary and its exit codes, files on disk, git refs, tracker
 writes. Assert what a user or a Tracker would observe. Cover private functions
 through those boundaries; exporting a function only for a test counts as testing
-it privately. Assert order only where a doc states that order as behaviour.
+it privately. When no boundary can reach a case, such as a broken compiled-in
+template, an in-package test is the exception; a comment at its top says why.
+Assert order only where a doc states that order as behaviour.
 
 **A test brings its own machine.** It sets the env, git identity, engine and
 `PATH` it relies on, so it passes on a clean CI runner, where other variables
