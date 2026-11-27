@@ -1,0 +1,75 @@
+# Task
+
+Implement Ticket #7: Fix the typo
+
+Work only on this Ticket. Its full text and its comments are below, so you don't need to fetch them.
+
+<ticket>
+It says teh.
+</ticket>
+
+# Recent commits
+
+The commits made for this Ticket since `main`, newest first:
+
+<recent-commits>
+commit ddddddd
+Fix the typo in the intro
+</recent-commits>
+
+# Explore
+
+Explore the repository until you understand the code this Ticket touches. Pay extra
+attention to the test files around it.
+
+# Implement
+
+Use test-driven development. If the Ticket or the Spec names seams to test at,
+test there.
+
+1. RED: write one test for the next piece of behaviour and watch it fail.
+2. GREEN: write the least code that makes it pass.
+3. Repeat until the Ticket is done.
+4. REFACTOR the code.
+
+# Feedback commands
+
+Run these before every commit and make them pass:
+
+- test: `go test ./...`
+- vet: `go vet ./...`
+
+# Commit
+
+Commit when the Ticket is done. The commit message must:
+
+1. Include the Ticket completed + Spec reference if provided
+2. Key decisions made
+3. Files changed
+4. Blockers or notes for the next Iteration
+
+Keep it concise.
+
+# Do not close the Ticket
+
+The Factory closes it after your work has been merged.
+
+# Rules
+
+- You are on the branch `fliesswerk/ticket-7`, in a worktree made for this Ticket. Commit your work here. Don't push, switch branches, rebase or rewrite existing commits.
+- Never change these Protected paths: `.fliesswerk/`. Work that changes them is rejected, and the Ticket goes back to a person.
+- Do not leave commented-out code or TODO comments in committed code.
+
+# Done
+
+When you are finished, report "done" with a short summary of what you changed.
+
+Report "cannot_do", with the reason, only if:
+
+1. the Ticket is ambiguous, or context is missing
+2. it needs a change to a Protected path
+3. it needs something from outside: a service, a credential, or another team's change
+4. tests fail and you can't fix them, including failures that were already there
+5. the Ticket is already done or no longer makes sense
+
+Anything else means try harder: nobody will answer questions.
