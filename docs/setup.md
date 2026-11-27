@@ -57,7 +57,6 @@ Then come your own questions. They depend on your machine, so `init` asks them o
 | --- | --- | --- |
 | `.fliesswerk/config.toml` | Yes | The team's settings, with every default written out and commented |
 | `.fliesswerk/Containerfile` | Yes | The image every container Sandbox starts from. Written only if you chose `container` and there is none yet |
-| `.fliesswerk/prompts/implement.md`, `review.md`, `merge.md` | Yes | The part of each prompt your team may edit |
 | `.fliesswerk/.gitignore` | Yes | Keeps the files below out of git. Your root `.gitignore` is never touched |
 | `.fliesswerk/config.local.toml` | No | Your own settings: the Sandbox kind and the container engine, how you sign in, and your tokens' sources. Every command but `init` stops without it |
 
@@ -246,9 +245,17 @@ or for one Run with `--sandbox none --i-accept-unsandboxed-risk`. Every Run warn
 
 ## Teaching the agent your conventions
 
-Each Step's prompt is a fixed part in the binary around your file in `.fliesswerk/prompts/`. Edit your part freely: the fixed part holds the Factory's protocol, so your edits can't break it. Two placeholders are available, each rendering its whole section or nothing: `{{commands}}` lists your Feedback commands, and `{{standards}}` points at your Coding standards file. Any other placeholder is a `check` error.
+The prompts are fixed: they are compiled into the binary, the same for every project, and you can't edit them. How the agent works, test-first, the two review axes and what a commit message says, is the Factory's decision. Every improvement to a prompt reaches every project with the next release. You can read them in Fliesswerk's source, in `internal/prompt/`.
 
-When a new release improves a built-in prompt, `check` tells you, and `fliesswerk prompts diff <step>` shows what changed, for you to take over as you like.
+Your project's own conventions go where the agent already looks:
+
+- **The Coding standards file** (`standards` in the [config](config.md#standards)): the review Step is told to read it first and check the change against it.
+- **The Feedback commands** (`[commands]`): every Step's prompt lists them, and the agent runs them before it commits.
+- **The repo's `CLAUDE.md` or `AGENTS.md`**: the Harness reads them itself, as in any other session.
+
+The run logs keep each attempt's exact prompt, so you can see what the agent was told on a real Ticket. See [The log directory](usage.md#the-log-directory).
+
+A `.fliesswerk/prompts/` folder from an earlier version is not read. Delete it whenever you like.
 
 ## Next
 
