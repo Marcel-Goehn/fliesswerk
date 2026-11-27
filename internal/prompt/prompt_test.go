@@ -209,11 +209,7 @@ func TestEveryStepIsToldWhichServicesItCanReach(t *testing.T) {
 }
 
 func TestEveryStepMarksTheSharedServicesAndSaysWhatSharedMeans(t *testing.T) {
-	c := standalone()
-	c.Services = []sandbox.Service{
-		{Name: "postgres", Addresses: []string{"postgres:5432", "localhost:5432"}},
-		{Name: "redis", Addresses: []string{"redis:6379"}, Shared: true},
-	}
+	c := withSharedServices(standalone())
 	const want = "These Services are ready now. Each one runs for this Sandbox alone, with fresh data, unless it's marked shared. " +
 		"A shared one serves every Sandbox of the Run, so other agents use its data at the same time: don't wipe it or assume it's empty.\n\n" +
 		"- postgres: `postgres:5432`, `localhost:5432`\n" +

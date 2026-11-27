@@ -55,6 +55,7 @@ Use it for Services too heavy to run once per Sandbox, such as Elasticsearch, Ka
 - The copy runs in Compose project `fliesswerk-<repo dir>-<hash>-shared`, from a Factory-owned worktree of `base_branch`, so its compose file and relative paths are those of the base branch.
 - It starts after the `run_start` Hook and is removed, volumes included, after the `run_end` Hook. A Service that fails to start stops the Run.
 - Every Sandbox reaches it the same way as an own Service, and it outlives each of them.
+- The agent's prompt marks it shared and tells the agent not to wipe it or assume it's empty.
 
 Separate each Ticket's data with `FLIESSWERK_SANDBOX`, which every command in a Sandbox and every `sandbox_created` Hook gets. It names the Sandbox, such as `build-42`, and holds letters, digits and hyphens, so quote it where your database needs that. Create what the Ticket needs in the Hook:
 
@@ -90,7 +91,7 @@ For a Service `postgres` on port 5432, every command in the Sandbox can use:
 - `localhost:5432`
 - `FLIESSWERK_SERVICE_POSTGRES_HOST` and `FLIESSWERK_SERVICE_POSTGRES_PORT`, which hold the first port
 
-The agent's prompt lists the same addresses. If two Services listen on the same port, the first by name keeps `localhost:<port>`, and the other is reachable by name only.
+Each Step's prompt lists the same addresses at the end of its context, before its first instruction, and marks the shared Services as shared. If two Services listen on the same port, the first by name keeps `localhost:<port>`, and the other is reachable by name only.
 
 Set addresses your code reads with `env` templates, which get the Service's host and first port in every Sandbox:
 
