@@ -68,6 +68,17 @@ This is a retry. Your earlier commits are on the branch, but after them the Feed
 Fix the cause, then commit.
 
 {{end -}}
+{{if .Services -}}
+# Services
+
+These Services run for this Sandbox alone, with fresh data, and are ready now:
+
+{{range .Services -}}
+- {{.Name}}: {{range $i, $a := .Addresses}}{{if $i}}, {{end}}`{{$a}}`{{end}}
+{{end}}
+Each one's host and first port are also in `FLIESSWERK_SERVICE_<NAME>_HOST` and `FLIESSWERK_SERVICE_<NAME>_PORT`.
+
+{{end -}}
 # Explore
 
 Explore the repository until you understand the code this Ticket touches. Pay extra
@@ -103,17 +114,6 @@ Commit when the Ticket is done. The commit message must:
 
 Keep it concise.
 
-{{if .Services -}}
-# Services
-
-These Services run for this Sandbox alone, with fresh data, and are ready now:
-
-{{range .Services -}}
-- {{.Name}}: {{range $i, $a := .Addresses}}{{if $i}}, {{end}}`{{$a}}`{{end}}
-{{end}}
-Each one's host and first port are also in `FLIESSWERK_SERVICE_<NAME>_HOST` and `FLIESSWERK_SERVICE_<NAME>_PORT`.
-
-{{end -}}
 # Do not close the Ticket
 
 The Factory closes it after your work has been merged.
@@ -132,7 +132,7 @@ Report "cannot_do", with the reason, only if:
 
 1. the Ticket is ambiguous, or context is missing
 2. it needs a change to a Protected path
-3. it needs something from outside: a service, a credential, or another team's change
+3. it needs something the Sandbox can't reach: an outside system or API, a credential, or another team's change
 4. tests fail and you can't fix them, including failures that were already there
 5. the Ticket is already done or no longer makes sense
 

@@ -15,6 +15,15 @@ The work to review is every commit on this branch since `abc1234`. Read it with:
 - `git log abc1234..HEAD`
 - `git diff abc1234..HEAD`
 
+# Services
+
+These Services run for this Sandbox alone, with fresh data, and are ready now:
+
+- postgres: `postgres:5432`, `localhost:5432`
+- worker: `worker`
+
+Each one's host and first port are also in `FLIESSWERK_SERVICE_<NAME>_HOST` and `FLIESSWERK_SERVICE_<NAME>_PORT`.
+
 # Review
 
 Review the change along two axes, one after the other. Keep them apart: code that
@@ -88,15 +97,6 @@ After your changes, run these and make them pass:
 
 If you changed anything, commit with a message that says what you fixed or
 refactored, and why. If the change is already good, change nothing.
-
-# Services
-
-These Services run for this Sandbox alone, with fresh data, and are ready now:
-
-- postgres: `postgres:5432`, `localhost:5432`
-- worker: `worker`
-
-Each one's host and first port are also in `FLIESSWERK_SERVICE_<NAME>_HOST` and `FLIESSWERK_SERVICE_<NAME>_PORT`.
 
 # Do not close the Ticket
 

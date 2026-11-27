@@ -66,8 +66,12 @@ func inOrder(t *testing.T, p string, parts ...string) {
 	}
 }
 
+var postgres = []sandbox.Service{{Name: "postgres", Addresses: []string{"postgres:5432"}}}
+
 func TestTheImplementPromptOfATicketInASpecHasTheTicketItsSpecTheRecentCommitsAndTheRules(t *testing.T) {
-	p := prompt.Implement(inSpec(), specCommits, nil)
+	c := inSpec()
+	c.Services = postgres
+	p := prompt.Implement(c, specCommits, nil)
 
 	inOrder(t, p,
 		"# Task", "Implement Ticket #2: Add the cart",
@@ -77,10 +81,12 @@ func TestTheImplementPromptOfATicketInASpecHasTheTicketItsSpecTheRecentCommitsAn
 		"## Tickets in this Spec",
 		"- #3 Add the shop (closed)", "- #2 Add the cart (this Ticket)", "- #4 Add checkout (in progress)", "- #5 Add payment (open)",
 		"# Recent commits", "since `main`", "<recent-commits>", "Add the shop\n\nThe shop lists products.", "</recent-commits>",
-		"# Explore", "# Implement", "test-driven development", "# Commit",
+		"# Services", "- postgres: `postgres:5432`", "# Explore", "# Implement", "test-driven development", "# Commit",
 		"# Do not close the Ticket",
 		"# Rules", "`fliesswerk/ticket-2`", "`.fliesswerk/`, `compose.yaml`", "commented-out code",
-		"# Done", "cannot_do", "nobody will answer questions",
+		"# Done", "cannot_do",
+		"3. it needs something the Sandbox can't reach: an outside system or API, a credential, or another team's change",
+		"nobody will answer questions",
 	)
 	if strings.Contains(p, "`gh`") {
 		t.Errorf("the prompt still mentions gh, which the agent doesn't get:\n%s", p)
@@ -150,7 +156,9 @@ func TestStandardsReachesReviewOnly(t *testing.T) {
 }
 
 func TestTheReviewPromptHasTheSameContextAndWhatChanged(t *testing.T) {
-	p := prompt.Review(inSpec(), "abc123")
+	c := inSpec()
+	c.Services = postgres
+	p := prompt.Review(c, "abc123")
 
 	inOrder(t, p,
 		"# Task", "Review the code changes for Ticket #2: Add the cart",
@@ -158,7 +166,7 @@ func TestTheReviewPromptHasTheSameContextAndWhatChanged(t *testing.T) {
 		"<ticket>\nMake a cart.\n</ticket>", "Use a map.",
 		"# The Spec", "review only what this Ticket asks for", "- #4 Add checkout (in progress)",
 		"# What changed", "since `abc123`", "`git log abc123..HEAD`", "`git diff abc123..HEAD`",
-		"# Review", "## 1. Does it do what the Ticket asks?",
+		"# Services", "- postgres: `postgres:5432`", "# Review", "## 1. Does it do what the Ticket asks?",
 		"# Do not close the Ticket", "# Rules", "`fliesswerk/ticket-2`",
 		"# Done", `report "done"`,
 	)
@@ -179,11 +187,19 @@ func TestEveryStepIsToldWhichServicesItCanReach(t *testing.T) {
 		{Name: "postgres", Addresses: []string{"postgres:5432", "localhost:5432"}},
 		{Name: "worker", Addresses: []string{"worker"}},
 	}
-	for name, p := range map[string]string{
-		"implement": prompt.Implement(c, prompt.Recent{}, nil),
-		"review":    prompt.Review(c, "abc"),
-		"merge":     prompt.Merge(c, prompt.Merging{SpecBranch: "s", Files: []string{"a"}}),
+	merging := prompt.Merging{SpecBranch: "s", Files: []string{"a"}, Merged: []prompt.MergedTicket{
+		{Ticket: tracker.Ticket{ID: id("4"), Title: "Add checkout", Body: "Check out."}, Commits: []git.Commit{{SHA: "eeeeeeeeee", Subject: "Add checkout"}}},
+	}}
+	for name, tc := range map[string]struct {
+		prompt       string
+		before, next string
+	}{
+		"implement": {prompt.Implement(c, prompt.Recent{}, nil), "</recent-commits>", "# Explore"},
+		"review":    {prompt.Review(c, "abc"), "# What changed", "# Review"},
+		"merge":     {prompt.Merge(c, merging), "# Tickets merged since this Ticket started", "# Resolve"},
 	} {
+		p := tc.prompt
+		inOrder(t, p, tc.before, "# Services", "FLIESSWERK_SERVICE_<NAME>_PORT`.\n\n"+tc.next)
 		for _, want := range []string{"# Services", "- postgres: `postgres:5432`, `localhost:5432`", "- worker: `worker`", "FLIESSWERK_SERVICE_<NAME>_HOST"} {
 			if !strings.Contains(p, want) {
 				t.Errorf("%s doesn't say %q:\n%s", name, want, p)

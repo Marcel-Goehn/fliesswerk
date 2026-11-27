@@ -73,7 +73,7 @@ Report "cannot_do", with the reason, only if:
 
 1. the Ticket is ambiguous, or context is missing
 2. it needs a change to a Protected path
-3. it needs something from outside: a service, a credential, or another team's change
+3. it needs something the Sandbox can't reach: an outside system or API, a credential, or another team's change
 4. tests fail and you can't fix them, including failures that were already there
 5. the Ticket is already done or no longer makes sense
 
