@@ -82,12 +82,26 @@ func (p *Provider) startServices(ctx context.Context, b *box, s *sandboxPlan, re
 	if err != nil {
 		return err
 	}
-	running = slices.SortedFunc(slices.Values(slices.Concat(running, p.shared)), func(x, y sandbox.PublishedService) int { return strings.Compare(x.Name, y.Name) })
+	running = slices.Clone(running)
+	shared := map[string]bool{}
+	for _, svc := range p.shared {
+		// A helper of both sides: the Sandbox keeps its own copy.
+		if slices.ContainsFunc(running, func(own sandbox.PublishedService) bool { return own.Name == svc.Name }) {
+			continue
+		}
+		shared[svc.Name] = true
+		running = append(running, svc)
+	}
+	slices.SortFunc(running, func(x, y sandbox.PublishedService) int { return strings.Compare(x.Name, y.Name) })
 	if p.host.Mac {
 		p.publishToSeatbelt(b, s, running)
-		return nil
+	} else if err := p.forwardToBwrap(ctx, b, s, running); err != nil {
+		return err
 	}
-	return p.forwardToBwrap(ctx, b, s, running)
+	for i := range b.services {
+		b.services[i].Shared = shared[b.services[i].Name]
+	}
+	return nil
 }
 
 // publishToSeatbelt allows each published port. A Seatbelt Sandbox shares the

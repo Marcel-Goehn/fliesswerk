@@ -45,10 +45,10 @@ The work to review is every commit on this branch since `{{.Base}}`. Read it wit
 {{if .Services -}}
 # Services
 
-These Services run for this Sandbox alone, with fresh data, and are ready now:
+These Services are ready now. Each one runs for this Sandbox alone, with fresh data, unless it's marked shared. A shared one serves every Sandbox of the Run, so other agents use its data at the same time: don't wipe it or assume it's empty.
 
 {{range .Services -}}
-- {{.Name}}: {{range $i, $a := .Addresses}}{{if $i}}, {{end}}`{{$a}}`{{end}}
+- {{.Name}}{{if .Shared}} (shared){{end}}: {{range $i, $a := .Addresses}}{{if $i}}, {{end}}`{{$a}}`{{end}}
 {{end}}
 Each one's host and first port are also in `FLIESSWERK_SERVICE_<NAME>_HOST` and `FLIESSWERK_SERVICE_<NAME>_PORT`.
 

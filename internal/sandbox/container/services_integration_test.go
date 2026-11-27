@@ -4,6 +4,7 @@ package container
 
 import (
 	"context"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -321,7 +322,7 @@ func TestADependencyAcrossOwnAndSharedStopsTheRunStart(t *testing.T) {
 	}
 }
 
-func TestAHelperOfBothOwnAndSharedServicesIsOnTheSandboxsNetworkOnce(t *testing.T) {
+func TestAHelperOfBothOwnAndSharedServicesIsTheSandboxsOwnCopyOnItsNetworkOnce(t *testing.T) {
 	const pg = "    image: docker.io/library/postgres:17-alpine\n    environment:\n      POSTGRES_HOST_AUTH_METHOD: trust\n"
 	compose := "services:\n  app:\n" + pg + "    depends_on: [helper]\n  search:\n" + pg + "    depends_on: [helper]\n  helper:\n" + pg
 	pr, worktrees := servicesProject(t, compose)
@@ -346,5 +347,12 @@ func TestAHelperOfBothOwnAndSharedServicesIsOnTheSandboxsNetworkOnce(t *testing.
 	}
 	if helpers != 1 {
 		t.Errorf("the Sandbox lists the helper %d times, want its own copy once: %+v", helpers, sb.Services())
+	}
+	shared := map[string]bool{}
+	for _, s := range sb.Services() {
+		shared[s.Name] = s.Shared
+	}
+	if want := map[string]bool{"app": false, "helper": false, "search": true}; !maps.Equal(shared, want) {
+		t.Errorf("the Services by whether they are shared: %v, want %v", shared, want)
 	}
 }

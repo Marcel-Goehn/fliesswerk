@@ -99,6 +99,8 @@ type specTicketView struct {
 type serviceView struct {
 	Name      string
 	Addresses []string
+	// Shared is whether it serves every Sandbox of the Run.
+	Shared bool
 }
 
 // implementData is what implement's template gets.
@@ -175,7 +177,7 @@ func viewOf(c Context) view {
 		}
 	}
 	for _, s := range c.Services {
-		v.Services = append(v.Services, serviceView{Name: s.Name, Addresses: s.Addresses})
+		v.Services = append(v.Services, serviceView{Name: s.Name, Addresses: s.Addresses, Shared: s.Shared})
 	}
 	return v
 }

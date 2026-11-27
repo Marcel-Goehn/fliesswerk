@@ -5,12 +5,14 @@ package native
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -171,6 +173,32 @@ func TestEverySandboxReachesTheSharedServicesAndTheyOutliveIt(t *testing.T) {
 	}
 	if f.stoppedShared != 1 {
 		t.Errorf("stopped %d times", f.stoppedShared)
+	}
+}
+
+func TestASandboxFlagsItsSharedServicesButNotItsOwnCopyOfAHelper(t *testing.T) {
+	published := func(name string) sandbox.PublishedService {
+		return sandbox.PublishedService{Name: name, Aliases: []string{name}, Ports: []sandbox.PublishedPort{{Container: 8080, Host: listener(t, name)}}}
+	}
+	f := &fakeServices{
+		running: []sandbox.PublishedService{published("app"), published("helper")},
+		shared:  []sandbox.PublishedService{published("search"), published("helper")},
+	}
+	pr := newProject(t, nil, func(o *Options) { o.Services = f })
+	stop, err := pr.p.StartShared(context.Background(), sandbox.Request{Name: "shared", Worktree: pr.worktree})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = stop(context.Background()) })
+
+	sb := pr.open(t)
+
+	var got []string
+	for _, s := range sb.Services() {
+		got = append(got, fmt.Sprintf("%s shared=%t", s.Name, s.Shared))
+	}
+	if want := []string{"app shared=false", "helper shared=false", "search shared=true"}; !slices.Equal(got, want) {
+		t.Errorf("Services() = %v, want %v", got, want)
 	}
 }
 

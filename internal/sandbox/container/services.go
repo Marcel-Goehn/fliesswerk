@@ -35,6 +35,8 @@ type runningService struct {
 	ports   []int
 	// localhost are the ports it has on the Sandbox's localhost.
 	localhost []int
+	// shared is whether it is one of the Run's shared Services.
+	shared bool
 }
 
 // CheckServices enforces the compose tool's version and the rules on the
@@ -97,6 +99,7 @@ func (p *Provider) startServices(ctx context.Context, b *box, req sandbox.Reques
 			if err != nil {
 				return nil, err
 			}
+			s.shared = true
 			services = append(services, s)
 		}
 	}
@@ -291,7 +294,7 @@ func (p *Provider) startForwarder(ctx context.Context, b *box, labels []string, 
 func addresses(services []runningService) []sandbox.Service {
 	out := make([]sandbox.Service, 0, len(services))
 	for _, s := range services {
-		listed := sandbox.Service{Name: s.name}
+		listed := sandbox.Service{Name: s.name, Shared: s.shared}
 		for _, port := range s.ports {
 			for _, alias := range s.aliases {
 				listed.Addresses = append(listed.Addresses, fmt.Sprintf("%s:%d", alias, port))

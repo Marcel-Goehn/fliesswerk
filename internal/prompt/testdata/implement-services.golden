@@ -24,7 +24,7 @@ Start the shop
 
 # Services
 
-These Services run for this Sandbox alone, with fresh data, and are ready now:
+These Services are ready now. Each one runs for this Sandbox alone, with fresh data, unless it's marked shared. A shared one serves every Sandbox of the Run, so other agents use its data at the same time: don't wipe it or assume it's empty.
 
 - postgres: `postgres:5432`, `localhost:5432`
 - worker: `worker`

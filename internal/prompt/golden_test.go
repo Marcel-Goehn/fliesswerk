@@ -34,6 +34,15 @@ func withServices(c prompt.Context) prompt.Context {
 	return c
 }
 
+// withSharedServices is c with one own and one shared Service.
+func withSharedServices(c prompt.Context) prompt.Context {
+	c.Services = []sandbox.Service{
+		{Name: "postgres", Addresses: []string{"postgres:5432", "localhost:5432"}},
+		{Name: "redis", Addresses: []string{"redis:6379"}, Shared: true},
+	}
+	return c
+}
+
 var baseCommits = prompt.Recent{BaseBranch: "main", Commits: []git.Message{
 	{SHA: "cccccccccccccccccccc", Text: "Fix the header\n\nIt overlapped the menu."},
 	{SHA: "aaaaaaaaaaaaaaaaaaaa", Text: "Start the shop"},
@@ -77,6 +86,7 @@ func TestEveryRenderedPromptMatchesItsGoldenFile(t *testing.T) {
 		"implement-standalone-on-branch": prompt.Implement(with(standalone()), ownBranchCommits, nil),
 		"implement-retry":                prompt.Implement(with(inSpec()), specCommits, failedTests),
 		"implement-services":             prompt.Implement(withServices(with(standalone())), baseCommits, nil),
+		"implement-shared-services":      prompt.Implement(withSharedServices(with(standalone())), baseCommits, nil),
 		"implement-no-commands":          prompt.Implement(inSpec(), specCommits, nil),
 		"review-standards":               prompt.Review(standards, "abc1234"),
 		"review-no-standards":            prompt.Review(with(inSpec()), "abc1234"),

@@ -208,6 +208,28 @@ func TestEveryStepIsToldWhichServicesItCanReach(t *testing.T) {
 	}
 }
 
+func TestEveryStepMarksTheSharedServicesAndSaysWhatSharedMeans(t *testing.T) {
+	c := standalone()
+	c.Services = []sandbox.Service{
+		{Name: "postgres", Addresses: []string{"postgres:5432", "localhost:5432"}},
+		{Name: "redis", Addresses: []string{"redis:6379"}, Shared: true},
+	}
+	const want = "These Services are ready now. Each one runs for this Sandbox alone, with fresh data, unless it's marked shared. " +
+		"A shared one serves every Sandbox of the Run, so other agents use its data at the same time: don't wipe it or assume it's empty.\n\n" +
+		"- postgres: `postgres:5432`, `localhost:5432`\n" +
+		"- redis (shared): `redis:6379`\n"
+	merging := prompt.Merging{SpecBranch: "s", Files: []string{"a"}}
+	for name, p := range map[string]string{
+		"implement": prompt.Implement(c, prompt.Recent{}, nil),
+		"review":    prompt.Review(c, "abc"),
+		"merge":     prompt.Merge(c, merging),
+	} {
+		if !strings.Contains(p, want) {
+			t.Errorf("%s doesn't say %q:\n%s", name, want, p)
+		}
+	}
+}
+
 func TestAProjectWithoutServicesGetsNoServicesSection(t *testing.T) {
 	if p := prompt.Implement(standalone(), prompt.Recent{}, nil); strings.Contains(p, "# Services") {
 		t.Errorf("the prompt has a Services section:\n%s", p)
