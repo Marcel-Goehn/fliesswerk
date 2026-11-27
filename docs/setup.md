@@ -245,7 +245,7 @@ or for one Run with `--sandbox none --i-accept-unsandboxed-risk`. Every Run warn
 
 ## Teaching the agent your conventions
 
-The prompts are fixed: they are compiled into the binary, the same for every project, and you can't edit them. How the agent works, test-first, the two review axes and what a commit message says, is the Factory's decision. Every improvement to a prompt reaches every project with the next release. You can read them in Fliesswerk's source, in `internal/prompt/`.
+The prompts are fixed: they are compiled into the binary, the same for every project, and you can't edit them. How the agent works, test-first, the two review axes and what a commit message says, is the Factory's decision. Every improvement to a prompt reaches every project with the next release. You can read them in Fliesswerk's source: each Step's whole prompt is one template, `internal/prompt/templates/<step>.md` (`implement.md`, `review.md` and `merge.md`).
 
 Your project's own conventions go where the agent already looks:
 

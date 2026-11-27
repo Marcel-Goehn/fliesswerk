@@ -1,3 +1,47 @@
+# Task
+
+Review the code changes for Ticket {{.Ticket.ID}}: {{.Ticket.Title}}. Check that they do what the Ticket asks, and improve how the code is written. Fix what you find yourself and commit it.
+
+The Ticket's {{if .Spec}}full text, its comments and the Spec it belongs to are below, so you don't need to fetch them.{{else}}full text and its comments are below, so you don't need to fetch them.{{end}}
+
+<ticket>
+{{.Ticket.Body}}
+</ticket>
+
+{{if .Comments -}}
+<ticket-comments>
+{{range .Comments -}}
+<comment author={{printf "%q" .Author}} date={{printf "%q" .Date}}>
+{{.Body}}
+</comment>
+{{end -}}
+</ticket-comments>
+
+{{end -}}
+{{with .Spec -}}
+# The Spec
+
+The Ticket is part of Spec {{.ID}}: {{.Title}}. The Spec describes the whole feature. Use it to judge whether the change fits, but review only what this Ticket asks for. The rest of the Spec is other Tickets' work.
+
+<spec>
+{{.Body}}
+</spec>
+
+## Tickets in this Spec
+
+{{range .Tickets -}}
+- {{.ID}} {{.Title}} ({{.Mark}})
+{{end}}
+Closed Tickets are finished. In progress and open Tickets are someone else's work: don't add them, even if they look easy to include.
+
+{{end -}}
+# What changed
+
+The work to review is every commit on this branch since `{{.Base}}`. Read it with:
+
+- `git log {{.Base}}..HEAD`
+- `git diff {{.Base}}..HEAD`
+
 # Review
 
 Review the change along two axes, one after the other. Keep them apart: code that
@@ -20,8 +64,10 @@ Fix what you find.
 
 ## 2. Is it well written?
 
-{{standards}}
+{{if .Standards -}}
+Follow the coding standards in `{{.Standards}}`. Read that file first. Where they disagree with the smells below, the standards win.
 
+{{end -}}
 Check the change for these code smells. Each one is a judgement call, not a hard
 rule. Skip anything the project's tooling already enforces.
 
@@ -62,9 +108,41 @@ Don't:
 - change code outside this Ticket's change
 - break anything that already works
 
-{{commands}}
+{{if .Commands -}}
+# Feedback commands
 
+After your changes, run these and make them pass:
+
+{{range .Commands -}}
+- {{.Name}}: `{{.Line}}`
+{{end}}
+{{end -}}
 # Commit
 
 If you changed anything, commit with a message that says what you fixed or
 refactored, and why. If the change is already good, change nothing.
+
+{{if .Services -}}
+# Services
+
+These Services run for this Sandbox alone, with fresh data, and are ready now:
+
+{{range .Services -}}
+- {{.Name}}: {{range $i, $a := .Addresses}}{{if $i}}, {{end}}`{{$a}}`{{end}}
+{{end}}
+Each one's host and first port are also in `FLIESSWERK_SERVICE_<NAME>_HOST` and `FLIESSWERK_SERVICE_<NAME>_PORT`.
+
+{{end -}}
+# Do not close the Ticket
+
+The Factory closes it after the change has been merged.
+
+# Rules
+
+- You are on the branch `{{.Branch}}`, in a worktree made for this Ticket. Commit your work here. Don't push, switch branches, rebase or rewrite existing commits.
+- Never change these Protected paths: {{range $i, $p := .Protected}}{{if $i}}, {{end}}`{{$p}}`{{end}}. Work that changes them is rejected, and the Ticket goes back to a person.
+- Do not leave commented-out code or TODO comments in committed code.
+
+# Done
+
+When you are finished, report "done" with a short summary of what you found and fixed, or that the change is fine as it is.

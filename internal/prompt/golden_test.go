@@ -18,7 +18,7 @@ import (
 
 var update = flag.Bool("update", false, "rewrite the golden files of the rendered prompts")
 
-// The golden prompts are rendered with the built-in guidance. These
+// The golden prompts are rendered from the templates. These
 // three are the only calls into Implement, Review and Merge, so a change
 // to their signatures is made here alone.
 func implement(c prompt.Context, r prompt.Recent, failed *verify.Failure) string {
