@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/Marcel-Goehn/fliesswerk/internal/proxyimage"
 )
 
 var (
@@ -26,6 +28,11 @@ func builtFliesswerk(t *testing.T, tags, ldflags string) string {
 	key := tags + "\x00" + ldflags
 	if bin, ok := built[key]; ok {
 		return bin
+	}
+	// A fresh checkout or worktree has no proxy image until `go generate`, and
+	// the binary would only say so deep inside a Run.
+	if _, err := proxyimage.Rootfs(runtime.GOARCH); err != nil {
+		t.Fatal(err)
 	}
 	dir, err := os.MkdirTemp("", "fliesswerk-build")
 	if err != nil {
