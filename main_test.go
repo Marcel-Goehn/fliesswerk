@@ -141,6 +141,22 @@ func TestUnknownArgumentFailsWithUsage(t *testing.T) {
 	}
 }
 
+func TestPromptsIsAnUnknownArgument(t *testing.T) {
+	bin := buildFliesswerk(t, "")
+
+	stdout, stderr, code := runFliesswerk(t, bin, "prompts", "diff", "implement")
+
+	if code != 3 || stdout != "" {
+		t.Fatalf("exit code = %d, stdout = %q, want 3 and nothing", code, stdout)
+	}
+	if !strings.Contains(stderr, `unknown argument "prompts"`) || !strings.Contains(stderr, "Usage:") {
+		t.Fatalf("stderr = %q, want it to name the argument and show usage", stderr)
+	}
+	if strings.Contains(stderr, "fliesswerk prompts") {
+		t.Errorf("the usage still lists prompts:\n%s", stderr)
+	}
+}
+
 // runIn runs the binary with dir as its working directory (the test's own,
 // if dir is empty), with a fake gh that is installed and logged in.
 func runIn(t *testing.T, bin, dir string, args ...string) (stdout, stderr string, code int) {
@@ -313,6 +329,20 @@ func TestCheck(t *testing.T) {
 		}
 		if !strings.Contains(stdout, "valid") {
 			t.Fatalf("stdout = %q, want it to say the config is valid", stdout)
+		}
+	})
+
+	t.Run("ignores a leftover prompt file", func(t *testing.T) {
+		root := projectDir(t, map[string]string{
+			"config.toml":          "version = 1\n",
+			"prompts/implement.md": "# Implement\n\n{{tests}}\n",
+		})
+		_, stderr, code := runIn(t, bin, root, checkNoSandbox...)
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0; stderr: %s", code, stderr)
+		}
+		if strings.Contains(stderr, "prompt") || strings.Contains(stderr, "{{tests}}") {
+			t.Errorf("stderr mentions the prompt file:\n%s", stderr)
 		}
 	})
 

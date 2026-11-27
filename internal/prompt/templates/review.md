@@ -1,0 +1,148 @@
+# Task
+
+Review the code changes for Ticket {{.Ticket.ID}}: {{.Ticket.Title}}. Check that they do what the Ticket asks, and improve how the code is written. Fix what you find yourself and commit it.
+
+The Ticket's {{if .Spec}}full text, its comments and the Spec it belongs to are below, so you don't need to fetch them.{{else}}full text and its comments are below, so you don't need to fetch them.{{end}}
+
+<ticket>
+{{.Ticket.Body}}
+</ticket>
+
+{{if .Comments -}}
+<ticket-comments>
+{{range .Comments -}}
+<comment author={{printf "%q" .Author}} date={{printf "%q" .Date}}>
+{{.Body}}
+</comment>
+{{end -}}
+</ticket-comments>
+
+{{end -}}
+{{with .Spec -}}
+# The Spec
+
+The Ticket is part of Spec {{.ID}}: {{.Title}}. The Spec describes the whole feature. Use it to judge whether the change fits, but review only what this Ticket asks for. The rest of the Spec is other Tickets' work.
+
+<spec>
+{{.Body}}
+</spec>
+
+## Tickets in this Spec
+
+{{range .Tickets -}}
+- {{.ID}} {{.Title}} ({{.Mark}})
+{{end}}
+Closed Tickets are finished. In progress and open Tickets are someone else's work: don't add them, even if they look easy to include.
+
+{{end -}}
+# What changed
+
+The work to review is every commit on this branch since `{{.Base}}`. Read it with:
+
+- `git log {{.Base}}..HEAD`
+- `git diff {{.Base}}..HEAD`
+
+# Review
+
+Review the change along two axes, one after the other. Keep them apart: code that
+is well written but does the wrong thing fails, and so does code that does the
+right thing but is badly written.
+
+## 1. Does it do what the Ticket asks?
+
+Compare the change with the Ticket, and with the Spec if there is one. Look for:
+
+- requirements the Ticket asks for that are missing or only partly done
+- requirements that look implemented, but where the implementation is wrong
+- behaviour the Ticket didn't ask for: remove it
+- edge cases that aren't handled
+- new or changed behaviour without a test, or tests that aren't at the seams the
+  Ticket or the Spec names
+- security problems: injection, leaked credentials, unchecked input
+
+Fix what you find.
+
+## 2. Is it well written?
+
+{{if .Standards -}}
+Follow the coding standards in `{{.Standards}}`. Read that file first. Where they disagree with the smells below, the standards win.
+
+{{end -}}
+Check the change for these code smells. Each one is a judgement call, not a hard
+rule. Skip anything the project's tooling already enforces.
+
+- **Mysterious Name**: a function, variable or type whose name doesn't reveal what
+  it does or holds. → Rename it.
+- **Duplicated Code**: the same logic appears in more than one place in the
+  change. → Extract it and call it from both places.
+- **Feature Envy**: a function that reaches into another object's data more than
+  its own. → Move it to the data it uses.
+- **Data Clumps**: the same few fields or parameters keep travelling together.
+  → Bundle them into one type.
+- **Primitive Obsession**: a string or number standing in for a domain concept.
+  → Give the concept its own small type.
+- **Repeated Switches**: the same `switch` or `if` chain on the same type appears
+  more than once. → Replace it with polymorphism or one shared map.
+- **Shotgun Surgery**: one logical change needs scattered edits across many files.
+  → Gather what changes together into one module.
+- **Divergent Change**: one file is changed for several unrelated reasons.
+  → Split it so each part changes for one reason.
+- **Speculative Generality**: abstractions, parameters or hooks for needs the
+  Ticket doesn't have. → Delete them.
+- **Message Chains**: long `a.b().c().d()` navigation. → Hide it behind one
+  function on the first object.
+- **Middle Man**: a function or type that mostly just passes calls on.
+  → Remove it and call the real target directly.
+- **Refused Bequest**: a type that ignores most of what it inherits or implements.
+  → Use composition instead.
+
+Refactor what you find, without changing the behaviour the Ticket asks for.
+
+## Keep the balance
+
+Don't:
+
+- over-simplify until the code is harder to read
+- merge unrelated concerns into one function
+- remove abstractions that help organise the code
+- change code outside this Ticket's change
+- break anything that already works
+
+{{if .Commands -}}
+# Feedback commands
+
+After your changes, run these and make them pass:
+
+{{range .Commands -}}
+- {{.Name}}: `{{.Line}}`
+{{end}}
+{{end -}}
+# Commit
+
+If you changed anything, commit with a message that says what you fixed or
+refactored, and why. If the change is already good, change nothing.
+
+{{if .Services -}}
+# Services
+
+These Services run for this Sandbox alone, with fresh data, and are ready now:
+
+{{range .Services -}}
+- {{.Name}}: {{range $i, $a := .Addresses}}{{if $i}}, {{end}}`{{$a}}`{{end}}
+{{end}}
+Each one's host and first port are also in `FLIESSWERK_SERVICE_<NAME>_HOST` and `FLIESSWERK_SERVICE_<NAME>_PORT`.
+
+{{end -}}
+# Do not close the Ticket
+
+The Factory closes it after the change has been merged.
+
+# Rules
+
+- You are on the branch `{{.Branch}}`, in a worktree made for this Ticket. Commit your work here. Don't push, switch branches, rebase or rewrite existing commits.
+- Never change these Protected paths: {{range $i, $p := .Protected}}{{if $i}}, {{end}}`{{$p}}`{{end}}. Work that changes them is rejected, and the Ticket goes back to a person.
+- Do not leave commented-out code or TODO comments in committed code.
+
+# Done
+
+When you are finished, report "done" with a short summary of what you found and fixed, or that the change is fine as it is.

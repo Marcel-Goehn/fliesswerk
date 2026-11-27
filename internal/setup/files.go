@@ -40,9 +40,6 @@ func Files(f Facts, a Answers, h Harness, factoryVersion string) []File {
 		gitignoreFile(),
 		{in("config.toml"), configTOML(f, a, h, factoryVersion)},
 	}
-	for _, step := range prompt.Steps {
-		files = append(files, File{path.Join(prompt.Dir, step+".md"), prompt.Marker(step) + "\n\n" + prompt.Builtin(step, prompt.Latest(step))})
-	}
 	return files
 }
 
@@ -52,8 +49,7 @@ func gitignoreFile() File {
 }
 
 // Recreated are the team's files a re-run may bring back, all but the
-// config itself, the Containerfile and the prompts: a deleted prompt stays
-// deleted.
+// config itself and the Containerfile.
 func Recreated() []File {
 	return []File{gitignoreFile()}
 }

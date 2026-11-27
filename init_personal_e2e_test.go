@@ -49,7 +49,7 @@ func TestInitRerunCreatesOnlyWhatIsMissing(t *testing.T) {
 	mustContain(t, "Containerfile", p.fliesswerkFile(t, "Containerfile"), "node:22.11.0-bookworm-slim", "USER agent")
 	mustContain(t, "stdout", p.stdout, "+ .fliesswerk/.gitignore", "+ .fliesswerk/Containerfile")
 	if p.hasFliesswerkFile("prompts/implement.md") {
-		t.Error("a deleted prompt came back")
+		t.Error("init wrote a prompt file")
 	}
 }
 

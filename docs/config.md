@@ -73,7 +73,7 @@ The names of Feedback commands from `[commands]` that the Factory runs itself af
 
 ### `standards`
 
-The Coding standards file, relative to the project root. Only the review Step reads it, through the `{{standards}}` placeholder of its prompt. It is a Protected path. Unset, review checks against its built-in baseline only.
+The Coding standards file, relative to the project root. Only the review Step's prompt points the agent at it. It is a Protected path. Unset, review checks against its built-in baseline only.
 
 ### `protected_paths`
 
@@ -274,7 +274,7 @@ env = { DATABASE_URL = "postgres://app:app@{host}:{port}/app" }
 
 ## `commands`
 
-Feedback commands, by name: how the agent and the Factory check that a change works. They are declared once and listed to every Step through the `{{commands}}` placeholder of the prompts.
+Feedback commands, by name: how the agent and the Factory check that a change works. They are declared once and listed in every Step's prompt.
 
 ### `commands.<name>`
 

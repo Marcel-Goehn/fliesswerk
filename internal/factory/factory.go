@@ -75,11 +75,7 @@ type Options struct {
 	// always is one: files, directories (ending in "/") or globs, relative
 	// to the project root.
 	ProtectedPaths []string
-	// Prompts are the project's editable parts of the prompts, by Step;
-	// a Step without one gets the built-in part.
-	Prompts map[string]prompt.Part
-	// Commands are the Feedback commands the prompts' `{{commands}}`
-	// lists.
+	// Commands are the Feedback commands every Step's prompt lists.
 	Commands []verify.Command
 	// Standards is the Coding standards file review is told to follow, ""
 	// for none.
@@ -950,7 +946,7 @@ func (r *run) implementAndReview(ctx context.Context, b build, verifyFailed *ver
 		return "", factoryFailure(err), nil
 	}
 	r.line(tk, runlog.Line{Step: Implement, Text: "started on " + b.branch})
-	out, failed, stop := r.runStep(ctx, Step{Name: Implement, Ticket: tk, Dir: b.dir, Sandbox: b.sandbox, Prompt: prompt.Implement(r.part(Implement), b.prompt, b.recent, verifyFailed), Log: r.stepLog(tk, Implement)})
+	out, failed, stop := r.runStep(ctx, Step{Name: Implement, Ticket: tk, Dir: b.dir, Sandbox: b.sandbox, Prompt: prompt.Implement(b.prompt, b.recent, verifyFailed), Log: r.stepLog(tk, Implement)})
 	if failed != nil || stop != nil {
 		return "", failed, stop
 	}
@@ -979,7 +975,7 @@ func (r *run) implementAndReview(ctx context.Context, b build, verifyFailed *ver
 		return "", factoryFailure(err), nil
 	}
 	r.line(tk, runlog.Line{Step: Review, Text: "started"})
-	out, failed, stop = r.runStep(ctx, Step{Name: Review, Ticket: tk, Dir: b.dir, Sandbox: b.sandbox, Prompt: prompt.Review(r.part(Review), b.prompt, b.base), Log: r.stepLog(tk, Review)})
+	out, failed, stop = r.runStep(ctx, Step{Name: Review, Ticket: tk, Dir: b.dir, Sandbox: b.sandbox, Prompt: prompt.Review(b.prompt, b.base), Log: r.stepLog(tk, Review)})
 	if failed != nil || stop != nil {
 		return "", failed, stop
 	}

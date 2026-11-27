@@ -107,4 +107,4 @@ Dry run: nothing was written and nothing was started.
 - **In bodies and the expected output**, `{{key}}` becomes `#<number>` and
   `{{key.number}}` the bare number, and `{{repo}}` the repo's owner/name. A
   body may only name issues above it.
-  Other `{{...}}`, such as a Fliesswerk prompt placeholder, stay as they are.
+  Any other `{{...}}` stays as it is.

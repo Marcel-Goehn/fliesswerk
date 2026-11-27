@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -261,13 +263,13 @@ func TestInitContainerfileIsBuiltInOrderAtThePinnedVersion(t *testing.T) {
 	}
 }
 
-func TestInitWritesThePromptsAndItsOwnGitignoreOnly(t *testing.T) {
+func TestInitWritesNoPromptsAndItsOwnGitignoreOnly(t *testing.T) {
 	p := initProject(t, nodePostgres())
 	writeFile(t, filepath.Join(p.work, ".gitignore"), "node_modules\n")
 	p.init(t, p.initEnv(t), p.thenSignIn(t, acceptAll)...)
 
-	for _, step := range []string{"implement", "review", "merge"} {
-		mustContain(t, step, p.fliesswerkFile(t, "prompts/"+step+".md"), "fliesswerk: based on the built-in "+step+" prompt v")
+	if _, err := os.Stat(filepath.Join(p.work, ".fliesswerk", "prompts")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("init wrote .fliesswerk/prompts/: %v", err)
 	}
 	mustContain(t, ".gitignore", p.fliesswerkFile(t, ".gitignore"), "config.local.toml", ".env", "logs/", "state/")
 	root, err := os.ReadFile(filepath.Join(p.work, ".gitignore"))

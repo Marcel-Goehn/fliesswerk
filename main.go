@@ -32,7 +32,6 @@ const usage = `Usage:
   fliesswerk run --json [<N>]      print the Run's summary as JSON to stdout, and the live lines to stderr
   fliesswerk logs                  print the latest Run's log directory
   fliesswerk release <N>           drop the claim on Spec or standalone Ticket N, so someone else's Run may take it
-  fliesswerk prompts diff <step>   show how the built-in prompt of a Step changed since your file's version
   fliesswerk auth set <key>        store a secret, read from a hidden prompt, in your user-level credentials file
   fliesswerk migrate               rewrite renamed or removed config keys, and report what changed
   fliesswerk update                install the newest release of this major version
@@ -74,9 +73,6 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 	}
 	if len(args) > 0 && args[0] == "release" {
 		return runRelease(args[1:], stdout, stderr)
-	}
-	if len(args) > 0 && args[0] == "prompts" {
-		return runPrompts(args[1:], stdout, stderr)
 	}
 	if len(args) > 0 && args[0] == "auth" {
 		return runAuth(args[1:], os.Stdin, stdout, stderr)
