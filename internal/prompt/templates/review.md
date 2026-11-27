@@ -42,6 +42,17 @@ The work to review is every commit on this branch since `{{.Base}}`. Read it wit
 - `git log {{.Base}}..HEAD`
 - `git diff {{.Base}}..HEAD`
 
+{{if .Services -}}
+# Services
+
+These Services are ready now. Each one runs for this Sandbox alone, with fresh data, unless it's marked shared. A shared one serves every Sandbox of the Run, so other agents use its data at the same time: don't wipe it or assume it's empty.
+
+{{range .Services -}}
+- {{.Name}}{{if .Shared}} (shared){{end}}: {{range $i, $a := .Addresses}}{{if $i}}, {{end}}`{{$a}}`{{end}}
+{{end}}
+Each one's host and first port are also in `FLIESSWERK_SERVICE_<NAME>_HOST` and `FLIESSWERK_SERVICE_<NAME>_PORT`.
+
+{{end -}}
 # Review
 
 Review the change along two axes, one after the other. Keep them apart: code that
@@ -122,17 +133,6 @@ After your changes, run these and make them pass:
 If you changed anything, commit with a message that says what you fixed or
 refactored, and why. If the change is already good, change nothing.
 
-{{if .Services -}}
-# Services
-
-These Services run for this Sandbox alone, with fresh data, and are ready now:
-
-{{range .Services -}}
-- {{.Name}}: {{range $i, $a := .Addresses}}{{if $i}}, {{end}}`{{$a}}`{{end}}
-{{end}}
-Each one's host and first port are also in `FLIESSWERK_SERVICE_<NAME>_HOST` and `FLIESSWERK_SERVICE_<NAME>_PORT`.
-
-{{end -}}
 # Do not close the Ticket
 
 The Factory closes it after the change has been merged.

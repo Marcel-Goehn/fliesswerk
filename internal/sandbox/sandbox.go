@@ -26,6 +26,7 @@ type Sandbox interface {
 	// command doesn't end what it started inside.
 	KillAll(ctx context.Context) error
 	// Services are the Services the Sandbox can reach, none if it has none.
+	// The Run's shared Services are included, flagged as shared.
 	Services() []Service
 	// MemoryUse is how many bytes the Sandbox and its own Services hold now.
 	// Shared Services aren't part of it: they exist once, however many
@@ -40,6 +41,9 @@ type Service struct {
 	Name string
 	// Addresses are where to reach it from inside the Sandbox.
 	Addresses []string
+	// Shared is whether it is one of the Run's shared Services, which serve
+	// every Sandbox of the Run, rather than the Sandbox's own.
+	Shared bool
 }
 
 // PublishedService is a running Service with ports on the host's loopback,

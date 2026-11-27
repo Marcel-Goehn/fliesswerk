@@ -82,19 +82,37 @@ func (p *Provider) startServices(ctx context.Context, b *box, s *sandboxPlan, re
 	if err != nil {
 		return err
 	}
-	running = slices.SortedFunc(slices.Values(slices.Concat(running, p.shared)), func(x, y sandbox.PublishedService) int { return strings.Compare(x.Name, y.Name) })
+	reached := make([]reachedService, 0, len(running)+len(p.shared))
+	for _, svc := range running {
+		reached = append(reached, reachedService{PublishedService: svc})
+	}
+	for _, svc := range p.shared {
+		// A helper of both sides: the Sandbox keeps its own copy.
+		if slices.ContainsFunc(running, func(own sandbox.PublishedService) bool { return own.Name == svc.Name }) {
+			continue
+		}
+		reached = append(reached, reachedService{PublishedService: svc, shared: true})
+	}
+	slices.SortFunc(reached, func(x, y reachedService) int { return strings.Compare(x.Name, y.Name) })
 	if p.host.Mac {
-		p.publishToSeatbelt(b, s, running)
+		p.publishToSeatbelt(b, s, reached)
 		return nil
 	}
-	return p.forwardToBwrap(ctx, b, s, running)
+	return p.forwardToBwrap(ctx, b, s, reached)
+}
+
+// reachedService is a Service a Sandbox reaches: its own or a shared one.
+type reachedService struct {
+	sandbox.PublishedService
+	// shared is whether it is one of the Run's shared Services.
+	shared bool
 }
 
 // publishToSeatbelt allows each published port. A Seatbelt Sandbox shares the
 // host's loopback, so its programs use that port and no name.
-func (p *Provider) publishToSeatbelt(b *box, s *sandboxPlan, running []sandbox.PublishedService) {
+func (p *Provider) publishToSeatbelt(b *box, s *sandboxPlan, running []reachedService) {
 	for _, svc := range running {
-		listed := sandbox.Service{Name: svc.Name}
+		listed := sandbox.Service{Name: svc.Name, Shared: svc.shared}
 		first := 0
 		for _, port := range svc.Ports {
 			if first == 0 {
@@ -123,7 +141,7 @@ func (b *box) setEnv(entries []string) {
 // Every port leads over a mounted socket to a forwarder here, which is the
 // only thing that can reach the published port from the Sandbox's network
 // namespace.
-func (p *Provider) forwardToBwrap(ctx context.Context, b *box, s *sandboxPlan, running []sandbox.PublishedService) error {
+func (p *Provider) forwardToBwrap(ctx context.Context, b *box, s *sandboxPlan, running []reachedService) error {
 	dir, err := os.MkdirTemp(p.socketDir, "s")
 	if err != nil {
 		return err
@@ -139,7 +157,7 @@ func (p *Provider) forwardToBwrap(ctx context.Context, b *box, s *sandboxPlan, r
 		ip := fmt.Sprintf("127.0.1.%d", i+1)
 		hosts += ip + " " + strings.Join(svc.Aliases, " ") + "\n"
 		noProxy = append(noProxy, svc.Aliases...)
-		listed := sandbox.Service{Name: svc.Name}
+		listed := sandbox.Service{Name: svc.Name, Shared: svc.shared}
 		first := 0
 		for _, port := range svc.Ports {
 			inside := port.Container
